@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SOLOC' CRM</title>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>body{margin:0;padding:0;background:#FBF7F0;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── FIREBASE ────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
+  authDomain: "soloc-crm.firebaseapp.com",
+  projectId: "soloc-crm",
+  storageBucket: "soloc-crm.firebasestorage.app",
+  messagingSenderId: "247355554921",
+  appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────
+const nowISO = () => new Date().toISOString();
+const daysSince = (iso) => iso ? (Date.now()-new Date(iso).getTime())/86400000 : 0;
+const fmtDateTime = (iso) => { if(!iso) return "—"; const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} à ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+const fmtDate = (iso) => { if(!iso) return "—"; const d=new Date(iso); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; };
+const mkEvent = (emoji, text) => ({ id: Date.now()+"-"+Math.random().toString(36).slice(2), at: nowISO(), text: emoji?`${emoji} ${text}`:text });
+const displayNameFromEmail = (email) => { if(!email) return ""; const n = email.split("@")[0].replace(/[._]/g," "); return n.charAt(0).toUpperCase()+n.slice(1); };
+
+const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:"", surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"" };
+const criteriaComplete = (c) => {
+  if(!c) return false;
+  const base = c.statutClient && c.typologie && c.surface && c.loyer && c.secteur && c.dateEntreeSouhaitee;
+  if(!base) return false;
+  if(c.statutClient === "CDI" && c.periodeEssaiValidee === null) return false;
+  return true;
+};
+
+const PIPELINE_COLS = [
+  {id:"sans_suite",    label:"Sans suite",     color:"#9CA3AF"},
+  {id:"premier_contact",label:"Premier contact",color:"#3B82F6"},
+  {id:"relance",       label:"Relance",         color:"#D97706"},
+  {id:"envoye",        label:"Envoyé",          color:"#8B5CF6"},
+  {id:"en_traitement", label:"En traitement",   color:"#C1614F"},
+  {id:"en_recherche",  label:"En recherche",    color:"#0D9488"},
+  {id:"en_commission", label:"En commission",   color:"#CA8A04"},
+  {id:"valide",        label:"Validé",          color:"#16A34A"},
+];
+const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].includes(c.id)).map(c=>c.id);
+const STATUTS = ["Étudiant","CDI","CDD","Indépendant"];
+const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
+
+// ─── ICONS ───────────────────────────────────────────────────────────────
+const ICONS = (s) => ({
+  plus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  x:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  check:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>,
+  trash:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>,
+  phone:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 5.51 5.51l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16.92z"/></svg>,
+  mail:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16v16H4z" opacity="0"/><path d="M22 6 12 13 2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg>,
+  alert:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  search:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  kanban:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="11" rx="1"/><rect x="17" y="3" width="5" height="14" rx="1"/></svg>,
+  table:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>,
+  logout:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  history:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>,
+  clock:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+});
+const Ic = ({n,s=16}) => { const m=ICONS(s); return m[n]||null; };
+
+// ─── CSS ─────────────────────────────────────────────────────────────────
+const CSS = `@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap");
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#FBF7F0;--surface:#FFFFFF;--surface2:#F2E8DA;
+  --border:#E5D9C6;--border2:#D8C7AE;
+  --ardoise:#2C3E50;--ardoise-l:#3D5266;
+  --text:#2C3E50;--text2:#5A6B7B;--text3:#9AA7B2;
+  --accent:#C1614F;--accent-d:#A14E3F;--accent-l:#F5E2DD;--accent-l2:#EBC6BB;
+  --green:#16A34A;--green-bg:#DCFCE7;
+  --red:#DC2626;--red-bg:#FEE2E2;
+  --orange:#D97706;--orange-bg:#FEF3C7;
+  --sh:0 2px 14px rgba(44,62,80,.07);--sh-md:0 6px 24px rgba(44,62,80,.12);--sh-lg:0 10px 44px rgba(44,62,80,.18);
+}
+body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-size:14px;line-height:1.5;}
+.brand-font{font-family:"Sora",sans-serif;}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ardoise);}
+.login-card{background:var(--surface);border-radius:20px;padding:38px 36px;width:360px;box-shadow:var(--sh-lg);}
+.login-logo{width:50px;height:50px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;margin:0 auto 18px;font-family:"Sora",sans-serif;}
+.login-title{font-family:"Sora",sans-serif;font-weight:800;font-size:21px;text-align:center;color:var(--text);margin-bottom:4px;letter-spacing:-.02em;}
+.login-sub{text-align:center;font-size:12px;color:var(--text3);margin-bottom:26px;}
+.login-err{background:var(--red-bg);color:var(--red);font-size:12px;font-weight:600;padding:9px 12px;border-radius:9px;margin-bottom:14px;text-align:center;}
+
+/* LAYOUT */
+.app{display:flex;min-height:100vh;}
+.sb{width:222px;min-height:100vh;background:var(--ardoise);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh;}
+.sb-brand{padding:22px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
+.sb-logo{width:36px;height:36px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:"Sora",sans-serif;}
+.sb-name{font-weight:800;font-size:17px;color:#fff;font-family:"Sora",sans-serif;letter-spacing:-.02em;}
+.sb-sub{font-size:10px;color:rgba(255,255,255,.45);font-weight:500;letter-spacing:.06em;}
+.sb-nav{padding:14px 10px;flex:1;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.65);cursor:pointer;transition:all .15s;font-size:13px;font-weight:600;margin-bottom:3px;}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+.nav-item.active{background:var(--accent);color:#fff;}
+.sb-footer{padding:16px;border-top:1px solid rgba(255,255,255,.08);}
+.sb-user{font-size:12px;color:rgba(255,255,255,.85);font-weight:700;margin-bottom:8px;}
+.logout-btn{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.75);padding:8px 11px;border-radius:9px;cursor:pointer;font-family:"Inter",sans-serif;font-size:12px;font-weight:600;width:100%;transition:all .15s;}
+.logout-btn:hover{background:rgba(255,255,255,.16);color:#fff;}
+
+.content{display:flex;flex-direction:column;flex:1;min-width:0;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+.pt{font-size:21px;font-weight:800;color:var(--text);font-family:"Sora",sans-serif;letter-spacing:-.02em;}
+.ps{color:var(--text3);font-size:12px;font-weight:500;margin-top:2px;}
+.tb-right{display:flex;align-items:center;gap:10px;}
+.main{padding:24px 28px;overflow-y:auto;flex:1;}
+
+.search-bar{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:8px 13px;width:230px;color:var(--text3);}
+.search-bar input{border:none;background:transparent;outline:none;font-family:"Inter",sans-serif;font-size:13px;color:var(--text);width:100%;}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;font-family:"Inter",sans-serif;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.btn-p{background:var(--accent);color:#fff;box-shadow:0 4px 12px rgba(193,97,79,.3);}
+.btn-p:hover{background:var(--accent-d);}
+.btn-g{background:transparent;border:1.5px solid var(--border2);color:var(--text2);}
+.btn-g:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-l);}
+.btn-sm{padding:6px 11px;font-size:12px;border-radius:8px;}
+.btn-success{background:var(--green);color:#fff;}
+.btn-block{width:100%;justify-content:center;}
+.ib{background:none;border:none;cursor:pointer;color:var(--text3);padding:5px;border-radius:8px;transition:all .15s;display:flex;align-items:center;}
+.ib:hover{color:var(--accent);background:var(--accent-l);}
+
+/* KANBAN */
+.kb-wrap{display:flex;gap:12px;overflow-x:auto;padding-bottom:14px;align-items:flex-start;}
+.kb-col{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px;min-width:220px;width:220px;flex-shrink:0;transition:all .15s;}
+.kb-col.drag-over{background:var(--accent-l);border-color:var(--accent-l2);}
+.kb-col-hd{display:flex;align-items:center;gap:7px;margin-bottom:10px;padding:0 2px;}
+.kb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.kb-col-title{font-size:12px;font-weight:700;color:var(--text);flex:1;}
+.kb-count{background:var(--border2);color:var(--text2);border-radius:20px;padding:1px 7px;font-size:11px;font-weight:700;}
+.kb-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px;margin-bottom:8px;cursor:grab;transition:all .15s;}
+.kb-card:active{cursor:grabbing;}
+.kb-card:hover{box-shadow:var(--sh-md);}
+.kb-card.warn{border-left:3px solid var(--orange);}
+.kb-card.paid{border-left:3px solid var(--green);background:var(--green-bg);}
+.kb-card-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px;}
+.kb-meta{font-size:11px;color:var(--text3);display:flex;flex-direction:column;gap:3px;margin-bottom:6px;}
+.kb-crit{font-size:11px;color:var(--text2);font-weight:600;background:var(--surface2);border-radius:6px;padding:3px 7px;display:inline-block;margin-bottom:6px;}
+.kb-badges{display:flex;gap:5px;flex-wrap:wrap;}
+.badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;display:inline-flex;align-items:center;gap:3px;}
+.badge.orange{background:var(--orange-bg);color:#92400e;}
+.badge.relance{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.badge.green{background:var(--green-bg);color:#166534;}
+.kb-empty{text-align:center;padding:18px 0;color:var(--text3);font-size:11px;font-style:italic;}
+.relance-act{width:100%;margin-top:7px;padding:6px 0;border-radius:8px;border:1.5px solid var(--orange);background:var(--orange-bg);color:#92400e;font-weight:700;font-size:11px;cursor:pointer;font-family:"Inter",sans-serif;}
+.relance-act:hover{background:var(--orange);color:#fff;}
+.paid-row{display:flex;align-items:center;gap:7px;margin-top:7px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;}
+
+/* TABLE (Recherche) */
+.list-table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:14px;overflow:hidden;border:1px solid var(--border);}
+.list-table th{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:11px 12px;border-bottom:1.5px solid var(--border);text-align:left;background:var(--surface2);}
+.list-table td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);}
+.list-table tr:last-child td{border-bottom:none;}
+.list-table tr:hover td{background:var(--surface2);}
+.td-name{color:var(--text);font-weight:700;}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text3);}
+.empty-state .es-ic{font-size:34px;margin-bottom:10px;}
+.empty-state .es-t{font-weight:700;color:var(--text);margin-bottom:4px;}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(44,62,80,.5);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px);padding:20px;}
+.modal{background:var(--surface);border-radius:18px;padding:26px;width:560px;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-lg);}
+.modal-title{font-size:18px;font-weight:800;color:var(--text);font-family:"Sora",sans-serif;letter-spacing:-.02em;margin-bottom:4px;}
+.modal-sub{font-size:12px;color:var(--text3);margin-bottom:16px;}
+.modal-section{font-size:10px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin:18px 0 10px;padding-bottom:5px;border-bottom:1.5px solid var(--accent-l2);}
+.gate-banner{background:var(--accent-l);border:1.5px solid var(--accent-l2);border-radius:10px;padding:11px 13px;font-size:12px;font-weight:700;color:var(--accent-d);margin-bottom:14px;}
+
+/* FORM */
+.fg{margin-bottom:12px;}
+.fl{display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;}
+.fi{width:100%;background:var(--surface2);border:1.5px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:9px;font-family:"Inter",sans-serif;font-size:13px;font-weight:500;outline:none;transition:all .15s;}
+.fi:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px var(--accent-l);}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.fa{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
+.ferr{color:var(--red);font-size:12px;font-weight:600;margin-bottom:10px;}
+.seg{display:flex;gap:7px;}
+.seg-btn{flex:1;padding:8px 0;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;cursor:pointer;font-family:"Inter",sans-serif;text-align:center;}
+.seg-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+/* HISTORY */
+.hist-item{display:flex;flex-direction:column;gap:1px;padding:7px 0;border-bottom:1px solid var(--border);}
+.hist-item:last-child{border-bottom:none;}
+.hist-text{font-size:12px;color:var(--text2);font-weight:600;}
+.hist-date{font-size:10px;color:var(--text3);}
+
+/* TOAST */
+@keyframes slideIn{from{transform:translateX(120%);opacity:0;}to{transform:translateX(0);opacity:1;}}
+.toast-wrap{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--ardoise);color:#fff;padding:12px 16px;border-radius:11px;box-shadow:var(--sh-lg);font-size:13px;font-weight:600;min-width:240px;animation:slideIn .25s ease;}
+.toast.error{background:var(--red);}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+`;
+
+// ─── TOASTS ──────────────────────────────────────────────────────────────
+function useToasts(){
+  const [toasts,setToasts]=useState([]);
+  const add=useCallback((text,type="info")=>{
+    const id=Date.now()+Math.random();
+    setToasts(p=>[...p,{id,text,type}]);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),3400);
+  },[]);
+  return [toasts,add];
+}
+
+// ─── LOGIN SCREEN ────────────────────────────────────────────────────────
+function LoginScreen(){
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const submit=(e)=>{
+    e.preventDefault();
+    setError("");
+    if(!email||!password){setError("Renseigne email et mot de passe.");return;}
+    setLoading(true);
+    auth.signInWithEmailAndPassword(email.trim(),password)
+      .catch(err=>{
+        const map={
+          "auth/invalid-email":"Email invalide.",
+          "auth/user-not-found":"Compte introuvable.",
+          "auth/wrong-password":"Mot de passe incorrect.",
+          "auth/invalid-credential":"Email ou mot de passe incorrect.",
+          "auth/too-many-requests":"Trop de tentatives, réessaie plus tard."
+        };
+        setError(map[err.code]||"Erreur de connexion.");
+      })
+      .finally(()=>setLoading(false));
+  };
+
+  return(
+    <div className="login-wrap">
+      <form className="login-card" onSubmit={submit}>
+        <div className="login-logo">S</div>
+        <div className="login-title">soloc' CRM</div>
+        <div className="login-sub">Connexion à l'espace pro</div>
+        {error&&<div className="login-err">{error}</div>}
+        <div className="fg">
+          <label className="fl">Email</label>
+          <input className="fi" type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus/>
+        </div>
+        <div className="fg">
+          <label className="fl">Mot de passe</label>
+          <input className="fi" type="password" value={password} onChange={e=>setPassword(e.target.value)}/>
+        </div>
+        <button className="btn btn-p btn-block" type="submit" disabled={loading} style={{marginTop:8}}>
+          {loading?"Connexion…":"Se connecter"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ─── LEAD CARD ───────────────────────────────────────────────────────────
+function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
+  const stale = ACTIVE_ALERT_COLS.includes(lead.column) && daysSince(lead.lastActivity)>=3;
+  const cls = ["kb-card"];
+  if(stale) cls.push("warn");
+  if(lead.column==="valide"&&lead.paid) cls.push("paid");
+  const critSummary = lead.criteria&&lead.criteria.typologie ? `${lead.criteria.typologie} · ${lead.criteria.secteur||"—"} · ${lead.criteria.loyer?lead.criteria.loyer+"€":"—"}` : null;
+
+  return(
+    <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
+      <div className="kb-card-name">{lead.name}</div>
+      <div className="kb-meta">
+        {lead.phone&&<span>📞 {lead.phone}</span>}
+        {lead.email&&<span>✉️ {lead.email}</span>}
+      </div>
+      {critSummary&&<div className="kb-crit">{critSummary}</div>}
+      <div className="kb-badges">
+        {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
+        {stale&&<span className="badge orange">⚠ {Math.floor(daysSince(lead.lastActivity))}j sans suivi</span>}
+        {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
+      </div>
+      {lead.column==="relance"&&(
+        <button className="relance-act" onClick={e=>{e.stopPropagation();onRelanceAction(lead);}}>Pas de réponse</button>
+      )}
+      {lead.column==="valide"&&(
+        <div className="paid-row" onClick={e=>{e.stopPropagation();onTogglePaid(lead);}}>
+          <input type="checkbox" checked={!!lead.paid} onChange={()=>{}} readOnly/> Marquer payé
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── KANBAN BOARD ────────────────────────────────────────────────────────
+function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid}){
+  const [dragOver,setDragOver]=useState(null);
+  const dragId=useRef(null);
+
+  const sortCol=(colLeads)=>{
+    return [...colLeads].sort((a,b)=>{
+      const sa = ACTIVE_ALERT_COLS.includes(a.column)&&daysSince(a.lastActivity)>=3;
+      const sb = ACTIVE_ALERT_COLS.includes(b.column)&&daysSince(b.lastActivity)>=3;
+      if(sa&&!sb) return -1;
+      if(sb&&!sa) return 1;
+      if(sa&&sb) return daysSince(b.lastActivity)-daysSince(a.lastActivity);
+      return new Date(b.lastActivity||0)-new Date(a.lastActivity||0);
+    });
+  };
+
+  return(
+    <div className="kb-wrap">
+      {PIPELINE_COLS.map(col=>{
+        const colLeads = sortCol(leads.filter(l=>l.column===col.id));
+        return(
+          <div key={col.id} className={"kb-col"+(dragOver===col.id?" drag-over":"")}
+            onDragOver={e=>{e.preventDefault();setDragOver(col.id);}}
+            onDragLeave={()=>setDragOver(null)}
+            onDrop={e=>{e.preventDefault();setDragOver(null);if(dragId.current)onMove(dragId.current,col.id);dragId.current=null;}}>
+            <div className="kb-col-hd">
+              <span className="kb-dot" style={{background:col.color}}/>
+              <span className="kb-col-title">{col.label}</span>
+              <span className="kb-count">{colLeads.length}</span>
+            </div>
+            {colLeads.length===0&&<div className="kb-empty">Aucun lead</div>}
+            {colLeads.map(lead=>(
+              <LeadCard key={lead.id} lead={lead} onOpen={onOpen}
+                onDragStart={(e,id)=>{dragId.current=id;e.dataTransfer.setData("text",id);}}
+                onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid}/>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── ADD LEAD MODAL ──────────────────────────────────────────────────────
+function AddLeadModal({onSave,onClose}){
+  const [form,setForm]=useState({firstName:"",lastName:"",phone:"",email:""});
+  const [err,setErr]=useState("");
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+
+  const submit=()=>{
+    const hasIdentity = form.firstName.trim()||form.lastName.trim();
+    const hasContact = form.phone.trim()||form.email.trim();
+    if(!hasIdentity){setErr("Renseigne au moins un prénom ou un nom.");return;}
+    if(!hasContact){setErr("Renseigne au moins un téléphone ou un email.");return;}
+    onSave(form);
+  };
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Ajouter un lead</div>
+        <div className="modal-sub">Le lead sera créé directement dans la colonne « Premier contact ».</div>
+        {err&&<div className="ferr">{err}</div>}
+        <div className="fr">
+          <div className="fg"><label className="fl">Prénom</label><input className="fi" autoFocus value={form.firstName} onChange={e=>set("firstName",e.target.value)}/></div>
+          <div className="fg"><label className="fl">NOM</label><input className="fi" value={form.lastName} onChange={e=>set("lastName",e.target.value)}/></div>
+        </div>
+        <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
+        <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>Ajouter</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
+function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
+  const [form,setForm]=useState({
+    name:lead.name, phone:lead.phone||"", email:lead.email||"",
+    notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column,
+    criteria:{...blankCriteria,...(lead.criteria||{})}
+  });
+  const [err,setErr]=useState("");
+  const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
+
+  const handleSave=(forceColumn)=>{
+    const targetCol = forceColumn||form.column;
+    if(targetCol==="en_recherche"&&!criteriaComplete(form.criteria)){
+      setErr("Complète tous les critères obligatoires avant de passer en recherche.");
+      return;
+    }
+    setErr("");
+    onSave(lead, form, targetCol);
+  };
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{lead.name}</div>
+        <div className="modal-sub">Créé le {fmtDate(lead.createdAt)} — dernier mouvement {fmtDate(lead.lastActivity)}</div>
+
+        {gateTarget&&(
+          <div className="gate-banner">🔒 Pour passer en « En recherche », tous les critères ci-dessous (sauf prestations supp.) doivent être remplis.</div>
+        )}
+        {err&&<div className="ferr">{err}</div>}
+
+        <div className="modal-section">Coordonnées</div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
+          <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
+        </div>
+
+        {!gateTarget&&(
+          <>
+            <div className="modal-section">Statut pipeline</div>
+            <select className="fi" value={form.column} onChange={e=>setForm(p=>({...p,column:e.target.value}))}>
+              {PIPELINE_COLS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </>
+        )}
+
+        <div className="modal-section">Critères de recherche</div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Statut client *</label>
+            <select className="fi" value={form.criteria.statutClient} onChange={e=>setCrit("statutClient",e.target.value)}>
+              <option value="">—</option>
+              {STATUTS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="fg"><label className="fl">Typologie *</label>
+            <select className="fi" value={form.criteria.typologie} onChange={e=>setCrit("typologie",e.target.value)}>
+              <option value="">—</option>
+              {TYPOLOGIES.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        {form.criteria.statutClient==="CDI"&&(
+          <div className="fg">
+            <label className="fl">Période d'essai validée *</label>
+            <div className="seg">
+              <button type="button" className={"seg-btn"+(form.criteria.periodeEssaiValidee===true?" active":"")} onClick={()=>setCrit("periodeEssaiValidee",true)}>Oui</button>
+              <button type="button" className={"seg-btn"+(form.criteria.periodeEssaiValidee===false?" active":"")} onClick={()=>setCrit("periodeEssaiValidee",false)}>Non</button>
+            </div>
+          </div>
+        )}
+        <div className="fr">
+          <div className="fg"><label className="fl">Surface min (m²) *</label><input className="fi" type="number" value={form.criteria.surface} onChange={e=>setCrit("surface",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Loyer max (€) *</label><input className="fi" type="number" value={form.criteria.loyer} onChange={e=>setCrit("loyer",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Secteur *</label><input className="fi" placeholder="Lyon 6, Villeurbanne…" value={form.criteria.secteur} onChange={e=>setCrit("secteur",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Date d'entrée souhaitée *</label><input className="fi" type="date" value={form.criteria.dateEntreeSouhaitee} onChange={e=>setCrit("dateEntreeSouhaitee",e.target.value)}/></div>
+        </div>
+        <div className="fg"><label className="fl">Prestations supplémentaires</label><textarea className="fi" rows="2" value={form.criteria.prestationsSupp} onChange={e=>setCrit("prestationsSupp",e.target.value)}/></div>
+
+        <div className="modal-section">Remarques</div>
+        <textarea className="fi" rows="3" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}/>
+
+        <div className="modal-section">Historique</div>
+        <div>
+          {(lead.history||[]).slice().reverse().map(h=>(
+            <div key={h.id} className="hist-item">
+              <div className="hist-text">{h.text}</div>
+              <div className="hist-date">{fmtDateTime(h.at)}</div>
+            </div>
+          ))}
+          {(!lead.history||lead.history.length===0)&&<div className="hist-date">Aucun événement.</div>}
+        </div>
+
+        <div className="fa">
+          <button className="btn btn-g" style={{color:"var(--red)"}} onClick={()=>onDelete(lead)}><Ic n="trash" s={13}/>Supprimer</button>
+          <button className="btn btn-g" onClick={onClose}>Fermer</button>
+          {gateTarget
+            ? <button className="btn btn-p" onClick={()=>handleSave("en_recherche")}><Ic n="check" s={13}/>Valider et passer en recherche</button>
+            : <button className="btn btn-p" onClick={()=>handleSave()}><Ic n="check" s={13}/>Enregistrer</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── RECHERCHE TABLE ─────────────────────────────────────────────────────
+function RechercheTable({leads,search}){
+  const q=search.toLowerCase();
+  const rows = leads.filter(l=>l.column==="en_recherche").filter(l=>!q||l.name.toLowerCase().includes(q));
+
+  if(rows.length===0){
+    return(
+      <div className="empty-state">
+        <div className="es-ic">🔍</div>
+        <div className="es-t">Aucune recherche en cours</div>
+        <div>Les clients passés en « En recherche » dans le Pipeline apparaîtront ici.</div>
+      </div>
+    );
+  }
+
+  return(
+    <table className="list-table">
+      <thead><tr>
+        <th>Client</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
+      </tr></thead>
+      <tbody>
+        {rows.map(l=>(
+          <tr key={l.id}>
+            <td className="td-name">{l.name}</td>
+            <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}</td>
+            <td>{l.criteria.typologie}</td>
+            <td>{l.criteria.surface} m²</td>
+            <td>{l.criteria.loyer} €</td>
+            <td>{l.criteria.secteur}</td>
+            <td>{fmtDate(l.criteria.dateEntreeSouhaitee)}</td>
+            <td>{l.criteria.prestationsSupp||"—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────
+function App(){
+  const [user,setUser]=useState(undefined);
+  const [leads,setLeads]=useState([]);
+  const [tab,setTab]=useState("pipeline");
+  const [search,setSearch]=useState("");
+  const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
+  const [toasts,addToast]=useToasts();
+
+  useEffect(()=>{
+    const unsub=auth.onAuthStateChanged(u=>setUser(u));
+    return unsub;
+  },[]);
+
+  useEffect(()=>{
+    if(!user) return;
+    const unsub=db.collection("leads").onSnapshot(snap=>{
+      setLeads(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },err=>addToast("Erreur de synchronisation","error"));
+    return unsub;
+  },[user]);
+
+  if(user===undefined) return <div style={{minHeight:"100vh",background:"var(--ardoise)"}}/>;
+  if(user===null) return (<><style>{CSS}</style><LoginScreen/></>);
+
+  const eventLabel=(col)=>({
+    sans_suite:"❌ Passé en Sans suite",
+    premier_contact:"↩️ Remis en Premier contact",
+    relance:"📞 Passé en Relance",
+    envoye:"✉️ Dossier envoyé",
+    en_traitement:"🔍 Passé en traitement",
+    en_recherche:"🏠 Critères validés — recherche démarrée",
+    en_commission:"📑 Passé en commission",
+    valide:"✅ Bail validé",
+  }[col]||"Statut mis à jour");
+
+  const addLead=(form)=>{
+    const fullName=[form.firstName.trim(),form.lastName.trim()].filter(Boolean).join(" ");
+    const doc={
+      firstName:form.firstName, lastName:form.lastName, name:fullName,
+      phone:form.phone, email:form.email,
+      column:"premier_contact", relanceCount:0, paid:false, notes:"",
+      criteria:blankCriteria,
+      createdAt:nowISO(), lastActivity:nowISO(),
+      history:[mkEvent("🌱","Lead créé")]
+    };
+    db.collection("leads").add(doc).then(()=>addToast("✓ "+fullName+" ajouté")).catch(()=>addToast("Erreur d'ajout","error"));
+    setModal(null);
+  };
+
+  const moveLead=(id,col)=>{
+    const lead=leads.find(l=>l.id===id);
+    if(!lead||lead.column===col) return;
+    if(col==="en_recherche"&&!criteriaComplete(lead.criteria)){
+      setModal({type:"gate",lead});
+      return;
+    }
+    db.collection("leads").doc(id).update({
+      column:col, lastActivity:nowISO(),
+      history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
+    }).then(()=>addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name));
+  };
+
+  const relanceAction=(lead)=>{
+    const newCount=(lead.relanceCount||0)+1;
+    if(newCount>=3){
+      db.collection("leads").doc(lead.id).update({
+        column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(),
+        history:[...(lead.history||[]),mkEvent("❌","3 relances sans réponse — passé en Sans suite")]
+      }).then(()=>addToast(lead.name+" passé en Sans suite","error"));
+    } else {
+      db.collection("leads").doc(lead.id).update({
+        relanceCount:newCount, lastActivity:nowISO(),
+        history:[...(lead.history||[]),mkEvent("📵",`Relance ${newCount}/3 — pas de réponse`)]
+      }).then(()=>addToast("Relance "+newCount+"/3 — "+lead.name));
+    }
+  };
+
+  const togglePaid=(lead)=>{
+    const paid=!lead.paid;
+    db.collection("leads").doc(lead.id).update({
+      paid, lastActivity:nowISO(),
+      history:[...(lead.history||[]),mkEvent(paid?"💶":"↩️",paid?"Marqué payé":"Paiement annulé")]
+    }).then(()=>addToast(paid?"✓ Marqué payé":"Paiement annulé"));
+  };
+
+  const saveDetail=(lead,form,targetCol)=>{
+    const colChanged = targetCol!==lead.column;
+    const hist=[...(lead.history||[])];
+    if(colChanged) hist.push(mkEvent("",eventLabel(targetCol)));
+    db.collection("leads").doc(lead.id).update({
+      phone:form.phone, email:form.email, notes:form.notes,
+      criteria:form.criteria, column:targetCol,
+      lastActivity:nowISO(), history:hist
+    }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
+  };
+
+  const deleteLead=(lead)=>{
+    if(!confirm("Supprimer "+lead.name+" ?")) return;
+    db.collection("leads").doc(lead.id).delete().then(()=>{addToast(lead.name+" supprimé");setModal(null);});
+  };
+
+  const q=search.toLowerCase();
+  const filteredLeads = leads.filter(l=>!q||l.name.toLowerCase().includes(q)||(l.phone||"").includes(q)||(l.email||"").toLowerCase().includes(q));
+
+  return(
+    <>
+      <style>{CSS}</style>
+      <div className="app">
+        <aside className="sb">
+          <div className="sb-brand">
+            <div className="sb-logo">S</div>
+            <div><div className="sb-name">soloc'</div><div className="sb-sub">ESPACE PRO</div></div>
+          </div>
+          <div className="sb-nav">
+            <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="kanban" s={16}/>Pipeline</div>
+            <div className={"nav-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={16}/>Recherche</div>
+          </div>
+          <div className="sb-footer">
+            <div className="sb-user">{displayNameFromEmail(user.email)}</div>
+            <button className="logout-btn" onClick={()=>auth.signOut()}><Ic n="logout" s={14}/>Se déconnecter</button>
+          </div>
+        </aside>
+
+        <div className="content">
+          <div className="topbar">
+            <div>
+              <div className="pt">{tab==="pipeline"?"Pipeline":"Recherche"}</div>
+              <div className="ps">{tab==="pipeline"?leads.length+" lead"+(leads.length!==1?"s":"")+" au total":"Recherches en cours en un coup d'œil"}</div>
+            </div>
+            <div className="tb-right">
+              <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+              {tab==="pipeline"&&<button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un lead</button>}
+            </div>
+          </div>
+          <div className="main">
+            {tab==="pipeline"
+              ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid}/>
+              : <RechercheTable leads={filteredLeads} search={search}/>}
+          </div>
+        </div>
+      </div>
+
+      {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
+      {(modal?.type==="detail"||modal?.type==="gate")&&
+        <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}/>}
+
+      <div className="toast-wrap">
+        {toasts.map(t=><div key={t.id} className={"toast"+(t.type==="error"?" error":"")}>{t.text}</div>)}
+      </div>
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+</body>
+</html>
