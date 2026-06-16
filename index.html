@@ -7,28 +7,36 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>body{margin:0;padding:0;background:#FBF7F0;}</style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
+    authDomain: "soloc-crm.firebaseapp.com",
+    projectId: "soloc-crm",
+    storageBucket: "soloc-crm.firebasestorage.app",
+    messagingSenderId: "247355554921",
+    appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
+  };
+  const fbApp = initializeApp(firebaseConfig);
+  window.__fb = {
+    auth: getAuth(fbApp), db: getFirestore(fbApp),
+    onAuthStateChanged, signInWithEmailAndPassword, signOut,
+    collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc
+  };
+  window.dispatchEvent(new Event("fbready"));
+</script>
+<script id="app-source" type="text/plain">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ─── FIREBASE ────────────────────────────────────────────────────────────
-const firebaseConfig = {
-  apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
-  authDomain: "soloc-crm.firebaseapp.com",
-  projectId: "soloc-crm",
-  storageBucket: "soloc-crm.firebasestorage.app",
-  messagingSenderId: "247355554921",
-  appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// ─── FIREBASE (modulaire, assigné quand window.__fb est prêt) ────────────
+let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc;
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────
 const nowISO = () => new Date().toISOString();
@@ -238,7 +246,7 @@ function LoginScreen(){
     setError("");
     if(!email||!password){setError("Renseigne email et mot de passe.");return;}
     setLoading(true);
-    auth.signInWithEmailAndPassword(email.trim(),password)
+    fsSignIn(auth,email.trim(),password)
       .catch(err=>{
         const map={
           "auth/invalid-email":"Email invalide.",
@@ -540,13 +548,13 @@ function App(){
   const [toasts,addToast]=useToasts();
 
   useEffect(()=>{
-    const unsub=auth.onAuthStateChanged(u=>setUser(u));
+    const unsub=fsOnAuthStateChanged(auth,u=>setUser(u));
     return unsub;
   },[]);
 
   useEffect(()=>{
     if(!user) return;
-    const unsub=db.collection("leads").onSnapshot(snap=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"leads"),snap=>{
       setLeads(snap.docs.map(d=>({id:d.id,...d.data()})));
     },err=>addToast("Erreur de synchronisation","error"));
     return unsub;
@@ -576,7 +584,7 @@ function App(){
       createdAt:nowISO(), lastActivity:nowISO(),
       history:[mkEvent("🌱","Lead créé")]
     };
-    db.collection("leads").add(doc).then(()=>addToast("✓ "+fullName+" ajouté")).catch(()=>addToast("Erreur d'ajout","error"));
+    fsAddDoc(fsCollection(db,"leads"),doc).then(()=>addToast("✓ "+fullName+" ajouté")).catch(()=>addToast("Erreur d'ajout","error"));
     setModal(null);
   };
 
@@ -587,7 +595,7 @@ function App(){
       setModal({type:"gate",lead});
       return;
     }
-    db.collection("leads").doc(id).update({
+    fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(),
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
     }).then(()=>addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name));
@@ -596,12 +604,12 @@ function App(){
   const relanceAction=(lead)=>{
     const newCount=(lead.relanceCount||0)+1;
     if(newCount>=3){
-      db.collection("leads").doc(lead.id).update({
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
         column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(),
         history:[...(lead.history||[]),mkEvent("❌","3 relances sans réponse — passé en Sans suite")]
       }).then(()=>addToast(lead.name+" passé en Sans suite","error"));
     } else {
-      db.collection("leads").doc(lead.id).update({
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
         relanceCount:newCount, lastActivity:nowISO(),
         history:[...(lead.history||[]),mkEvent("📵",`Relance ${newCount}/3 — pas de réponse`)]
       }).then(()=>addToast("Relance "+newCount+"/3 — "+lead.name));
@@ -610,7 +618,7 @@ function App(){
 
   const togglePaid=(lead)=>{
     const paid=!lead.paid;
-    db.collection("leads").doc(lead.id).update({
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       paid, lastActivity:nowISO(),
       history:[...(lead.history||[]),mkEvent(paid?"💶":"↩️",paid?"Marqué payé":"Paiement annulé")]
     }).then(()=>addToast(paid?"✓ Marqué payé":"Paiement annulé"));
@@ -620,7 +628,7 @@ function App(){
     const colChanged = targetCol!==lead.column;
     const hist=[...(lead.history||[])];
     if(colChanged) hist.push(mkEvent("",eventLabel(targetCol)));
-    db.collection("leads").doc(lead.id).update({
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       phone:form.phone, email:form.email, notes:form.notes,
       criteria:form.criteria, column:targetCol,
       lastActivity:nowISO(), history:hist
@@ -629,7 +637,7 @@ function App(){
 
   const deleteLead=(lead)=>{
     if(!confirm("Supprimer "+lead.name+" ?")) return;
-    db.collection("leads").doc(lead.id).delete().then(()=>{addToast(lead.name+" supprimé");setModal(null);});
+    fsDeleteDoc(fsDocRef(db,"leads",lead.id)).then(()=>{addToast(lead.name+" supprimé");setModal(null);});
   };
 
   const q=search.toLowerCase();
@@ -650,7 +658,7 @@ function App(){
           </div>
           <div className="sb-footer">
             <div className="sb-user">{displayNameFromEmail(user.email)}</div>
-            <button className="logout-btn" onClick={()=>auth.signOut()}><Ic n="logout" s={14}/>Se déconnecter</button>
+            <button className="logout-btn" onClick={()=>fsSignOut(auth)}><Ic n="logout" s={14}/>Se déconnecter</button>
           </div>
         </aside>
 
@@ -684,8 +692,31 @@ function App(){
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App/>);
+function boot(){
+  const fb = window.__fb;
+  auth = fb.auth; db = fb.db;
+  fsOnAuthStateChanged = fb.onAuthStateChanged;
+  fsSignIn = fb.signInWithEmailAndPassword;
+  fsSignOut = fb.signOut;
+  fsCollection = fb.collection;
+  fsOnSnapshot = fb.onSnapshot;
+  fsAddDoc = fb.addDoc;
+  fsDocRef = fb.doc;
+  fsUpdateDoc = fb.updateDoc;
+  fsDeleteDoc = fb.deleteDoc;
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(<App/>);
+}
+if(window.__fb) boot(); else window.addEventListener("fbready", boot, {once:true});
+</script>
+<script>
+(function(){
+  var src = document.getElementById("app-source").textContent;
+  var out = Babel.transform(src, { presets: [["react",{runtime:"classic"}]] }).code;
+  var s = document.createElement("script");
+  s.text = out;
+  document.body.appendChild(s);
+})();
 </script>
 </body>
 </html>
