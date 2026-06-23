@@ -642,12 +642,16 @@ const ANNEXES_LIST = ["Cave","Parking collectif","Place de parking","Garage ferm
 const FRAIS_PAR_M2 = 13.12;
 
 // ─── HONORAIRES CALC ─────────────────────────────────────────────────────
-function HonorairesCalc({surface}){
+function HonorairesCalc({surface, onSelect}){
   const [profil,setProfil]=useState(null);
   const [customVal,setCustomVal]=useState("");
   const frais = Math.round((parseFloat(surface)||0)*FRAIS_PAR_M2);
   const honos = profil==="etudiant"?890:profil==="cdi"?990:profil==="autre"?(parseInt(customVal)||null):null;
   const total = (honos&&frais)?honos+frais:null;
+  const labelMap={"etudiant":"Étudiant","cdi":"CDI essai validé","autre":"Autre profil"};
+  useEffect(()=>{
+    if(onSelect) onSelect({profil,label:profil?labelMap[profil]:null,honos,frais,total});
+  },[profil,customVal]);
   return(
     <div>
       <div className="hono-pills">
@@ -795,6 +799,7 @@ function BienFormModal({bien, onSave, onClose}){
 // ─── BIEN DETAIL MODAL ────────────────────────────────────────────────────
 function BienDetailModal({bien, onClose, onEdit, addToast}){
   const [photoIdx,setPhotoIdx]=useState(0);
+  const [honoData,setHonoData]=useState(null);
   const photos=bien.photos||[];
   const prev=()=>setPhotoIdx(i=>i===0?photos.length-1:i-1);
   const next=()=>setPhotoIdx(i=>i===photos.length-1?0:i+1);
@@ -931,7 +936,7 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
             </div>
             <div className="bc">
               <div className="bc-label"><Ic n="check" s={12}/>Honoraires SOLOC'</div>
-              <HonorairesCalc surface={bien.surface}/>
+              <HonorairesCalc surface={bien.surface} onSelect={setHonoData}/>
             </div>
           </div>
         </div>
