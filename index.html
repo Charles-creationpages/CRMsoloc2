@@ -38,6 +38,17 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ─── FIREBASE (modulaire, assigné quand window.__fb est prêt) ────────────
 let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc;
 
+// ─── IMGBB ───────────────────────────────────────────────────────────────
+const IMGBB_KEY = "080558055619053ee6387a12c1a4c5bb";
+const uploadToImgBB = (file) => new Promise((resolve, reject) => {
+  const fd = new FormData();
+  fd.append("image", file);
+  fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method:"POST", body:fd })
+    .then(r=>r.json())
+    .then(data=>{ if(data.success) resolve(data.data.url); else reject(new Error("ImgBB error")); })
+    .catch(reject);
+});
+
 // ─── HELPERS ─────────────────────────────────────────────────────────────
 const nowISO = () => new Date().toISOString();
 const daysSince = (iso) => iso ? (Date.now()-new Date(iso).getTime())/86400000 : 0;
@@ -86,6 +97,13 @@ const ICONS = (s) => ({
   clock:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
   users:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
   edit:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  building:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 22V12h6v10M3 9h18M3 15h18"/></svg>,
+  img:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+  chevL:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>,
+  chevR:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>,
+  home:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  pin:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  upload:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>,
 });
 const Ic = ({n,s=16}) => { const m=ICONS(s); return m[n]||null; };
 
@@ -227,6 +245,81 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 /* PARTENAIRES */
 .pt-actions{display:flex;gap:6px;justify-content:flex-end;}
 .agency-badge{background:var(--accent-l);color:var(--accent-d);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;}
+
+/* BIENS — grille vignettes */
+.biens-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;}
+.bien-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;}
+.bien-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
+.bien-card-photo{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--ardoise-l);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);font-size:13px;}
+.bien-card-photo img{width:100%;height:100%;object-fit:cover;}
+.bien-card-body{padding:12px 14px;}
+.bien-card-type{display:inline-block;background:var(--accent-l);color:var(--accent-d);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;margin-bottom:6px;}
+.bien-card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.bien-card-addr{font-size:11px;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:4px;}
+.bien-card-bottom{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;}
+.bien-card-loyer{font-size:16px;font-weight:700;color:var(--accent);}
+.bien-card-loyer-sub{font-size:10px;color:var(--text3);font-weight:400;}
+.bien-card-attrs{display:flex;gap:8px;font-size:11px;color:var(--text3);}
+.bien-card-attr{display:flex;align-items:center;gap:3px;}
+.dispo-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;}
+.dispo-badge.ok{background:var(--green-bg);color:#166534;}
+.dispo-badge.soon{background:var(--orange-bg);color:#92400e;}
+
+/* BIENS — fiche détail */
+.bien-detail-wrap{display:flex;gap:0;min-height:0;}
+.bien-detail-left{width:42%;flex-shrink:0;border-right:1px solid var(--border);}
+.bien-detail-photos{position:relative;background:#2C3E50;}
+.bien-detail-main-img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;}
+.bien-detail-main-placeholder{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(255,255,255,.3);font-size:13px;}
+.photo-nav-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.photo-nav-btn.prev{left:10px;} .photo-nav-btn.next{right:10px;}
+.photo-counter-badge{position:absolute;bottom:10px;right:12px;background:rgba(0,0,0,.5);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;}
+.thumbs-row{display:flex;gap:4px;padding:6px;background:var(--surface2);overflow-x:auto;}
+.thumb-img{width:54px;height:40px;border-radius:6px;object-fit:cover;cursor:pointer;border:2px solid transparent;flex-shrink:0;background:var(--ardoise-l);}
+.thumb-img.active{border-color:var(--accent);}
+.bien-detail-info{padding:14px 16px;}
+.bien-detail-typebadge{display:inline-block;background:var(--accent-l);color:var(--accent-d);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;margin-bottom:8px;}
+.bien-detail-title{font-size:16px;font-weight:800;color:var(--text);font-family:"Sora",sans-serif;letter-spacing:-.02em;margin-bottom:4px;}
+.bien-detail-addr{font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:5px;}
+.bien-detail-attrs{display:flex;gap:14px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);padding-top:10px;}
+.bien-detail-attr{display:flex;align-items:center;gap:4px;font-weight:600;}
+
+/* BIENS — 5 cartes droite */
+.bien-detail-right{flex:1;padding:12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
+.bc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 13px;}
+.bc-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.bc-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;display:flex;align-items:center;gap:5px;}
+.bc-val{font-size:20px;font-weight:800;color:var(--accent);font-family:"Sora",sans-serif;}
+.bc-sub{font-size:11px;color:var(--text2);margin-top:3px;font-weight:600;}
+.annexe-pill{display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--text2);margin:2px;}
+.info-item{margin-bottom:5px;}
+.info-item-label{font-size:10px;color:var(--text3);font-weight:600;}
+.info-item-val{font-size:12px;font-weight:700;color:var(--text);}
+.meuble-tag{display:inline-block;background:var(--green-bg);color:#166534;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;}
+
+/* Honoraires simulateur */
+.hono-pills{display:flex;gap:6px;margin-bottom:8px;}
+.hono-pill{flex:1;padding:7px 4px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surface2);text-align:center;cursor:pointer;transition:all .15s;}
+.hono-pill:hover{border-color:var(--accent);}
+.hono-pill.active{background:var(--accent-l);border-color:var(--accent);}
+.hono-pill-title{font-size:10px;font-weight:700;color:var(--text2);}
+.hono-pill.active .hono-pill-title{color:var(--accent-d);}
+.hono-pill-price{font-size:13px;font-weight:800;color:var(--accent);}
+.hono-recap{background:var(--surface2);border-radius:9px;padding:9px 11px;font-size:12px;}
+.hono-recap-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);}
+.hono-recap-row:last-child{border-bottom:none;padding-top:5px;margin-top:2px;}
+.hono-recap-label{color:var(--text2);}
+.hono-recap-val{font-weight:700;color:var(--text);}
+.hono-recap-total{font-size:14px;font-weight:800;color:var(--accent);}
+.hono-custom-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12px;color:var(--text2);}
+.hono-custom-row input{width:80px;}
+.hono-note{font-size:10px;color:var(--text3);text-align:center;margin-top:5px;}
+
+/* Upload zone */
+.upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;font-size:12px;color:var(--text3);}
+.upload-zone:hover{border-color:var(--accent);color:var(--accent);}
+.upload-progress{height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden;}
+.upload-progress-bar{height:100%;background:var(--accent);transition:width .2s;}
 `;
 
 // ─── TOASTS ──────────────────────────────────────────────────────────────
@@ -544,6 +637,344 @@ function RechercheTable({leads,search}){
   );
 }
 
+// ─── CONSTANTS BIENS ─────────────────────────────────────────────────────
+const ANNEXES_LIST = ["Cave","Parking collectif","Place de parking","Garage fermé","Balcon","Terrasse","Cuisine équipée","Ascenseur","Gardien"];
+const FRAIS_PAR_M2 = 13.12;
+
+// ─── HONORAIRES CALC ─────────────────────────────────────────────────────
+function HonorairesCalc({surface}){
+  const [profil,setProfil]=useState(null);
+  const [customVal,setCustomVal]=useState("");
+  const frais = Math.round((parseFloat(surface)||0)*FRAIS_PAR_M2);
+  const honos = profil==="etudiant"?890:profil==="cdi"?990:profil==="autre"?(parseInt(customVal)||null):null;
+  const total = (honos&&frais)?honos+frais:null;
+  return(
+    <div>
+      <div className="hono-pills">
+        {[["etudiant","Étudiant","890 €"],["cdi","CDI essai validé","990 €"],["autre","Autre profil","Sur devis"]].map(([k,l,p])=>(
+          <div key={k} className={"hono-pill"+(profil===k?" active":"")} onClick={()=>setProfil(k)}>
+            <div className="hono-pill-title">{l}</div>
+            <div className="hono-pill-price">{p}</div>
+          </div>
+        ))}
+      </div>
+      {profil==="autre"&&(
+        <div className="hono-custom-row">
+          <span>Nos honoraires :</span>
+          <input className="fi" type="number" value={customVal} onChange={e=>setCustomVal(e.target.value)} placeholder="ex: 750"/>
+          <span>€</span>
+        </div>
+      )}
+      {profil&&(profil!=="autre"||customVal)?(
+        <div className="hono-recap">
+          <div className="hono-recap-row"><span className="hono-recap-label">Honoraires SOLOC'</span><span className="hono-recap-val">{honos} €</span></div>
+          <div className="hono-recap-row"><span className="hono-recap-label">Frais d'agence ({surface||"?"} m² × 13,12 €)</span><span className="hono-recap-val">{frais} €</span></div>
+          <div className="hono-recap-row"><span className="hono-recap-label" style={{fontWeight:700,color:"var(--text)"}}>Total client</span><span className="hono-recap-val hono-recap-total">{total} €</span></div>
+        </div>
+      ):(
+        profil&&<div style={{fontSize:11,color:"var(--text3)",textAlign:"center",padding:"6px 0"}}>Saisis le montant pour voir le récap</div>
+      )}
+      <div className="hono-note">Paiement au résultat · Zéro frais avant signature du bail</div>
+    </div>
+  );
+}
+
+// ─── BIEN FORM MODAL ─────────────────────────────────────────────────────
+const blankBien = {titre:"",adresse:"",typologie:"",surface:"",loyer:"",depotGarantie:"",etage:"",meuble:false,dateDisponibilite:"",annexes:[],description:"",photos:[]};
+
+function BienFormModal({bien, onSave, onClose}){
+  const editing=!!bien;
+  const [form,setForm]=useState(editing?{...blankBien,...bien}:{...blankBien});
+  const [uploading,setUploading]=useState(false);
+  const [uploadPct,setUploadPct]=useState(0);
+  const [err,setErr]=useState("");
+  const fileRef=useRef();
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const toggleAnnexe=(a)=>setForm(p=>({...p,annexes:p.annexes.includes(a)?p.annexes.filter(x=>x!==a):[...p.annexes,a]}));
+
+  const uploadPhotos=(files)=>{
+    if(!files||!files.length) return;
+    setUploading(true);
+    setUploadPct(0);
+    const arr=Array.from(files);
+    let done=0;
+    Promise.all(arr.map(file=>
+      uploadToImgBB(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })
+    )).then(urls=>{
+      setForm(p=>({...p,photos:[...(p.photos||[]),...urls]}));
+      setUploading(false); setUploadPct(0);
+    }).catch(()=>{ setErr("Erreur upload — vérifie ta connexion."); setUploading(false); });
+  };
+
+  const removePhoto=(idx)=>setForm(p=>({...p,photos:p.photos.filter((_,i)=>i!==idx)}));
+
+  const submit=()=>{
+    if(!form.adresse.trim()){setErr("L'adresse est obligatoire.");return;}
+    if(!form.loyer){setErr("Le loyer est obligatoire.");return;}
+    setErr("");
+    onSave(form);
+  };
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{width:620}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{editing?"Modifier le bien":"Ajouter un bien"}</div>
+        {err&&<div className="ferr">{err}</div>}
+
+        <div className="modal-section">Informations principales</div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Adresse *</label><input className="fi" value={form.adresse} onChange={e=>set("adresse",e.target.value)} placeholder="14 rue Vendôme, 69006 Lyon"/></div>
+          <div className="fg"><label className="fl">Secteur / Quartier</label><input className="fi" value={form.titre} onChange={e=>set("titre",e.target.value)} placeholder="Brotteaux, Lyon 6…"/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Typologie</label>
+            <select className="fi" value={form.typologie} onChange={e=>set("typologie",e.target.value)}>
+              <option value="">—</option>
+              {["Studio","T1","T2","T3","T4","T5+"].map(t=><option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="fg"><label className="fl">Surface (m²)</label><input className="fi" type="number" value={form.surface} onChange={e=>set("surface",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Loyer CC (€) *</label><input className="fi" type="number" value={form.loyer} onChange={e=>set("loyer",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Dépôt de garantie (€)</label><input className="fi" type="number" value={form.depotGarantie} onChange={e=>set("depotGarantie",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Étage</label><input className="fi" value={form.etage} onChange={e=>set("etage",e.target.value)} placeholder="Ex: 3e / 5 · Ascenseur"/></div>
+          <div className="fg"><label className="fl">Date de disponibilité</label><input className="fi" type="date" value={form.dateDisponibilite} onChange={e=>set("dateDisponibilite",e.target.value)}/></div>
+        </div>
+        <div className="fg">
+          <label className="fl">État</label>
+          <div className="seg">
+            <button type="button" className={"seg-btn"+(!form.meuble?" active":"")} onClick={()=>set("meuble",false)}>Vide</button>
+            <button type="button" className={"seg-btn"+(form.meuble?" active":"")} onClick={()=>set("meuble",true)}>Meublé</button>
+          </div>
+        </div>
+
+        <div className="modal-section">Annexes</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
+          {ANNEXES_LIST.map(a=>(
+            <button key={a} type="button" onClick={()=>toggleAnnexe(a)}
+              className="badge"
+              style={{padding:"4px 10px",border:"1.5px solid",borderColor:form.annexes.includes(a)?"var(--accent)":"var(--border2)",background:form.annexes.includes(a)?"var(--accent-l)":"var(--surface2)",color:form.annexes.includes(a)?"var(--accent-d)":"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:700,borderRadius:20}}>
+              {a}
+            </button>
+          ))}
+        </div>
+
+        <div className="modal-section">Description</div>
+        <textarea className="fi" rows="3" value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Points forts, remarques, informations utiles…"/>
+
+        <div className="modal-section">Photos</div>
+        <div className="upload-zone" onClick={()=>!uploading&&fileRef.current.click()}>
+          <Ic n="upload" s={18}/><br/>
+          {uploading?`Upload en cours… ${uploadPct}%`:"Cliquer pour ajouter des photos (plusieurs possibles)"}
+          {uploading&&<div className="upload-progress"><div className="upload-progress-bar" style={{width:uploadPct+"%"}}/></div>}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>uploadPhotos(e.target.files)}/>
+        {form.photos&&form.photos.length>0&&(
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+            {form.photos.map((url,i)=>(
+              <div key={i} style={{position:"relative"}}>
+                <img src={url} style={{width:72,height:54,objectFit:"cover",borderRadius:7,border:"1px solid var(--border)"}}/>
+                <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:-5,right:-5,background:"var(--red)",border:"none",color:"#fff",width:18,height:18,borderRadius:"50%",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" onClick={submit} disabled={uploading}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BIEN DETAIL MODAL ────────────────────────────────────────────────────
+function BienDetailModal({bien, onClose, onEdit}){
+  const [photoIdx,setPhotoIdx]=useState(0);
+  const photos=bien.photos||[];
+  const prev=()=>setPhotoIdx(i=>i===0?photos.length-1:i-1);
+  const next=()=>setPhotoIdx(i=>i===photos.length-1?0:i+1);
+
+  const titre=bien.typologie&&bien.surface&&(bien.titre||bien.adresse)?`${bien.typologie} – ${bien.surface} m² – ${bien.titre||bien.adresse.split(",")[0]}`:(bien.adresse||"Bien");
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{width:860,maxWidth:"96vw",padding:0,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <div className="modal-title" style={{margin:0}}>{titre}</div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn btn-g btn-sm" onClick={onEdit}><Ic n="edit" s={12}/>Modifier</button>
+            <button className="ib" onClick={onClose}><Ic n="x" s={18}/></button>
+          </div>
+        </div>
+        <div className="bien-detail-wrap">
+          <div className="bien-detail-left">
+            <div className="bien-detail-photos">
+              {photos.length>0
+                ?<img src={photos[photoIdx]} className="bien-detail-main-img" alt="photo bien"/>
+                :<div className="bien-detail-main-placeholder"><Ic n="img" s={32}/><span>Aucune photo</span></div>}
+              {photos.length>1&&<>
+                <button className="photo-nav-btn prev" onClick={prev}><Ic n="chevL" s={13}/></button>
+                <button className="photo-nav-btn next" onClick={next}><Ic n="chevR" s={13}/></button>
+                <div className="photo-counter-badge">{photoIdx+1} / {photos.length}</div>
+              </>}
+            </div>
+            {photos.length>1&&(
+              <div className="thumbs-row">
+                {photos.map((u,i)=>(
+                  <img key={i} src={u} className={"thumb-img"+(i===photoIdx?" active":"")} onClick={()=>setPhotoIdx(i)} alt={"photo "+(i+1)}/>
+                ))}
+              </div>
+            )}
+            <div className="bien-detail-info">
+              <span className="bien-detail-typebadge">{bien.typologie||"—"} · {bien.surface||"?"} m²</span>
+              <div className="bien-detail-title">{titre}</div>
+              <div className="bien-detail-addr"><Ic n="pin" s={13}/>{bien.adresse||"Adresse non renseignée"}</div>
+              <div className="bien-detail-attrs">
+                {bien.typologie&&<span className="bien-detail-attr"><Ic n="home" s={13}/>{bien.typologie}</span>}
+                {bien.surface&&<span className="bien-detail-attr"><Ic n="search" s={12}/>{bien.surface} m²</span>}
+              </div>
+            </div>
+          </div>
+          <div className="bien-detail-right">
+            <div className="bc-row2">
+              <div className="bc">
+                <div className="bc-label"><Ic n="plus" s={12}/>Loyer</div>
+                <div className="bc-val">{bien.loyer} €</div>
+                <div className="bc-sub">Charges comprises</div>
+                {bien.depotGarantie&&<div className="bc-sub" style={{marginTop:4}}>Dépôt de garantie : {bien.depotGarantie} €</div>}
+              </div>
+              <div className="bc">
+                <div className="bc-label"><Ic n="building" s={12}/>Annexes</div>
+                {bien.annexes&&bien.annexes.length>0
+                  ?<div style={{marginTop:4}}>{bien.annexes.map(a=><span key={a} className="annexe-pill">{a}</span>)}</div>
+                  :<div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Aucune annexe</div>}
+              </div>
+            </div>
+            <div className="bc-row2">
+              <div className="bc">
+                <div className="bc-label"><Ic n="clock" s={12}/>Infos pratiques</div>
+                {bien.dateDisponibilite&&<div className="info-item"><div className="info-item-label">Disponible le</div><div className="info-item-val">{fmtDate(bien.dateDisponibilite)}</div></div>}
+                {bien.etage&&<div className="info-item"><div className="info-item-label">Étage</div><div className="info-item-val">{bien.etage}</div></div>}
+                <div className="info-item"><div className="info-item-label">État</div><div className="info-item-val"><span className={bien.meuble?"meuble-tag":""} style={bien.meuble?{}:{fontWeight:700}}>{bien.meuble?"Meublé":"Vide"}</span></div></div>
+              </div>
+              <div className="bc">
+                <div className="bc-label"><Ic n="history" s={12}/>Description</div>
+                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.5,marginTop:4}}>{bien.description||<span style={{color:"var(--text3)",fontStyle:"italic"}}>Aucune description</span>}</div>
+              </div>
+            </div>
+            <div className="bc">
+              <div className="bc-label"><Ic n="check" s={12}/>Honoraires SOLOC'</div>
+              <HonorairesCalc surface={bien.surface}/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BIENS PAGE ──────────────────────────────────────────────────────────
+function BiensPage({addToast}){
+  const [biens,setBiens]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState("");
+  const [modal,setModal]=useState(null); // null | {type:'add'} | {type:'edit',bien} | {type:'detail',bien}
+
+  useEffect(()=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"biens"),snap=>{
+      const data=snap.docs.map(d=>({id:d.id,...d.data()}));
+      data.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+      setBiens(data); setLoading(false);
+    },()=>addToast("Erreur chargement biens","error"));
+    return unsub;
+  },[]);
+
+  const saveBien=(form)=>{
+    if(modal?.type==="edit"){
+      fsUpdateDoc(fsDocRef(db,"biens",modal.bien.id),{...form,updatedAt:nowISO()})
+        .then(()=>{addToast("✓ Bien mis à jour");setModal(null);})
+        .catch(()=>addToast("Erreur","error"));
+    } else {
+      fsAddDoc(fsCollection(db,"biens"),{...form,createdAt:nowISO()})
+        .then(()=>{addToast("✓ Bien ajouté");setModal(null);})
+        .catch(()=>addToast("Erreur","error"));
+    }
+  };
+
+  const deleteBien=(bien)=>{
+    if(!confirm("Supprimer ce bien ?")) return;
+    fsDeleteDoc(fsDocRef(db,"biens",bien.id))
+      .then(()=>{addToast("Bien supprimé");setModal(null);})
+      .catch(()=>addToast("Erreur","error"));
+  };
+
+  const q=search.toLowerCase();
+  const rows=biens.filter(b=>!q||(b.adresse||"").toLowerCase().includes(q)||(b.titre||"").toLowerCase().includes(q)||(b.typologie||"").toLowerCase().includes(q));
+
+  const BienThumb=({b})=>{
+    const cover=b.photos&&b.photos[0];
+    const titre=b.typologie&&b.surface?`${b.typologie} · ${b.surface} m²`:"Bien";
+    return(
+      <div className="bien-card" onClick={()=>setModal({type:"detail",bien:b})}>
+        <div className="bien-card-photo">
+          {cover?<img src={cover} alt={titre}/>:<><Ic n="img" s={28}/></>}
+        </div>
+        <div className="bien-card-body">
+          <span className="bien-card-type">{titre}</span>
+          <div className="bien-card-title">{b.titre||b.adresse?.split(",")[0]||"—"}</div>
+          <div className="bien-card-addr"><Ic n="pin" s={12}/>{b.adresse||"Adresse non renseignée"}</div>
+          <div className="bien-card-bottom">
+            <div><span className="bien-card-loyer">{b.loyer} €</span><span className="bien-card-loyer-sub"> CC/mois</span></div>
+            <div className="bien-card-attrs">
+              {b.surface&&<span className="bien-card-attr"><Ic n="search" s={11}/>{b.surface} m²</span>}
+              {b.meuble!==undefined&&<span className={b.meuble?"dispo-badge ok":"dispo-badge soon"}>{b.meuble?"Meublé":"Vide"}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Biens disponibles</div>
+          <div className="ps">{biens.length} bien{biens.length!==1?"s":""} en portefeuille</div>
+        </div>
+        <div className="tb-right">
+          <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+          <button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un bien</button>
+        </div>
+      </div>
+      <div className="main">
+        {loading&&<div className="empty-state"><div className="es-t">Chargement…</div></div>}
+        {!loading&&rows.length===0&&(
+          <div className="empty-state">
+            <div className="es-ic">🏠</div>
+            <div className="es-t">{search?"Aucun résultat":"Aucun bien en portefeuille"}</div>
+            <div>{search?"Essaie un autre terme.":"Ajoute tes premiers biens disponibles."}</div>
+          </div>
+        )}
+        {!loading&&rows.length>0&&<div className="biens-grid">{rows.map(b=><BienThumb key={b.id} b={b}/>)}</div>}
+      </div>
+
+      {(modal?.type==="add"||modal?.type==="edit")&&(
+        <BienFormModal bien={modal.type==="edit"?modal.bien:null} onSave={saveBien} onClose={()=>setModal(null)}/>
+      )}
+      {modal?.type==="detail"&&(
+        <BienDetailModal bien={modal.bien} onClose={()=>setModal(null)}
+          onEdit={()=>setModal({type:"edit",bien:modal.bien})}/>
+      )}
+    </>
+  );
+}
+
 // ─── PARTENAIRE MODAL ────────────────────────────────────────────────────
 function PartenaireModal({partenaire, onSave, onClose}){
   const editing = !!partenaire;
@@ -800,6 +1231,7 @@ function App(){
           <div className="sb-nav">
             <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="kanban" s={16}/>Pipeline</div>
             <div className={"nav-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={16}/>Recherche</div>
+            <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="building" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
           </div>
           <div className="sb-footer">
@@ -811,6 +1243,8 @@ function App(){
         <div className="content">
           {tab==="partenaires"
             ? <PartenairesPage addToast={addToast}/>
+            : tab==="biens"
+            ? <BiensPage addToast={addToast}/>
             : (<>
               <div className="topbar">
                 <div>
