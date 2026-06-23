@@ -793,7 +793,7 @@ function BienFormModal({bien, onSave, onClose}){
 }
 
 // ─── BIEN DETAIL MODAL ────────────────────────────────────────────────────
-function BienDetailModal({bien, onClose, onEdit}){
+function BienDetailModal({bien, onClose, onEdit, addToast}){
   const [photoIdx,setPhotoIdx]=useState(0);
   const photos=bien.photos||[];
   const prev=()=>setPhotoIdx(i=>i===0?photos.length-1:i-1);
@@ -802,6 +802,7 @@ function BienDetailModal({bien, onClose, onEdit}){
   const titre=bien.typologie&&bien.surface&&(bien.titre||bien.adresse)?`${bien.typologie} – ${bien.surface} m² – ${bien.titre||bien.adresse.split(",")[0]}`:(bien.adresse||"Bien");
 
   const generateFiche=()=>{
+    try {
     var fraisAgence=Math.round((parseFloat(bien.surface)||0)*13.12);
     var coverUrl=(bien.photos&&bien.photos[0])||"";
     var otherPhotos=(bien.photos||[]).slice(1,4);
@@ -843,21 +844,21 @@ function BienDetailModal({bien, onClose, onEdit}){
     }
     var css="*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;}.header{background:#2C3E50;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;}.header-left{display:flex;align-items:center;gap:14px;}.logo{width:42px;height:42px;background:#C1614F;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px;}.brand{color:#fff;font-size:20px;font-weight:800;}.brand-sub{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:.1em;margin-top:2px;}.header-badge{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;}.hero{position:relative;width:100%;height:300px;background:#1e2b38;overflow:hidden;}.hero img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}.hero-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(44,62,80,.9));padding:20px 32px 16px;}.hero-badge{display:inline-block;background:#C1614F;color:#fff;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:8px;}.hero-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:3px;}.hero-addr{font-size:12px;color:rgba(255,255,255,.7);}.title-block{padding:24px 32px 0;border-top:4px solid #C1614F;}.title-badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:10px;}.title-h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}.title-addr{font-size:12px;color:#9AA7B2;}.sub-photos{display:flex;gap:5px;padding:5px;background:#1e2b38;}.sub-photo{flex:1;height:90px;object-fit:contain;background:#1e2b38;border-radius:4px;}.body{padding:20px 32px;}.stats-bar{display:flex;gap:0;margin-bottom:20px;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;}.stat{flex:1;padding:12px 14px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}.stat-val{font-size:18px;font-weight:800;color:#C1614F;}.stat-sub{font-size:10px;color:#9AA7B2;margin-top:2px;}.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}.card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.card-label{font-size:9px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;border-left:3px solid #C1614F;padding-left:7px;}.info-row{margin-bottom:6px;}.info-l{font-size:9px;color:#9AA7B2;font-weight:600;margin-bottom:1px;}.info-v{font-size:12px;font-weight:700;color:#2C3E50;}.meuble-tag{display:inline-block;background:#DCFCE7;color:#166534;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;}.hono-card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;margin-bottom:16px;}.hono-grid{display:flex;gap:8px;margin-top:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:10px;padding:10px;text-align:center;}.hono-box-neutral{background:#f8f8f8;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:4px;}.hb-val{font-size:16px;font-weight:800;color:#C1614F;}.hb-sub{font-size:9px;color:#9AA7B2;margin-top:3px;}.hono-selected{margin-top:8px;background:#fff;border-radius:10px;border:1.5px solid #C1614F;overflow:hidden;}.hono-sel-label{background:#C1614F;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;}.hono-sel-rows{padding:8px 12px;}.hsel-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0E8DE;font-size:12px;}.hsel-row:last-child{border-bottom:none;}.hsel-total{font-weight:800;font-size:14px;color:#C1614F;padding-top:7px;}.hono-note{font-size:9px;color:#9AA7B2;text-align:center;margin-top:8px;}.footer{background:#2C3E50;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;}}";
     var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+titre+'</title><style>'+css+'</style></head><body><div class="page">';
-    html+='<div class="header"><div class="header-left"><div class="logo">S</div><div><div class="brand">soloc&apos;</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="header-badge">Bien disponible</div></div>';
+    html+='<div class="header"><div class="header-left"><div class="logo">S</div><div><div class="brand">soloc\'</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="header-badge">Bien disponible</div></div>';
     html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
-    html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC&apos;</div>'+honoHtml+'</div></div>';
-    html+='<div class="footer"><div class="footer-brand">SOLOC&apos; - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
+    html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC\'</div>'+honoHtml+'</div></div>';
+    html+='<div class="footer"><div class="footer-brand">SOLOC\' - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
     html+='</body></html>';
-    try {
-      var nom="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
-      var blob=new Blob([html],{type:"text/html;charset=utf-8"});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement("a");
-      a.href=url; a.download=nom; a.style.display="none";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function(){URL.revokeObjectURL(url);},1000);
-    } catch(err) {
-      alert("Erreur téléchargement : "+err.message);
+    var nom="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
+    var blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url; a.download=nom; a.style.display="none";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    addToast("✓ Fiche téléchargée — ouvre le fichier puis Cmd+P pour le PDF");
+    } catch(err){
+      alert("Erreur : "+err.message+"\n\n"+err.stack);
     }
   };
 
@@ -1029,7 +1030,7 @@ function BiensPage({addToast}){
         <BienFormModal bien={modal.type==="edit"?modal.bien:null} onSave={saveBien} onClose={()=>setModal(null)}/>
       )}
       {modal?.type==="detail"&&(
-        <BienDetailModal bien={modal.bien} onClose={()=>setModal(null)}
+        <BienDetailModal bien={modal.bien} onClose={()=>setModal(null)} addToast={addToast}
           onEdit={()=>setModal({type:"edit",bien:modal.bien})}/>
       )}
     </>
