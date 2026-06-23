@@ -247,11 +247,11 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .agency-badge{background:var(--accent-l);color:var(--accent-d);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;}
 
 /* BIENS — grille vignettes */
-.biens-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;}
+.biens-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
 .bien-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;}
 .bien-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
-.bien-card-photo{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--ardoise-l);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);font-size:13px;}
-.bien-card-photo img{width:100%;height:100%;object-fit:cover;}
+.bien-card-photo{width:100%;aspect-ratio:4/3;background:#1e2b38;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);font-size:13px;overflow:hidden;}
+.bien-card-photo img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}
 .bien-card-body{padding:12px 14px;}
 .bien-card-type{display:inline-block;background:var(--accent-l);color:var(--accent-d);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;margin-bottom:6px;}
 .bien-card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;}
@@ -801,12 +801,87 @@ function BienDetailModal({bien, onClose, onEdit}){
 
   const titre=bien.typologie&&bien.surface&&(bien.titre||bien.adresse)?`${bien.typologie} – ${bien.surface} m² – ${bien.titre||bien.adresse.split(",")[0]}`:(bien.adresse||"Bien");
 
+  const generateFiche=()=>{
+    const annexesHtml=(bien.annexes||[]).map(a=>`<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin:3px;">${a}</span>`).join("")||"<span style='color:#999'>Aucune</span>";
+    const photosHtml=(bien.photos||[]).slice(0,4).map(u=>`<img src="${u}" style="width:calc(50% - 6px);aspect-ratio:4/3;object-fit:contain;background:#1e2b38;border-radius:10px;display:inline-block;"/>`).join("");
+    const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche bien – ${titre}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Helvetica Neue',Arial,sans-serif;background:#FBF7F0;color:#2C3E50;padding:32px;}
+      .header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #C1614F;}
+      .logo{width:44px;height:44px;background:#C1614F;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;flex-shrink:0;}
+      .logo-text .brand{font-size:22px;font-weight:800;color:#2C3E50;}
+      .logo-text .sub{font-size:11px;color:#9AA7B2;letter-spacing:.06em;}
+      .badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;margin-bottom:10px;}
+      h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}
+      .addr{font-size:13px;color:#9AA7B2;margin-bottom:24px;}
+      .photos{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;}
+      .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
+      .card{background:#fff;border:1px solid #E5D9C6;border-radius:12px;padding:14px 16px;}
+      .card-label{font-size:10px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+      .card-loyer{font-size:28px;font-weight:800;color:#C1614F;}
+      .card-sub{font-size:12px;color:#5A6B7B;margin-top:4px;}
+      .card-full{grid-column:1/-1;}
+      .hono-row{display:flex;gap:10px;margin-top:10px;}
+      .hono-item{flex:1;background:#F2E8DA;border-radius:10px;padding:10px;text-align:center;}
+      .hono-item .hl{font-size:10px;color:#9AA7B2;margin-bottom:4px;}
+      .hono-item .hv{font-size:16px;font-weight:800;color:#C1614F;}
+      .footer{text-align:center;font-size:11px;color:#9AA7B2;margin-top:24px;padding-top:16px;border-top:1px solid #E5D9C6;}
+      @media print{body{padding:20px;background:#fff;}.card{break-inside:avoid;}}
+    </style></head><body>
+    <div class="header">
+      <div class="logo">S</div>
+      <div class="logo-text"><div class="brand">soloc'</div><div class="sub">CHASSEUR LOCATIF LYON</div></div>
+    </div>
+    <div class="badge">${bien.typologie||"—"} · ${bien.surface||"?"} m²</div>
+    <h1>${titre}</h1>
+    <div class="addr">📍 ${bien.adresse||"Adresse non renseignée"}</div>
+    ${photosHtml?`<div class="photos">${photosHtml}</div>`:""}
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">Loyer</div>
+        <div class="card-loyer">${bien.loyer} €</div>
+        <div class="card-sub">Charges comprises</div>
+        ${bien.depotGarantie?`<div class="card-sub" style="margin-top:6px;">Dépôt de garantie : ${bien.depotGarantie} €</div>`:""}
+      </div>
+      <div class="card">
+        <div class="card-label">Annexes</div>
+        <div style="margin-top:4px;">${annexesHtml}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Infos pratiques</div>
+        ${bien.dateDisponibilite?`<div style="margin-bottom:5px;"><div style="font-size:10px;color:#9AA7B2;">Disponible le</div><div style="font-weight:700;">${fmtDate(bien.dateDisponibilite)}</div></div>`:""}
+        ${bien.etage?`<div style="margin-bottom:5px;"><div style="font-size:10px;color:#9AA7B2;">Étage</div><div style="font-weight:700;">${bien.etage}</div></div>`:""}
+        <div><div style="font-size:10px;color:#9AA7B2;">État</div><div style="font-weight:700;">${bien.meuble?"Meublé":"Vide"}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Description</div>
+        <div style="font-size:13px;color:#5A6B7B;line-height:1.6;margin-top:4px;">${bien.description||"—"}</div>
+      </div>
+      <div class="card card-full">
+        <div class="card-label">Honoraires SOLOC'</div>
+        <div class="hono-row">
+          <div class="hono-item"><div class="hl">Étudiant</div><div class="hv">890 €</div></div>
+          <div class="hono-item"><div class="hl">CDI essai validé</div><div class="hv">990 €</div></div>
+          <div class="hono-item"><div class="hl">Frais d'agence</div><div class="hv">${Math.round((parseFloat(bien.surface)||0)*13.12)} €</div></div>
+        </div>
+        <div style="font-size:10px;color:#9AA7B2;text-align:center;margin-top:10px;">Paiement au résultat uniquement · Zéro frais avant signature du bail</div>
+      </div>
+    </div>
+    <div class="footer">SOLOC' – Chasseur locatif Lyon · solocimmo.fr · contact@solocimmo.fr</div>
+    <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`;
+    const w=window.open("","_blank");
+    if(w){w.document.write(html);w.document.close();}
+  };
+
   return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{width:860,maxWidth:"96vw",padding:0,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
           <div className="modal-title" style={{margin:0}}>{titre}</div>
           <div style={{display:"flex",gap:8}}>
+            <button className="btn btn-g btn-sm" onClick={generateFiche}><Ic n="upload" s={12}/>Télécharger la fiche</button>
             <button className="btn btn-g btn-sm" onClick={onEdit}><Ic n="edit" s={12}/>Modifier</button>
             <button className="ib" onClick={onClose}><Ic n="x" s={18}/></button>
           </div>
