@@ -853,15 +853,20 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
     html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
     html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC\'</div>'+honoHtml+'</div></div>';
     html+='<div class="footer"><div class="footer-brand">SOLOC\' - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
+    html+='<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>';
     html+='</body></html>';
-    var nom="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
     var blob=new Blob([html],{type:"text/html;charset=utf-8"});
     var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");
-    a.href=url; a.download=nom; a.style.display="none";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){URL.revokeObjectURL(url);},1000);
-    addToast("✓ Fiche téléchargée — ouvre le fichier puis Cmd+P pour le PDF");
+    var w=window.open(url,"_blank");
+    if(!w){
+      var a=document.createElement("a");
+      a.href=url; a.download="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
+      a.style.display="none"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      addToast("Fiche téléchargée — ouvre le fichier et Cmd+P pour PDF");
+    } else {
+      addToast("✓ Fiche ouverte — choisis Enregistrer en PDF dans l'impression");
+    }
+    setTimeout(function(){URL.revokeObjectURL(url);},5000);
     } catch(err){
       alert("Erreur : "+err.message+"\n\n"+err.stack);
     }
