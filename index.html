@@ -847,9 +847,16 @@ function BienDetailModal({bien, onClose, onEdit}){
     html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
     html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC&apos;</div>'+honoHtml+'</div></div>';
     html+='<div class="footer"><div class="footer-brand">SOLOC&apos; - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
-    html+='<scr'+"ipt>window.onload=function(){window.print();}</scr"+"ipt></body></html>";
-    var w=window.open("","_blank");
-    if(w){w.document.write(html);w.document.close();}
+    html+='</body></html>';
+    var blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url;
+    a.download="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
   };
 
   return(
