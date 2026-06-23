@@ -802,76 +802,53 @@ function BienDetailModal({bien, onClose, onEdit}){
   const titre=bien.typologie&&bien.surface&&(bien.titre||bien.adresse)?`${bien.typologie} – ${bien.surface} m² – ${bien.titre||bien.adresse.split(",")[0]}`:(bien.adresse||"Bien");
 
   const generateFiche=()=>{
-    const annexesHtml=(bien.annexes||[]).map(a=>`<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin:3px;">${a}</span>`).join("")||"<span style='color:#999'>Aucune</span>";
-    const photosHtml=(bien.photos||[]).slice(0,4).map(u=>`<img src="${u}" style="width:calc(50% - 6px);aspect-ratio:4/3;object-fit:contain;background:#1e2b38;border-radius:10px;display:inline-block;"/>`).join("");
-    const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche bien – ${titre}</title>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0;}
-      body{font-family:'Helvetica Neue',Arial,sans-serif;background:#FBF7F0;color:#2C3E50;padding:32px;}
-      .header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #C1614F;}
-      .logo{width:44px;height:44px;background:#C1614F;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;flex-shrink:0;}
-      .logo-text .brand{font-size:22px;font-weight:800;color:#2C3E50;}
-      .logo-text .sub{font-size:11px;color:#9AA7B2;letter-spacing:.06em;}
-      .badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;margin-bottom:10px;}
-      h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}
-      .addr{font-size:13px;color:#9AA7B2;margin-bottom:24px;}
-      .photos{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;}
-      .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
-      .card{background:#fff;border:1px solid #E5D9C6;border-radius:12px;padding:14px 16px;}
-      .card-label{font-size:10px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
-      .card-loyer{font-size:28px;font-weight:800;color:#C1614F;}
-      .card-sub{font-size:12px;color:#5A6B7B;margin-top:4px;}
-      .card-full{grid-column:1/-1;}
-      .hono-row{display:flex;gap:10px;margin-top:10px;}
-      .hono-item{flex:1;background:#F2E8DA;border-radius:10px;padding:10px;text-align:center;}
-      .hono-item .hl{font-size:10px;color:#9AA7B2;margin-bottom:4px;}
-      .hono-item .hv{font-size:16px;font-weight:800;color:#C1614F;}
-      .footer{text-align:center;font-size:11px;color:#9AA7B2;margin-top:24px;padding-top:16px;border-top:1px solid #E5D9C6;}
-      @media print{body{padding:20px;background:#fff;}.card{break-inside:avoid;}}
-    </style></head><body>
-    <div class="header">
-      <div class="logo">S</div>
-      <div class="logo-text"><div class="brand">soloc'</div><div class="sub">CHASSEUR LOCATIF LYON</div></div>
-    </div>
-    <div class="badge">${bien.typologie||"—"} · ${bien.surface||"?"} m²</div>
-    <h1>${titre}</h1>
-    <div class="addr">📍 ${bien.adresse||"Adresse non renseignée"}</div>
-    ${photosHtml?`<div class="photos">${photosHtml}</div>`:""}
-    <div class="cards">
-      <div class="card">
-        <div class="card-label">Loyer</div>
-        <div class="card-loyer">${bien.loyer} €</div>
-        <div class="card-sub">Charges comprises</div>
-        ${bien.depotGarantie?`<div class="card-sub" style="margin-top:6px;">Dépôt de garantie : ${bien.depotGarantie} €</div>`:""}
-      </div>
-      <div class="card">
-        <div class="card-label">Annexes</div>
-        <div style="margin-top:4px;">${annexesHtml}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Infos pratiques</div>
-        ${bien.dateDisponibilite?`<div style="margin-bottom:5px;"><div style="font-size:10px;color:#9AA7B2;">Disponible le</div><div style="font-weight:700;">${fmtDate(bien.dateDisponibilite)}</div></div>`:""}
-        ${bien.etage?`<div style="margin-bottom:5px;"><div style="font-size:10px;color:#9AA7B2;">Étage</div><div style="font-weight:700;">${bien.etage}</div></div>`:""}
-        <div><div style="font-size:10px;color:#9AA7B2;">État</div><div style="font-weight:700;">${bien.meuble?"Meublé":"Vide"}</div></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Description</div>
-        <div style="font-size:13px;color:#5A6B7B;line-height:1.6;margin-top:4px;">${bien.description||"—"}</div>
-      </div>
-      <div class="card card-full">
-        <div class="card-label">Honoraires SOLOC'</div>
-        <div class="hono-row">
-          <div class="hono-item"><div class="hl">Étudiant</div><div class="hv">890 €</div></div>
-          <div class="hono-item"><div class="hl">CDI essai validé</div><div class="hv">990 €</div></div>
-          <div class="hono-item"><div class="hl">Frais d'agence</div><div class="hv">${Math.round((parseFloat(bien.surface)||0)*13.12)} €</div></div>
-        </div>
-        <div style="font-size:10px;color:#9AA7B2;text-align:center;margin-top:10px;">Paiement au résultat uniquement · Zéro frais avant signature du bail</div>
-      </div>
-    </div>
-    <div class="footer">SOLOC' – Chasseur locatif Lyon · solocimmo.fr · contact@solocimmo.fr</div>
-    <script>window.onload=function(){window.print();}<\/script>
-    </body></html>`;
-    const w=window.open("","_blank");
+    var fraisAgence=Math.round((parseFloat(bien.surface)||0)*13.12);
+    var coverUrl=(bien.photos&&bien.photos[0])||"";
+    var otherPhotos=(bien.photos||[]).slice(1,4);
+    var annexesHtml="";
+    (bien.annexes||[]).forEach(function(a){
+      annexesHtml+='<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px 3px 3px 0;">'+a+'</span>';
+    });
+    if(!annexesHtml)annexesHtml='<span style="color:#aaa;font-size:13px;">Aucune</span>';
+    var heroHtml="";
+    if(coverUrl){
+      var subHtml="";
+      otherPhotos.forEach(function(u){subHtml+='<img src="'+u+'" class="sub-photo" alt="photo"/>'});
+      heroHtml='<div class="hero"><img src="'+coverUrl+'" alt="photo"/><div class="hero-overlay"><div class="hero-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="hero-title">'+titre+'</div><div class="hero-addr">'+(bien.adresse||"")+'</div></div></div>'+(subHtml?'<div class="sub-photos">'+subHtml+"</div>":"");
+    }else{
+      heroHtml='<div class="title-block"><div class="title-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="title-h1">'+titre+'</div><div class="title-addr">'+(bien.adresse||"")+'</div></div>';
+    }
+    var statsHtml='<div class="stats-bar"><div class="stat"><div class="stat-label">Loyer CC</div><div class="stat-val">'+(bien.loyer||"")+' EUR</div><div class="stat-sub">Charges comprises</div></div>';
+    if(bien.depotGarantie)statsHtml+='<div class="stat"><div class="stat-label">Depot de garantie</div><div class="stat-val">'+bien.depotGarantie+' EUR</div></div>';
+    if(bien.surface)statsHtml+='<div class="stat"><div class="stat-label">Surface</div><div class="stat-val">'+bien.surface+' m2</div></div>';
+    if(bien.dateDisponibilite)statsHtml+='<div class="stat"><div class="stat-label">Disponible le</div><div class="stat-val">'+fmtDate(bien.dateDisponibilite)+'</div></div>';
+    statsHtml+='</div>';
+    var infoPratique=(bien.etage?'<div class="info-row"><div class="info-l">Etage</div><div class="info-v">'+bien.etage+"</div></div>":"");
+    infoPratique+='<div class="info-row"><div class="info-l">Etat</div><div class="info-v">'+(bien.meuble?'<span class="meuble-tag">Meuble</span>':"Vide")+'</div></div>';
+    var cardsHtml='<div class="cards"><div class="card"><div class="card-label">Infos pratiques</div>'+infoPratique+'</div><div class="card"><div class="card-label">Annexes</div><div style="margin-top:4px;">'+annexesHtml+'</div></div>';
+    if(bien.description)cardsHtml+='<div class="card" style="grid-column:1/-1;"><div class="card-label">Description</div><div style="font-size:13px;color:#5A6B7B;line-height:1.7;margin-top:4px;">'+bien.description+'</div></div>';
+    cardsHtml+='</div>';
+    var honoHtml="";
+    if(honoData&&honoData.total){
+      honoHtml='<div class="hono-selected"><div class="hono-sel-label">Profil selectionne : <strong>'+(honoData.label||"")+'</strong></div>';
+      honoHtml+='<div class="hono-sel-rows"><div class="hsel-row"><span>Honoraires SOLOC</span><span>'+(honoData.honos||"")+' EUR</span></div>';
+      honoHtml+='<div class="hsel-row"><span>Frais agence ('+(bien.surface||"?")+' m2 x 13.12)</span><span>'+(honoData.frais||"")+' EUR</span></div>';
+      honoHtml+='<div class="hsel-row hsel-total"><span>Total client</span><span>'+(honoData.total||"")+' EUR</span></div></div></div>';
+      honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
+    }else{
+      honoHtml='<div class="hono-grid"><div class="hono-box"><div class="hb-label">Etudiant</div><div class="hb-val">890 EUR</div><div class="hb-sub">+ '+fraisAgence+' EUR frais agence</div></div>';
+      honoHtml+='<div class="hono-box"><div class="hb-label">CDI essai valide</div><div class="hb-val">990 EUR</div><div class="hb-sub">+ '+fraisAgence+' EUR frais agence</div></div>';
+      honoHtml+='<div class="hono-box hono-box-neutral"><div class="hb-label">Autre profil</div><div class="hb-val" style="font-size:16px;">Sur devis</div></div></div>';
+      honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
+    }
+    var css="*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;}.header{background:#2C3E50;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;}.header-left{display:flex;align-items:center;gap:14px;}.logo{width:42px;height:42px;background:#C1614F;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px;}.brand{color:#fff;font-size:20px;font-weight:800;}.brand-sub{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:.1em;margin-top:2px;}.header-badge{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;}.hero{position:relative;width:100%;height:300px;background:#1e2b38;overflow:hidden;}.hero img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}.hero-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(44,62,80,.9));padding:20px 32px 16px;}.hero-badge{display:inline-block;background:#C1614F;color:#fff;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:8px;}.hero-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:3px;}.hero-addr{font-size:12px;color:rgba(255,255,255,.7);}.title-block{padding:24px 32px 0;border-top:4px solid #C1614F;}.title-badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:10px;}.title-h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}.title-addr{font-size:12px;color:#9AA7B2;}.sub-photos{display:flex;gap:5px;padding:5px;background:#1e2b38;}.sub-photo{flex:1;height:90px;object-fit:contain;background:#1e2b38;border-radius:4px;}.body{padding:20px 32px;}.stats-bar{display:flex;gap:0;margin-bottom:20px;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;}.stat{flex:1;padding:12px 14px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}.stat-val{font-size:18px;font-weight:800;color:#C1614F;}.stat-sub{font-size:10px;color:#9AA7B2;margin-top:2px;}.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}.card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.card-label{font-size:9px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;border-left:3px solid #C1614F;padding-left:7px;}.info-row{margin-bottom:6px;}.info-l{font-size:9px;color:#9AA7B2;font-weight:600;margin-bottom:1px;}.info-v{font-size:12px;font-weight:700;color:#2C3E50;}.meuble-tag{display:inline-block;background:#DCFCE7;color:#166534;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;}.hono-card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;margin-bottom:16px;}.hono-grid{display:flex;gap:8px;margin-top:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:10px;padding:10px;text-align:center;}.hono-box-neutral{background:#f8f8f8;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:4px;}.hb-val{font-size:16px;font-weight:800;color:#C1614F;}.hb-sub{font-size:9px;color:#9AA7B2;margin-top:3px;}.hono-selected{margin-top:8px;background:#fff;border-radius:10px;border:1.5px solid #C1614F;overflow:hidden;}.hono-sel-label{background:#C1614F;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;}.hono-sel-rows{padding:8px 12px;}.hsel-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0E8DE;font-size:12px;}.hsel-row:last-child{border-bottom:none;}.hsel-total{font-weight:800;font-size:14px;color:#C1614F;padding-top:7px;}.hono-note{font-size:9px;color:#9AA7B2;text-align:center;margin-top:8px;}.footer{background:#2C3E50;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;}}";
+    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+titre+'</title><style>'+css+'</style></head><body><div class="page">';
+    html+='<div class="header"><div class="header-left"><div class="logo">S</div><div><div class="brand">soloc&apos;</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="header-badge">Bien disponible</div></div>';
+    html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
+    html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC&apos;</div>'+honoHtml+'</div></div>';
+    html+='<div class="footer"><div class="footer-brand">SOLOC&apos; - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
+    html+='<scr'+"ipt>window.onload=function(){window.print();}</scr"+"ipt></body></html>";
+    var w=window.open("","_blank");
     if(w){w.document.write(html);w.document.close();}
   };
 
@@ -1306,7 +1283,7 @@ function App(){
           <div className="sb-nav">
             <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="kanban" s={16}/>Pipeline</div>
             <div className={"nav-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={16}/>Recherche</div>
-            <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="building" s={16}/>Biens</div>
+            <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
           </div>
           <div className="sb-footer">
