@@ -84,6 +84,8 @@ const ICONS = (s) => ({
   logout:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   history:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>,
   clock:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  users:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  edit:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
 });
 const Ic = ({n,s=16}) => { const m=ICONS(s); return m[n]||null; };
 
@@ -221,6 +223,10 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+
+/* PARTENAIRES */
+.pt-actions{display:flex;gap:6px;justify-content:flex-end;}
+.agency-badge{background:var(--accent-l);color:var(--accent-d);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;}
 `;
 
 // ─── TOASTS ──────────────────────────────────────────────────────────────
@@ -538,6 +544,145 @@ function RechercheTable({leads,search}){
   );
 }
 
+// ─── PARTENAIRE MODAL ────────────────────────────────────────────────────
+function PartenaireModal({partenaire, onSave, onClose}){
+  const editing = !!partenaire;
+  const [form,setForm]=useState({
+    agence: partenaire?.agence||"",
+    prenom: partenaire?.prenom||"",
+    nom:    partenaire?.nom||"",
+    phone:  partenaire?.phone||"",
+    email:  partenaire?.email||"",
+  });
+  const [err,setErr]=useState("");
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+
+  const submit=()=>{
+    if(!form.prenom.trim()&&!form.nom.trim()){setErr("Renseigne au moins un prénom ou un nom.");return;}
+    if(!form.agence.trim()){setErr("Le nom de l'agence est obligatoire.");return;}
+    setErr("");
+    onSave(form);
+  };
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{editing?"Modifier le partenaire":"Ajouter un partenaire"}</div>
+        <div className="modal-sub">Les informations seront visibles de Charles et Emmy.</div>
+        {err&&<div className="ferr">{err}</div>}
+        <div className="fg"><label className="fl">Agence *</label><input className="fi" autoFocus value={form.agence} onChange={e=>set("agence",e.target.value)} placeholder="Ex: Foncia Part-Dieu"/></div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Prénom</label><input className="fi" value={form.prenom} onChange={e=>set("prenom",e.target.value)}/></div>
+          <div className="fg"><label className="fl">NOM</label><input className="fi" value={form.nom} onChange={e=>set("nom",e.target.value)}/></div>
+        </div>
+        <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
+        <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PARTENAIRES PAGE ────────────────────────────────────────────────────
+function PartenairesPage({addToast}){
+  const [partenaires,setPartenaires]=useState([]);
+  const [modal,setModal]=useState(null); // null | {type:'add'} | {type:'edit', p}
+  const [search,setSearch]=useState("");
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"partenaires"),snap=>{
+      const data=snap.docs.map(d=>({id:d.id,...d.data()}));
+      data.sort((a,b)=>(a.agence||"").localeCompare(b.agence||""));
+      setPartenaires(data);
+      setLoading(false);
+    },()=>addToast("Erreur chargement partenaires","error"));
+    return unsub;
+  },[]);
+
+  const savePartenaire=(form)=>{
+    if(modal?.type==="edit"){
+      fsUpdateDoc(fsDocRef(db,"partenaires",modal.p.id),form)
+        .then(()=>{addToast("✓ Partenaire mis à jour");setModal(null);})
+        .catch(()=>addToast("Erreur de mise à jour","error"));
+    } else {
+      fsAddDoc(fsCollection(db,"partenaires"),{...form, createdAt:nowISO()})
+        .then(()=>{addToast("✓ "+form.prenom+" "+form.nom+" ajouté");setModal(null);})
+        .catch(()=>addToast("Erreur d'ajout","error"));
+    }
+  };
+
+  const deletePartenaire=(p)=>{
+    const name=[p.prenom,p.nom].filter(Boolean).join(" ")||p.agence;
+    if(!confirm("Supprimer "+name+" ?")) return;
+    fsDeleteDoc(fsDocRef(db,"partenaires",p.id))
+      .then(()=>addToast(name+" supprimé"))
+      .catch(()=>addToast("Erreur de suppression","error"));
+  };
+
+  const q=search.toLowerCase();
+  const rows=partenaires.filter(p=>!q||
+    (p.agence||"").toLowerCase().includes(q)||
+    (p.prenom||"").toLowerCase().includes(q)||
+    (p.nom||"").toLowerCase().includes(q)||
+    (p.phone||"").includes(q)||
+    (p.email||"").toLowerCase().includes(q)
+  );
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Partenaires</div>
+          <div className="ps">{partenaires.length} agent{partenaires.length!==1?"s":""} partenaire{partenaires.length!==1?"s":""}</div>
+        </div>
+        <div className="tb-right">
+          <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+          <button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un partenaire</button>
+        </div>
+      </div>
+      <div className="main">
+        {loading&&<div className="empty-state"><div className="es-t">Chargement…</div></div>}
+        {!loading&&rows.length===0&&(
+          <div className="empty-state">
+            <div className="es-ic">🤝</div>
+            <div className="es-t">{search?"Aucun résultat":"Aucun partenaire enregistré"}</div>
+            <div>{search?"Essaie un autre terme.":"Ajoute tes agents partenaires pour les retrouver ici."}</div>
+          </div>
+        )}
+        {!loading&&rows.length>0&&(
+          <table className="list-table">
+            <thead><tr>
+              <th>Agence</th><th>Prénom</th><th>NOM</th><th>Téléphone</th><th>Email</th><th style={{width:80}}></th>
+            </tr></thead>
+            <tbody>
+              {rows.map(p=>(
+                <tr key={p.id}>
+                  <td><span className="agency-badge">{p.agence||"—"}</span></td>
+                  <td>{p.prenom||"—"}</td>
+                  <td className="td-name">{p.nom||"—"}</td>
+                  <td>{p.phone?<a href={"tel:"+p.phone} style={{color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>{p.phone}</a>:"—"}</td>
+                  <td>{p.email?<a href={"mailto:"+p.email} style={{color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>{p.email}</a>:"—"}</td>
+                  <td>
+                    <div className="pt-actions">
+                      <button className="ib" title="Modifier" onClick={()=>setModal({type:"edit",p})}><Ic n="edit" s={14}/></button>
+                      <button className="ib" title="Supprimer" style={{color:"var(--red)"}} onClick={()=>deletePartenaire(p)}><Ic n="trash" s={14}/></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {modal&&<PartenaireModal partenaire={modal.type==="edit"?modal.p:null} onSave={savePartenaire} onClose={()=>setModal(null)}/>}
+    </>
+  );
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────
 function App(){
   const [user,setUser]=useState(undefined);
@@ -655,6 +800,7 @@ function App(){
           <div className="sb-nav">
             <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="kanban" s={16}/>Pipeline</div>
             <div className={"nav-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={16}/>Recherche</div>
+            <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
           </div>
           <div className="sb-footer">
             <div className="sb-user">{displayNameFromEmail(user.email)}</div>
@@ -663,21 +809,25 @@ function App(){
         </aside>
 
         <div className="content">
-          <div className="topbar">
-            <div>
-              <div className="pt">{tab==="pipeline"?"Pipeline":"Recherche"}</div>
-              <div className="ps">{tab==="pipeline"?leads.length+" lead"+(leads.length!==1?"s":"")+" au total":"Recherches en cours en un coup d'œil"}</div>
-            </div>
-            <div className="tb-right">
-              <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-              {tab==="pipeline"&&<button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un lead</button>}
-            </div>
-          </div>
-          <div className="main">
-            {tab==="pipeline"
-              ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid}/>
-              : <RechercheTable leads={filteredLeads} search={search}/>}
-          </div>
+          {tab==="partenaires"
+            ? <PartenairesPage addToast={addToast}/>
+            : (<>
+              <div className="topbar">
+                <div>
+                  <div className="pt">{tab==="pipeline"?"Pipeline":"Recherche"}</div>
+                  <div className="ps">{tab==="pipeline"?leads.length+" lead"+(leads.length!==1?"s":"")+" au total":"Recherches en cours en un coup d'œil"}</div>
+                </div>
+                <div className="tb-right">
+                  <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                  {tab==="pipeline"&&<button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un lead</button>}
+                </div>
+              </div>
+              <div className="main">
+                {tab==="pipeline"
+                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid}/>
+                  : <RechercheTable leads={filteredLeads} search={search}/>}
+              </div>
+            </>)}
         </div>
       </div>
 
