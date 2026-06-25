@@ -246,7 +246,18 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .pt-actions{display:flex;gap:6px;justify-content:flex-end;}
 .agency-badge{background:var(--accent-l);color:var(--accent-d);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;}
 
-/* BIENS — grille vignettes */
+/* CALENDLY */
+.rdv-bubble{display:flex;align-items:flex-start;gap:7px;background:#EFF6FF;border:1.5px solid #DBEAFE;border-radius:8px;padding:7px 9px;margin-top:6px;}
+.rdv-bubble-dot{width:7px;height:7px;border-radius:50%;background:#3B82F6;flex-shrink:0;margin-top:3px;}
+.rdv-bubble-date{font-size:11px;color:#1d4ed8;font-weight:700;}
+.rdv-bubble-sub{font-size:10px;color:#3b82f6;margin-top:1px;}
+.rdv-detail-block{background:#EFF6FF;border:1.5px solid #DBEAFE;border-radius:10px;padding:11px 13px;margin-bottom:8px;}
+.rdv-detail-title{font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+.rdv-detail-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dbeafe;font-size:12px;}
+.rdv-detail-row:last-child{border-bottom:none;}
+.rdv-detail-key{color:#3b82f6;font-weight:500;}
+.rdv-detail-val{font-weight:700;color:#1e40af;}
+.rdv-message-block{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12px;color:var(--text2);line-height:1.6;white-space:pre-wrap;margin-top:6px;}
 .biens-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
 .bien-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;}
 .bien-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
@@ -411,6 +422,15 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
           <input type="checkbox" checked={!!lead.paid} onChange={()=>{}} readOnly/> Marquer payé
         </div>
       )}
+      {lead.calendlyRdv&&(
+        <div className="rdv-bubble">
+          <div className="rdv-bubble-dot"></div>
+          <div>
+            <div className="rdv-bubble-date">📅 {lead.calendlyRdv.dateLabel}</div>
+            <div className="rdv-bubble-sub">RDV Calendly · {lead.calendlyRdv.eventName||"Appel"}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -529,6 +549,24 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
         </div>
+
+        {lead.calendlyRdv&&(
+          <>
+            <div className="modal-section">RDV Calendly</div>
+            <div className="rdv-detail-block">
+              <div className="rdv-detail-title">📅 {lead.calendlyRdv.eventName||"Appel découverte"}</div>
+              <div className="rdv-detail-row"><span className="rdv-detail-key">Date</span><span className="rdv-detail-val">{lead.calendlyRdv.dateLabel}</span></div>
+              <div className="rdv-detail-row"><span className="rdv-detail-key">Heure</span><span className="rdv-detail-val">{lead.calendlyRdv.timeLabel}</span></div>
+              <div className="rdv-detail-row"><span className="rdv-detail-key">Statut</span><span className="rdv-detail-val" style={{color:"var(--green)"}}>✓ Confirmé</span></div>
+            </div>
+            {lead.calendlyRdv.message&&(
+              <>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:5}}>Message du lead</div>
+                <div className="rdv-message-block">{lead.calendlyRdv.message}</div>
+              </>
+            )}
+          </>
+        )}
 
         {!gateTarget&&(
           <>
