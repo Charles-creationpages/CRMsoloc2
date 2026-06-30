@@ -800,7 +800,7 @@ function HonorairesCalc({surface, onSelect}){
 // ─── BIEN FORM MODAL ─────────────────────────────────────────────────────
 const blankBien = {titre:"",adresse:"",typologie:"",surface:"",loyer:"",depotGarantie:"",etage:"",meuble:false,dateDisponibilite:"",annexes:[],description:"",photos:[]};
 
-function BienFormModal({bien, onSave, onClose}){
+function BienFormModal({bien, onSave, onClose, onDelete}){
   const editing=!!bien;
   const [form,setForm]=useState(editing?{...blankBien,...bien}:{...blankBien});
   const [uploading,setUploading]=useState(false);
@@ -902,6 +902,7 @@ function BienFormModal({bien, onSave, onClose}){
         )}
 
         <div className="fa">
+          {editing&&<button className="btn btn-g" style={{color:"var(--red)"}} onClick={()=>onDelete(bien)}><Ic n="trash" s={13}/>Supprimer</button>}
           <button className="btn btn-g" onClick={onClose}>Annuler</button>
           <button className="btn btn-p" onClick={submit} disabled={uploading}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter"}</button>
         </div>
@@ -1151,7 +1152,7 @@ function BiensPage({addToast}){
       </div>
 
       {(modal?.type==="add"||modal?.type==="edit")&&(
-        <BienFormModal bien={modal.type==="edit"?modal.bien:null} onSave={saveBien} onClose={()=>setModal(null)}/>
+        <BienFormModal bien={modal.type==="edit"?modal.bien:null} onSave={saveBien} onClose={()=>setModal(null)} onDelete={deleteBien}/>
       )}
       {modal?.type==="detail"&&(
         <BienDetailModal bien={modal.bien} onClose={()=>setModal(null)} addToast={addToast}
