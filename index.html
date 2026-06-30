@@ -252,6 +252,17 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .rdv-bubble-date{font-size:11px;color:#1d4ed8;font-weight:700;}
 .rdv-bubble-sub{font-size:10px;color:#3b82f6;margin-top:1px;}
 .rdv-detail-block{background:#EFF6FF;border:1.5px solid #DBEAFE;border-radius:10px;padding:11px 13px;margin-bottom:8px;}
+/* WHATSAPP */
+.wa-bubble{display:flex;align-items:flex-start;gap:7px;background:#DCFCE7;border:1.5px solid #86EFAC;border-radius:8px;padding:7px 9px;margin-top:6px;}
+.wa-bubble-dot{width:7px;height:7px;border-radius:50%;background:#25D366;flex-shrink:0;margin-top:3px;}
+.wa-bubble-date{font-size:11px;color:#15803d;font-weight:700;}
+.wa-bubble-sub{font-size:10px;color:#16a34a;margin-top:1px;}
+.wa-detail-block{background:#DCFCE7;border:1.5px solid #86EFAC;border-radius:10px;padding:11px 13px;margin-bottom:8px;}
+.wa-detail-title{font-size:11px;font-weight:700;color:#15803d;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+.wa-detail-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #bbf7d0;font-size:12px;}
+.wa-detail-row:last-child{border-bottom:none;}
+.wa-detail-key{color:#16a34a;font-weight:500;}
+.wa-detail-val{font-weight:700;color:#166534;}
 .rdv-detail-title{font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
 .rdv-detail-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dbeafe;font-size:12px;}
 .rdv-detail-row:last-child{border-bottom:none;}
@@ -431,6 +442,15 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
           </div>
         </div>
       )}
+      {lead.whatsappContact&&(
+        <div className="wa-bubble">
+          <div className="wa-bubble-dot"></div>
+          <div>
+            <div className="wa-bubble-date">💬 {lead.whatsappContact.dateLabel}</div>
+            <div className="wa-bubble-sub">Envoyé sur WhatsApp</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -565,6 +585,17 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
                 <div className="rdv-message-block">{lead.calendlyRdv.message}</div>
               </>
             )}
+          </>
+        )}
+
+        {lead.whatsappContact&&(
+          <>
+            <div className="modal-section">Contact WhatsApp</div>
+            <div className="wa-detail-block">
+              <div className="wa-detail-title">💬 Pris contact via WhatsApp</div>
+              <div className="wa-detail-row"><span className="wa-detail-key">Date</span><span className="wa-detail-val">{lead.whatsappContact.dateLabel}</span></div>
+              <div className="wa-detail-row"><span className="wa-detail-key">Heure</span><span className="wa-detail-val">{lead.whatsappContact.timeLabel}</span></div>
+            </div>
           </>
         )}
 
