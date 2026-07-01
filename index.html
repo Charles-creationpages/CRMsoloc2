@@ -1352,27 +1352,42 @@ const CLOUDINARY_PRESET = "ml_default";
 const DOSSIER_STATUTS   = ["En cours","En traitement","En commission","Validé","Archivé"];
 const STATUT_CLASS      = {"En cours":"db-encours","En traitement":"db-traitement","En commission":"db-commission","Validé":"db-valide","Archivé":"db-archive"};
 
-// Lire un dossier déposé (drag & drop) de façon récursive
-async function readDroppedFolder(entry, basePath){
+// Lire un dossier déposé (drag & drop) de façon récursive — sans async/await pour compatibilité Babel
+function readDroppedFolder(entry, basePath){
   basePath = basePath||"";
-  var results = [];
-  if(entry.isFile){
-    var file = await new Promise(function(res,rej){entry.file(res,rej);});
-    results.push({file:file, path:basePath});
-  } else if(entry.isDirectory){
-    var reader = entry.createReader();
-    var allEntries = [];
-    var batch;
-    do {
-      batch = await new Promise(function(res,rej){reader.readEntries(res,rej);});
-      allEntries = allEntries.concat(Array.from(batch));
-    } while(batch.length>0);
-    for(var i=0;i<allEntries.length;i++){
-      var sub = await readDroppedFolder(allEntries[i], basePath ? basePath+"/"+allEntries[i].name : allEntries[i].name);
-      results = results.concat(sub);
+  return new Promise(function(resolve, reject){
+    if(entry.isFile){
+      entry.file(function(file){
+        resolve([{file:file, path:basePath}]);
+      }, reject);
+    } else if(entry.isDirectory){
+      var reader = entry.createReader();
+      var allFiles = [];
+      function readBatch(){
+        reader.readEntries(function(entries){
+          if(entries.length===0){
+            resolve(allFiles);
+            return;
+          }
+          var pending = entries.length;
+          entries.forEach(function(e){
+            var childPath = basePath ? basePath+"/"+e.name : e.name;
+            readDroppedFolder(e, childPath).then(function(files){
+              allFiles = allFiles.concat(files);
+              pending--;
+              if(pending===0) readBatch();
+            }).catch(function(){
+              pending--;
+              if(pending===0) readBatch();
+            });
+          });
+        }, reject);
+      }
+      readBatch();
+    } else {
+      resolve([]);
     }
-  }
-  return results;
+  });
 }
 
 function DossiersPage({addToast}){
