@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>SOLOC' CRM</title>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <style>body{margin:0;padding:0;background:#FBF7F0;}</style>
@@ -425,13 +426,15 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .dia-btn.del:hover{background:#FEE2E2;color:#dc2626;border-color:#dc2626;}
 .dos-upload-zone{border:2px dashed var(--border);border-radius:11px;padding:16px;text-align:center;margin-top:12px;cursor:pointer;color:var(--text3);font-size:12px;transition:all .15s;}
 .dos-upload-zone:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-l);}
+.dos-drop-zone{border:2px dashed var(--border);border-radius:14px;padding:28px;text-align:center;margin-top:16px;color:var(--text3);font-size:12px;transition:all .2s;cursor:pointer;}
+.dos-drop-zone.drag{border-color:var(--accent);background:var(--accent-l);color:var(--accent);}
+.dos-drop-zone:hover{border-color:var(--accent);background:var(--bg);}
 .dos-breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;}
 .dos-bc-link{color:var(--accent);font-weight:600;cursor:pointer;}
 .dos-bc-link:hover{text-decoration:underline;}
 .dos-bc-sep{color:var(--text3);}
-.dos-bc-cur{color:var(--text2);font-weight:700;}`;
-
-// ─── TOASTS ──────────────────────────────────────────────────────────────
+.dos-bc-cur{color:var(--text2);font-weight:700;}
+`;
 function useToasts(){
   const [toasts,setToasts]=useState([]);
   const add=useCallback((text,type="info")=>{
@@ -1349,14 +1352,39 @@ const CLOUDINARY_PRESET = "ml_default";
 const DOSSIER_STATUTS   = ["En cours","En traitement","En commission","Validé","Archivé"];
 const STATUT_CLASS      = {"En cours":"db-encours","En traitement":"db-traitement","En commission":"db-commission","Validé":"db-valide","Archivé":"db-archive"};
 
+// Lire un dossier déposé (drag & drop) de façon récursive
+async function readDroppedFolder(entry, basePath){
+  basePath = basePath||"";
+  var results = [];
+  if(entry.isFile){
+    var file = await new Promise(function(res,rej){entry.file(res,rej);});
+    results.push({file:file, path:basePath});
+  } else if(entry.isDirectory){
+    var reader = entry.createReader();
+    var allEntries = [];
+    var batch;
+    do {
+      batch = await new Promise(function(res,rej){reader.readEntries(res,rej);});
+      allEntries = allEntries.concat(Array.from(batch));
+    } while(batch.length>0);
+    for(var i=0;i<allEntries.length;i++){
+      var sub = await readDroppedFolder(allEntries[i], basePath ? basePath+"/"+allEntries[i].name : allEntries[i].name);
+      results = results.concat(sub);
+    }
+  }
+  return results;
+}
+
 function DossiersPage({addToast}){
   const [dossiers,setDossiers]=useState([]);
   const [loading,setLoading]=useState(true);
   const [filtreStatut,setFiltreStatut]=useState("Tous");
-  // Navigation : null=liste clients | {client}=dossier client | {client,sousDossier}=sous-dossier
   const [nav,setNav]=useState(null);
-  const [modal,setModal]=useState(null); // {type:"newClient"|"newSousDossier"}
+  const [dragging,setDragging]=useState(false);
   const [uploading,setUploading]=useState(false);
+  const [uploadProgress,setUploadProgress]=useState("");
+  const [statusDropdown,setStatusDropdown]=useState(null); // id du dossier ouvert
+  const fileInputRef=useRef(null);
 
   useEffect(()=>{
     const unsub=fsOnSnapshot(fsCollection(db,"dossiers"),snap=>{
@@ -1366,101 +1394,201 @@ function DossiersPage({addToast}){
     return unsub;
   },[]);
 
-  // ── Upload Cloudinary ──────────────────────────────────────────────────
-  const uploadToCloudinary=async(file,dossierPath)=>{
-    const fd=new FormData();
+  // ── Upload Cloudinary ────────────────────────────────────────────────
+  const uploadFile=async(file,folderPath)=>{
+    var fd=new FormData();
     fd.append("file",file);
     fd.append("upload_preset",CLOUDINARY_PRESET);
-    fd.append("folder","soloc-crm/"+dossierPath);
+    fd.append("folder","soloc-crm/"+folderPath);
     fd.append("resource_type","auto");
-    const url="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload";
-    const res=await fetch(url,{method:"POST",body:fd});
-    if(!res.ok) throw new Error("Upload Cloudinary échoué");
+    var res=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",{method:"POST",body:fd});
+    if(!res.ok) throw new Error("Upload échoué pour "+file.name);
     return await res.json();
   };
 
+  // ── Drag & drop d'un dossier complet ────────────────────────────────
+  const handleDrop=async(e)=>{
+    e.preventDefault();
+    setDragging(false);
+    var items=Array.from(e.dataTransfer.items||[]);
+    var entries=items.map(function(item){return item.webkitGetAsEntry&&item.webkitGetAsEntry();}).filter(Boolean);
+    if(!entries.length){addToast("Aucun dossier détecté","error");return;}
+    setUploading(true);
+    try {
+      for(var ei=0;ei<entries.length;ei++){
+        var topEntry=entries[ei];
+        var clientNom=topEntry.name;
+        setUploadProgress("Lecture de "+clientNom+"…");
+        var allFiles=await readDroppedFolder(topEntry,"");
+        // Extraire les sous-dossiers uniques
+        var sousDossiersSet={};
+        allFiles.forEach(function(f){
+          var parts=f.path.split("/");
+          if(parts.length>1) sousDossiersSet[parts[0]]=true;
+        });
+        var sousDossiers=Object.keys(sousDossiersSet);
+        if(sousDossiers.length===0) sousDossiers=["Dossier Locataire","Dossier Garant","Autre"];
+        // Créer le dossier Firestore
+        var docRef=await fsAddDoc(fsCollection(db,"dossiers"),{nom:clientNom,statut:"En cours",honoraires:"",fichiers:[],sousDossiers:sousDossiers,createdAt:nowISO()});
+        // Uploader les fichiers
+        var fichiers=[];
+        for(var fi=0;fi<allFiles.length;fi++){
+          var f=allFiles[fi];
+          var parts=f.path.split("/");
+          var sousDossier=parts.length>1?parts[0]:"";
+          setUploadProgress("Upload "+clientNom+" · "+(fi+1)+"/"+allFiles.length+" · "+f.file.name);
+          try {
+            var res=await uploadFile(f.file,clientNom+"/"+f.path.replace(f.file.name,"").replace(/\/$/,""));
+            fichiers.push({nom:f.file.name,url:res.secure_url,type:f.file.type||"application/octet-stream",public_id:res.public_id,sousDossier:sousDossier,uploadedAt:nowISO()});
+          } catch(err){addToast("Erreur upload "+f.file.name,"error");}
+        }
+        await fsUpdateDoc(fsDocRef(db,"dossiers",docRef.id),{fichiers:fichiers});
+        addToast("✓ Dossier "+clientNom+" importé ("+fichiers.length+" fichiers)");
+      }
+    } catch(err){addToast("Erreur : "+err.message,"error");}
+    setUploading(false);
+    setUploadProgress("");
+  };
+
+  // ── Upload fichiers individuels dans un client ──────────────────────
   const handleUpload=async(e,clientId,sousDossier)=>{
-    const files=Array.from(e.target.files);
+    var files=Array.from(e.target.files);
     if(!files.length) return;
     setUploading(true);
     try {
-      const dossier=dossiers.find(d=>d.id===clientId);
-      const path=(dossier?dossier.nom:"client")+"/"+sousDossier;
-      const fichiersExist=(dossier?.fichiers)||[];
-      const nouveaux=[];
-      for(const file of files){
-        const res=await uploadToCloudinary(file,path);
+      var dossier=dossiers.find(function(d){return d.id===clientId;});
+      var existing=(dossier&&dossier.fichiers)||[];
+      var nouveaux=[];
+      for(var i=0;i<files.length;i++){
+        var file=files[i];
+        setUploadProgress("Upload "+file.name+" ("+(i+1)+"/"+files.length+")");
+        var res=await uploadFile(file,(dossier?dossier.nom:"client")+"/"+sousDossier);
         nouveaux.push({nom:file.name,url:res.secure_url,type:file.type,public_id:res.public_id,sousDossier:sousDossier||"",uploadedAt:nowISO()});
       }
-      await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:[...fichiersExist,...nouveaux]});
+      await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:[...existing,...nouveaux]});
       addToast(nouveaux.length+" fichier(s) uploadé(s) ✓");
-    }catch(err){addToast("Erreur upload : "+err.message,"error");}
+    } catch(err){addToast("Erreur upload : "+err.message,"error");}
     setUploading(false);
+    setUploadProgress("");
     e.target.value="";
   };
 
-  const deleteFichier=async(clientId,publicId)=>{
-    if(!confirm("Supprimer ce fichier ?")) return;
-    const dossier=dossiers.find(d=>d.id===clientId);
-    const newFichiers=(dossier?.fichiers||[]).filter(f=>f.public_id!==publicId);
-    await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:newFichiers})
-      .then(()=>addToast("Fichier supprimé"))
+  // ── Télécharger tout le dossier en ZIP ──────────────────────────────
+  const downloadZip=async(dossier)=>{
+    addToast("Préparation du ZIP…");
+    try {
+      var zip=new window.JSZip();
+      var fichiers=dossier.fichiers||[];
+      for(var i=0;i<fichiers.length;i++){
+        var f=fichiers[i];
+        var res=await fetch(f.url);
+        var blob=await res.blob();
+        var path=f.sousDossier ? f.sousDossier+"/"+f.nom : f.nom;
+        zip.file(path,blob);
+      }
+      var content=await zip.generateAsync({type:"blob"});
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(content);
+      a.download=dossier.nom+".zip";
+      a.click();
+      addToast("ZIP téléchargé ✓");
+    } catch(err){addToast("Erreur ZIP : "+err.message,"error");}
+  };
+
+  // ── Supprimer un dossier complet ─────────────────────────────────────
+  const deleteDossier=async(dossier)=>{
+    if(!confirm("Supprimer définitivement le dossier \""+dossier.nom+"\" et tous ses fichiers ?\nCette action est irréversible.")) return;
+    await fsDeleteDoc(fsDocRef(db,"dossiers",dossier.id))
+      .then(()=>addToast("Dossier supprimé"))
       .catch(()=>addToast("Erreur suppression","error"));
   };
 
-  const addSousDossier=async(clientId,nom)=>{
-    const dossier=dossiers.find(d=>d.id===clientId);
-    const existing=(dossier?.sousDossiers||[]);
-    if(existing.includes(nom)){addToast("Ce sous-dossier existe déjà","error");return;}
-    await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{sousDossiers:[...existing,nom]});
-    addToast("Sous-dossier créé ✓");
+  // ── Supprimer un fichier ─────────────────────────────────────────────
+  const deleteFichier=async(clientId,publicId)=>{
+    if(!confirm("Supprimer ce fichier ?")) return;
+    var dossier=dossiers.find(function(d){return d.id===clientId;});
+    var newFichiers=(dossier&&dossier.fichiers||[]).filter(function(f){return f.public_id!==publicId;});
+    await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:newFichiers})
+      .then(()=>addToast("Fichier supprimé"))
+      .catch(()=>addToast("Erreur","error"));
   };
 
-  const getFileIcon=(type="")=>{
-    if(type.startsWith("image")) return <Ic n="image" s={20}/>;
-    return <Ic n="fileText" s={20}/>;
+  // ── Changer le statut ────────────────────────────────────────────────
+  const changeStatut=async(dossier,statut)=>{
+    await fsUpdateDoc(fsDocRef(db,"dossiers",dossier.id),{statut:statut});
+    setStatusDropdown(null);
   };
 
-  // ── RENDER ─────────────────────────────────────────────────────────────
+  const getFileIcon=(type)=>{
+    if(!type) return <Ic n="fileText" s={18}/>;
+    if(type.startsWith("image")) return <Ic n="image" s={18}/>;
+    return <Ic n="fileText" s={18}/>;
+  };
+
   if(loading) return <div className="empty-state"><div className="es-t">Chargement…</div></div>;
 
-  const filtered=filtreStatut==="Tous"?dossiers:dossiers.filter(d=>d.statut===filtreStatut);
+  const filtered=filtreStatut==="Tous"?dossiers:dossiers.filter(function(d){return d.statut===filtreStatut;});
   const counts={"Tous":dossiers.length};
-  DOSSIER_STATUTS.forEach(s=>counts[s]=(dossiers.filter(d=>d.statut===s).length));
+  DOSSIER_STATUTS.forEach(function(s){counts[s]=(dossiers.filter(function(d){return d.statut===s;}).length);});
 
-  // VUE : liste clients
+  // ── VUE : liste clients ──────────────────────────────────────────────
   if(!nav) return(
     <>
       <div className="topbar" style={{borderBottom:"1px solid var(--border)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div className="dos-breadcrumb"><span className="dos-bc-cur">Dossiers clients</span></div>
-        <button className="btn btn-p" onClick={()=>setModal({type:"newClient"})}><Ic n="plus" s={13}/>Nouveau dossier</button>
+        {uploading&&<span style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{uploadProgress||"Upload en cours…"}</span>}
       </div>
       <div className="main">
         <div className="dos-pills">
-          {["Tous",...DOSSIER_STATUTS].map(s=>(
+          {["Tous",...DOSSIER_STATUTS].map(function(s){return(
             <div key={s} className={"dos-pill"+(filtreStatut===s?" on":"")} onClick={()=>setFiltreStatut(s)}>
               {s} ({counts[s]||0})
             </div>
-          ))}
+          );})}
         </div>
+
         <div className="dos-grid">
-          {filtered.map(d=>(
-            <div key={d.id} className="dos-card" onClick={()=>setNav({client:d})}>
-              <div className="dos-card-icon"><Ic n="folder" s={26}/></div>
-              <div className="dos-card-name">{d.nom}</div>
-              <span className={"dos-card-badge "+(STATUT_CLASS[d.statut]||"db-archive")}>{d.statut||"—"}</span>
+          {filtered.map(function(d){return(
+            <div key={d.id} style={{position:"relative"}}>
+              <div className="dos-card" onClick={()=>setNav({client:d})}>
+                <div className="dos-card-icon"><Ic n="folder" s={24}/></div>
+                <div className="dos-card-name">{d.nom}</div>
+                <span className={"dos-card-badge "+(STATUT_CLASS[d.statut]||"db-archive")} onClick={function(e){e.stopPropagation();setStatusDropdown(statusDropdown===d.id?null:d.id);}}>{d.statut||"—"} ▾</span>
+              </div>
+              {statusDropdown===d.id&&(
+                <div style={{position:"absolute",top:"100%",left:0,right:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,zIndex:50,padding:"4px 0",boxShadow:"0 4px 16px rgba(0,0,0,.12)"}}>
+                  {DOSSIER_STATUTS.map(function(s){return(
+                    <div key={s} onClick={function(e){e.stopPropagation();changeStatut(d,s);}}
+                      style={{padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",color:s===d.statut?"var(--accent)":"var(--text)"}}
+                      onMouseOver={function(e){e.target.style.background="var(--bg)";}}
+                      onMouseOut={function(e){e.target.style.background="transparent";}}>
+                      {s}
+                    </div>
+                  );})}
+                  <div style={{borderTop:"1px solid var(--border)",margin:"4px 0"}}/>
+                  <div onClick={function(e){e.stopPropagation();setStatusDropdown(null);deleteDossier(d);}}
+                    style={{padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",color:"var(--red)"}}>
+                    🗑 Supprimer le dossier
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
-          <div className="dos-card dos-card-add" onClick={()=>setModal({type:"newClient"})}>
-            <div className="dos-card-icon-add">＋</div>
-            <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Nouveau dossier</div>
-          </div>
+          );})}
+        </div>
+
+        {/* Zone de drop */}
+        <div
+          className={"dos-drop-zone"+(dragging?" drag":"")}
+          onDragOver={function(e){e.preventDefault();setDragging(true);}}
+          onDragLeave={function(){setDragging(false);}}
+          onDrop={handleDrop}>
+          {uploading
+            ? <><div style={{fontSize:24,marginBottom:8}}>⏳</div><div style={{fontSize:13,fontWeight:700,color:"var(--accent)"}}>{uploadProgress||"Upload en cours…"}</div></>
+            : <><div style={{fontSize:28,marginBottom:8}}>📁</div><div style={{fontSize:13,fontWeight:700,color:"var(--text2)"}}>Glisse un dossier ici pour l'importer</div><div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Le dossier client est créé automatiquement avec toute sa structure</div></>
+          }
         </div>
       </div>
-      {modal?.type==="newClient"&&<NewClientModal onSave={async(data)=>{
-        await fsAddDoc(fsCollection(db,"dossiers"),{...data,fichiers:[],sousDossiers:["Dossier Locataire","Dossier Garant","Autre"],createdAt:nowISO()});
-        setModal(null);addToast("Dossier créé ✓");
-      }} onClose={()=>setModal(null)}/>}
+      {statusDropdown&&<div style={{position:"fixed",inset:0,zIndex:40}} onClick={()=>setStatusDropdown(null)}/>}
     </>
   );
 
@@ -1468,7 +1596,7 @@ function DossiersPage({addToast}){
   const fichiers=client.fichiers||[];
   const sousDossiers=client.sousDossiers||["Dossier Locataire","Dossier Garant","Autre"];
 
-  // VUE : contenu d'un client
+  // ── VUE : contenu d'un client ────────────────────────────────────────
   if(!nav.sousDossier) return(
     <>
       <div className="topbar" style={{borderBottom:"1px solid var(--border)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1477,56 +1605,56 @@ function DossiersPage({addToast}){
           <span className="dos-bc-sep">/</span>
           <span className="dos-bc-cur">{client.nom}</span>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-g" onClick={()=>setModal({type:"newSousDossier"})}><Ic n="folder" s={13}/>Nouveau sous-dossier</button>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {uploading&&<span style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{uploadProgress}</span>}
+          <button className="btn btn-g" onClick={()=>downloadZip(client)}><Ic n="upload" s={13}/>Télécharger ZIP</button>
           <label className="btn btn-p" style={{cursor:"pointer"}}>
-            {uploading?"Upload…":<><Ic n="upload" s={13}/>Uploader</>}
-            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={e=>handleUpload(e,client.id,"")}/>
+            <Ic n="upload" s={13}/>{uploading?"Upload…":"Uploader"}
+            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={function(e){handleUpload(e,client.id,"");}}/>
           </label>
         </div>
       </div>
       <div className="main">
         <div className="dos-client-bar">
-          <div className="dos-client-bar-icon"><Ic n="folder" s={22}/></div>
+          <div className="dos-client-bar-icon"><Ic n="folder" s={20}/></div>
           <div>
             <div className="dos-client-bar-name">{client.nom}</div>
-            <div className="dos-client-bar-sub">{client.honoraires&&client.honoraires+" € · "}{client.statut}</div>
+            <div className="dos-client-bar-sub">{client.honoraires&&(client.honoraires+" € · ")}{client.statut}</div>
           </div>
           <div style={{marginLeft:"auto"}}>
             <span className={"dos-card-badge "+(STATUT_CLASS[client.statut]||"db-archive")}>{client.statut}</span>
           </div>
         </div>
         <div className="dos-items-grid">
-          {sousDossiers.map(sd=>(
+          {sousDossiers.map(function(sd){return(
             <div key={sd} className="dos-item is-folder" onClick={()=>setNav({client,sousDossier:sd})}>
-              <div className="dos-item-icon"><Ic n="folder" s={20}/></div>
+              <div className="dos-item-icon"><Ic n="folder" s={18}/></div>
               <div className="dos-item-name">{sd}</div>
             </div>
-          ))}
-          {fichiers.filter(f=>!f.sousDossier).map((f,i)=>(
+          );})}
+          {fichiers.filter(function(f){return !f.sousDossier;}).map(function(f,i){return(
             <div key={i} className="dos-item">
               <div className="dos-item-icon">{getFileIcon(f.type)}</div>
               <div className="dos-item-name">{f.nom}</div>
               <div className="dos-item-actions">
-                <button className="dia-btn" onClick={e=>{e.stopPropagation();window.open(f.url,"_blank");}}>👁</button>
-                <button className="dia-btn" onClick={e=>{e.stopPropagation();const a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
-                <button className="dia-btn del" onClick={e=>{e.stopPropagation();deleteFichier(client.id,f.public_id);}}>🗑</button>
+                <button className="dia-btn" onClick={function(){window.open(f.url,"_blank");}}>👁</button>
+                <button className="dia-btn" onClick={function(){var a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
+                <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
               </div>
             </div>
-          ))}
+          );})}
         </div>
-        <div className="dos-upload-zone" onClick={()=>document.getElementById("uproot-"+client.id).click()}>
-          <input id={"uproot-"+client.id} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={e=>handleUpload(e,client.id,"")}/>
+        <div className="dos-upload-zone" onClick={function(){var el=document.getElementById("uproot-"+client.id);if(el)el.click();}}>
+          <input id={"uproot-"+client.id} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={function(e){handleUpload(e,client.id,"");}}/>
           ⬆ Glisse des fichiers ici ou clique pour uploader
         </div>
       </div>
-      {modal?.type==="newSousDossier"&&<NewSousDossierModal onSave={nom=>{addSousDossier(client.id,nom);setModal(null);}} onClose={()=>setModal(null)}/>}
     </>
   );
 
-  // VUE : contenu d'un sous-dossier
-  const sd=nav.sousDossier;
-  const sdFichiers=fichiers.filter(f=>f.sousDossier===sd);
+  // ── VUE : contenu d'un sous-dossier ─────────────────────────────────
+  var sd=nav.sousDossier;
+  var sdFichiers=fichiers.filter(function(f){return f.sousDossier===sd;});
   return(
     <>
       <div className="topbar" style={{borderBottom:"1px solid var(--border)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1537,70 +1665,37 @@ function DossiersPage({addToast}){
           <span className="dos-bc-sep">/</span>
           <span className="dos-bc-cur">{sd}</span>
         </div>
-        <label className="btn btn-p" style={{cursor:"pointer"}}>
-          {uploading?"Upload…":<><Ic n="upload" s={13}/>Uploader</>}
-          <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={e=>handleUpload(e,client.id,sd)}/>
-        </label>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {uploading&&<span style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{uploadProgress}</span>}
+          <label className="btn btn-p" style={{cursor:"pointer"}}>
+            <Ic n="upload" s={13}/>{uploading?"Upload…":"Uploader"}
+            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={function(e){handleUpload(e,client.id,sd);}}/>
+          </label>
+        </div>
       </div>
       <div className="main">
-        {sdFichiers.length===0?(
-          <div className="empty-state"><div className="es-t">Aucun fichier dans ce dossier</div><div className="es-s">Utilise le bouton Uploader pour ajouter des documents.</div></div>
-        ):(
-          <div className="dos-items-grid">
-            {sdFichiers.map((f,i)=>(
+        {sdFichiers.length===0
+          ?<div className="empty-state"><div className="es-t">Aucun fichier dans ce sous-dossier</div><div className="es-s">Utilise le bouton Uploader pour ajouter des documents.</div></div>
+          :<div className="dos-items-grid">
+            {sdFichiers.map(function(f,i){return(
               <div key={i} className="dos-item">
                 <div className="dos-item-icon">{getFileIcon(f.type)}</div>
                 <div className="dos-item-name">{f.nom}</div>
                 <div className="dos-item-actions">
-                  <button className="dia-btn" onClick={()=>window.open(f.url,"_blank")}>👁</button>
-                  <button className="dia-btn" onClick={()=>{const a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
-                  <button className="dia-btn del" onClick={()=>deleteFichier(client.id,f.public_id)}>🗑</button>
+                  <button className="dia-btn" onClick={function(){window.open(f.url,"_blank");}}>👁</button>
+                  <button className="dia-btn" onClick={function(){var a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
+                  <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
                 </div>
               </div>
-            ))}
+            );})}
           </div>
-        )}
-        <div className="dos-upload-zone" onClick={()=>document.getElementById("upsub-"+client.id+"-"+sd).click()}>
-          <input id={"upsub-"+client.id+"-"+sd} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={e=>handleUpload(e,client.id,sd)}/>
+        }
+        <div className="dos-upload-zone" onClick={function(){var el=document.getElementById("upsub"+client.id+sd);if(el)el.click();}}>
+          <input id={"upsub"+client.id+sd} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:"none"}} onChange={function(e){handleUpload(e,client.id,sd);}}/>
           ⬆ Glisse des fichiers ici ou clique pour uploader dans {sd}
         </div>
       </div>
     </>
-  );
-}
-
-function NewClientModal({onSave,onClose}){
-  const [nom,setNom]=useState("");
-  const [statut,setStatut]=useState("En cours");
-  const [honoraires,setHonoraires]=useState("");
-  const submit=()=>{if(!nom.trim()){return;}onSave({nom:nom.trim(),statut,honoraires});};
-  return(
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:400}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-title">Nouveau dossier client</div>
-        <div className="fg"><label className="fl">Nom du client *</label><input className="fi" value={nom} onChange={e=>setNom(e.target.value)} placeholder="Ex: Aurélie NICOLE"/></div>
-        <div className="fg"><label className="fl">Statut</label>
-          <select className="fi" value={statut} onChange={e=>setStatut(e.target.value)}>
-            {DOSSIER_STATUTS.map(s=><option key={s}>{s}</option>)}
-          </select>
-        </div>
-        <div className="fg"><label className="fl">Honoraires (€)</label><input className="fi" type="number" value={honoraires} onChange={e=>setHonoraires(e.target.value)} placeholder="Ex: 990"/></div>
-        <div className="fa"><button className="btn btn-g" onClick={onClose}>Annuler</button><button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>Créer</button></div>
-      </div>
-    </div>
-  );
-}
-
-function NewSousDossierModal({onSave,onClose}){
-  const [nom,setNom]=useState("");
-  return(
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:340}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-title">Nouveau sous-dossier</div>
-        <div className="fg"><label className="fl">Nom *</label><input className="fi" value={nom} onChange={e=>setNom(e.target.value)} placeholder="Ex: Dossier Garant 2"/></div>
-        <div className="fa"><button className="btn btn-g" onClick={onClose}>Annuler</button><button className="btn btn-p" onClick={()=>{if(nom.trim())onSave(nom.trim());}}><Ic n="check" s={13}/>Créer</button></div>
-      </div>
-    </div>
   );
 }
 
