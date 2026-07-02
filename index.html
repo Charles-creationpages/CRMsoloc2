@@ -415,11 +415,12 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .dos-client-bar-name{font-size:14px;font-weight:800;color:var(--text);}
 .dos-client-bar-sub{font-size:10px;color:var(--text3);margin-top:1px;}
 .dos-items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
-.dos-item{background:var(--surface);border:1.5px solid var(--border);border-radius:11px;padding:12px 10px 10px;cursor:pointer;transition:all .15s;text-align:center;}
-.dos-item:hover{border-color:var(--accent);background:var(--surface2);}
-.dos-item.is-folder:hover{background:#FBF0EE;}
-.dos-item-icon{font-size:20px;margin-bottom:6px;}
-.dos-item-name{font-size:11px;font-weight:600;color:var(--text);line-height:1.3;word-break:break-word;}
+.dos-item{background:var(--surface);border:1.5px solid var(--border);border-radius:11px;padding:10px 9px 9px;cursor:default;transition:all .15s;text-align:center;}
+.dos-item.is-folder{cursor:pointer;}
+.dos-item.is-folder:hover{border-color:var(--accent);background:#FBF0EE;}
+.dos-item-icon{font-size:18px;margin-bottom:5px;}
+.dos-item-name{font-size:10px;font-weight:600;color:var(--text);line-height:1.35;word-break:break-word;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.dos-item-actions{display:flex;justify-content:center;gap:3px;margin-top:6px;}
 .dos-item-actions{display:flex;justify-content:center;gap:4px;margin-top:6px;}
 .dia-btn{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:3px 6px;font-size:10px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s;}
 .dia-btn:hover{background:var(--accent-l);color:var(--accent);border-color:var(--accent);}
@@ -1355,6 +1356,10 @@ const STATUT_CLASS      = {"En cours":"db-encours","En traitement":"db-traitemen
 // Lire un dossier déposé (drag & drop) de façon récursive — sans async/await pour compatibilité Babel
 function readDroppedFolder(entry, basePath){
   basePath = basePath||"";
+  // Ignorer fichiers cachés Mac (.DS_Store, __MACOSX, ._*, etc.)
+  if(!entry.name||entry.name.startsWith(".")||entry.name==="__MACOSX"||entry.name.startsWith("__")){
+    return Promise.resolve([]);
+  }
   return new Promise(function(resolve, reject){
     if(entry.isFile){
       entry.file(function(file){
@@ -1415,10 +1420,14 @@ function DossiersPage({addToast}){
     fd.append("file",file);
     fd.append("upload_preset",CLOUDINARY_PRESET);
     fd.append("folder","soloc-crm/"+folderPath);
-    fd.append("resource_type","auto");
-    var res=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",{method:"POST",body:fd});
-    if(!res.ok) throw new Error("Upload échoué pour "+file.name);
-    return await res.json();
+    // Images → resource_type image, tout le reste (PDF, doc...) → raw
+    var resType=file.type.startsWith("image/")?"image":"raw";
+    var uploadUrl="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/"+resType+"/upload";
+    var res=await fetch(uploadUrl,{method:"POST",body:fd});
+    if(!res.ok){var t=await res.text();throw new Error("Upload échoué : "+t.slice(0,120));}
+    var data=await res.json();
+    data._resType=resType; // on stocke pour l'affichage
+    return data;
   };
 
   // ── Drag & drop d'un dossier complet ────────────────────────────────
@@ -1454,7 +1463,7 @@ function DossiersPage({addToast}){
           setUploadProgress("Upload "+clientNom+" · "+(fi+1)+"/"+allFiles.length+" · "+f.file.name);
           try {
             var res=await uploadFile(f.file,clientNom+"/"+f.path.replace(f.file.name,"").replace(/\/$/,""));
-            fichiers.push({nom:f.file.name,url:res.secure_url,type:f.file.type||"application/octet-stream",public_id:res.public_id,sousDossier:sousDossier,uploadedAt:nowISO()});
+            fichiers.push({nom:f.file.name,url:res.secure_url,type:f.file.type||"application/octet-stream",resType:res._resType||"raw",public_id:res.public_id,sousDossier:sousDossier,uploadedAt:nowISO()});
           } catch(err){addToast("Erreur upload "+f.file.name,"error");}
         }
         await fsUpdateDoc(fsDocRef(db,"dossiers",docRef.id),{fichiers:fichiers});
@@ -1478,7 +1487,7 @@ function DossiersPage({addToast}){
         var file=files[i];
         setUploadProgress("Upload "+file.name+" ("+(i+1)+"/"+files.length+")");
         var res=await uploadFile(file,(dossier?dossier.nom:"client")+"/"+sousDossier);
-        nouveaux.push({nom:file.name,url:res.secure_url,type:file.type,public_id:res.public_id,sousDossier:sousDossier||"",uploadedAt:nowISO()});
+        nouveaux.push({nom:file.name,url:res.secure_url,type:file.type,resType:res._resType||"raw",public_id:res.public_id,sousDossier:sousDossier||"",uploadedAt:nowISO()});
       }
       await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:[...existing,...nouveaux]});
       addToast(nouveaux.length+" fichier(s) uploadé(s) ✓");
@@ -1489,8 +1498,37 @@ function DossiersPage({addToast}){
   };
 
   // ── Télécharger tout le dossier en ZIP ──────────────────────────────
-  const downloadZip=async(dossier)=>{
-    addToast("Préparation du ZIP…");
+  // ── Helpers URL Cloudinary ───────────────────────────────────────────
+  const viewFile=(f)=>{
+    // Pour les raw (PDF, doc), on force fl_attachment:false pour affichage inline
+    // Pour les images, l'URL directe fonctionne
+    var url=f.url;
+    if(f.resType==="raw"){
+      // L'URL raw Cloudinary est directement téléchargeable via le navigateur
+      url=url.replace("/raw/upload/","/raw/upload/fl_attachment:false/");
+    }
+    window.open(url,"_blank");
+  };
+
+  const downloadFile=async(f)=>{
+    try {
+      var response=await fetch(f.url,{mode:"cors"});
+      if(!response.ok) throw new Error("Fetch failed");
+      var blob=await response.blob();
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=f.nom;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch(err){
+      // Fallback : ouvrir dans un nouvel onglet avec flag de téléchargement
+      var url=f.url;
+      if(f.resType==="raw") url=url.replace("/raw/upload/","/raw/upload/fl_attachment:true/");
+      window.open(url,"_blank");
+    }
+  };
+
+  const downloadZip=async(dossier)=>{    addToast("Préparation du ZIP…");
     try {
       var zip=new window.JSZip();
       var fichiers=dossier.fichiers||[];
@@ -1652,8 +1690,8 @@ function DossiersPage({addToast}){
               <div className="dos-item-icon">{getFileIcon(f.type)}</div>
               <div className="dos-item-name">{f.nom}</div>
               <div className="dos-item-actions">
-                <button className="dia-btn" onClick={function(){window.open(f.url,"_blank");}}>👁</button>
-                <button className="dia-btn" onClick={function(){var a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
+                <button className="dia-btn" onClick={function(){viewFile(f);}}>👁 Voir</button>
+                <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇ DL</button>
                 <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
               </div>
             </div>
@@ -1697,8 +1735,8 @@ function DossiersPage({addToast}){
                 <div className="dos-item-icon">{getFileIcon(f.type)}</div>
                 <div className="dos-item-name">{f.nom}</div>
                 <div className="dos-item-actions">
-                  <button className="dia-btn" onClick={function(){window.open(f.url,"_blank");}}>👁</button>
-                  <button className="dia-btn" onClick={function(){var a=document.createElement("a");a.href=f.url;a.download=f.nom;a.click();}}>⬇</button>
+                  <button className="dia-btn" onClick={function(){viewFile(f);}}>👁 Voir</button>
+                  <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇ DL</button>
                   <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
                 </div>
               </div>
