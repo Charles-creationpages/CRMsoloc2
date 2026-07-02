@@ -1415,27 +1415,43 @@ function DossiersPage({addToast}){
   },[]);
 
   // ── Upload Cloudinary ────────────────────────────────────────────────
-  const uploadFile=async(file,folderPath)=>{
+  const uploadFile=(file,folderPath)=>{
     var cleanPath=folderPath.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9\-_\/\. ]/g,"").trim();
-    var fd=new FormData();
-    fd.append("file",file);
-    fd.append("upload_preset",CLOUDINARY_PRESET);
-    fd.append("folder","soloc-crm/"+cleanPath);
-    // "auto" détecte le bon type (image, PDF, Word, etc.)
-    // PDF et ZIP delivery est activé dans les settings Cloudinary → fonctionne pour tous
-    var res=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",{method:"POST",body:fd});
-    if(!res.ok){
-      var t=await res.text();
-      // Fallback : si auto échoue, essayer en raw (pour les formats non reconnus)
-      var fd2=new FormData();
-      fd2.append("file",file);
-      fd2.append("upload_preset",CLOUDINARY_PRESET);
-      fd2.append("folder","soloc-crm/"+cleanPath);
-      var res2=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/raw/upload",{method:"POST",body:fd2});
-      if(!res2.ok) throw new Error("Upload échoué : "+file.name);
-      return await res2.json();
-    }
-    return await res.json();
+    // XMLHttpRequest au lieu de fetch — compatible Safari sans restriction CORS
+    return new Promise(function(resolve,reject){
+      var fd=new FormData();
+      fd.append("file",file);
+      fd.append("upload_preset",CLOUDINARY_PRESET);
+      fd.append("folder","soloc-crm/"+cleanPath);
+      var xhr=new XMLHttpRequest();
+      xhr.open("POST","https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",true);
+      xhr.onload=function(){
+        if(xhr.status===200){
+          try{ resolve(JSON.parse(xhr.responseText)); }
+          catch(e){ reject(new Error("Réponse invalide Cloudinary")); }
+        } else {
+          // Fallback raw si auto échoue
+          var fd2=new FormData();
+          fd2.append("file",file);
+          fd2.append("upload_preset",CLOUDINARY_PRESET);
+          fd2.append("folder","soloc-crm/"+cleanPath);
+          var xhr2=new XMLHttpRequest();
+          xhr2.open("POST","https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/raw/upload",true);
+          xhr2.onload=function(){
+            if(xhr2.status===200){
+              try{ resolve(JSON.parse(xhr2.responseText)); }
+              catch(e){ reject(new Error("Réponse invalide Cloudinary raw")); }
+            } else {
+              reject(new Error("Upload échoué ("+xhr2.status+") : "+file.name));
+            }
+          };
+          xhr2.onerror=function(){ reject(new Error("Erreur réseau pour "+file.name)); };
+          xhr2.send(fd2);
+        }
+      };
+      xhr.onerror=function(){ reject(new Error("Erreur réseau pour "+file.name)); };
+      xhr.send(fd);
+    });
   };
 
   // ── Drag & drop d'un dossier complet ────────────────────────────────
