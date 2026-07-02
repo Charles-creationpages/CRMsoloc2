@@ -1417,41 +1417,45 @@ function DossiersPage({addToast}){
   // ── Upload Cloudinary ────────────────────────────────────────────────
   const uploadFile=(file,folderPath)=>{
     var cleanPath=folderPath.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9\-_\/\. ]/g,"").trim();
-    // XMLHttpRequest au lieu de fetch — compatible Safari sans restriction CORS
-    return new Promise(function(resolve,reject){
+    var buildFd=function(resType){
       var fd=new FormData();
       fd.append("file",file);
       fd.append("upload_preset",CLOUDINARY_PRESET);
       fd.append("folder","soloc-crm/"+cleanPath);
-      var xhr=new XMLHttpRequest();
-      xhr.open("POST","https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",true);
-      xhr.onload=function(){
-        if(xhr.status===200){
-          try{ resolve(JSON.parse(xhr.responseText)); }
-          catch(e){ reject(new Error("Réponse invalide Cloudinary")); }
-        } else {
-          // Fallback raw si auto échoue
-          var fd2=new FormData();
-          fd2.append("file",file);
-          fd2.append("upload_preset",CLOUDINARY_PRESET);
-          fd2.append("folder","soloc-crm/"+cleanPath);
-          var xhr2=new XMLHttpRequest();
-          xhr2.open("POST","https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/raw/upload",true);
-          xhr2.onload=function(){
-            if(xhr2.status===200){
-              try{ resolve(JSON.parse(xhr2.responseText)); }
-              catch(e){ reject(new Error("Réponse invalide Cloudinary raw")); }
-            } else {
-              reject(new Error("Upload échoué ("+xhr2.status+") : "+file.name));
-            }
-          };
-          xhr2.onerror=function(){ reject(new Error("Erreur réseau pour "+file.name)); };
-          xhr2.send(fd2);
-        }
-      };
-      xhr.onerror=function(){ reject(new Error("Erreur réseau pour "+file.name)); };
-      xhr.send(fd);
-    });
+      return {fd:fd, url:"https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/"+resType+"/upload"};
+    };
+    // Méthode 1 : fetch avec credentials:omit — contourne ITP Safari
+    var tryFetch=function(resType){
+      var req=buildFd(resType);
+      return fetch(req.url,{method:"POST",body:req.fd,credentials:"omit",mode:"cors"})
+        .then(function(r){
+          if(!r.ok) throw new Error("fetch "+r.status);
+          return r.json();
+        });
+    };
+    // Méthode 2 : XHR withCredentials=false — autre contournement Safari ITP
+    var tryXHR=function(resType){
+      var req=buildFd(resType);
+      return new Promise(function(resolve,reject){
+        var xhr=new XMLHttpRequest();
+        xhr.withCredentials=false;
+        xhr.open("POST",req.url,true);
+        xhr.onload=function(){
+          if(xhr.status===200){
+            try{resolve(JSON.parse(xhr.responseText));}
+            catch(e){reject(new Error("Réponse invalide"));}
+          } else {reject(new Error("XHR "+xhr.status));}
+        };
+        xhr.onerror=function(){reject(new Error("Erreur réseau XHR"));};
+        xhr.send(req.fd);
+      });
+    };
+    // Essaie fetch auto → fetch raw → XHR auto → XHR raw
+    return tryFetch("auto")
+      .catch(function(){return tryFetch("raw");})
+      .catch(function(){return tryXHR("auto");})
+      .catch(function(){return tryXHR("raw");})
+      .catch(function(){throw new Error("Upload impossible pour "+file.name+" (vérifier CORS Cloudinary ou connexion réseau)");});
   };
 
   // ── Drag & drop d'un dossier complet ────────────────────────────────
