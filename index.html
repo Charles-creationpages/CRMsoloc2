@@ -1416,19 +1416,26 @@ function DossiersPage({addToast}){
 
   // ── Upload Cloudinary ────────────────────────────────────────────────
   const uploadFile=async(file,folderPath)=>{
-    // Normaliser le path : remplacer les accents et caractères spéciaux pour des URLs propres
     var cleanPath=folderPath.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9\-_\/\. ]/g,"").trim();
     var fd=new FormData();
     fd.append("file",file);
     fd.append("upload_preset",CLOUDINARY_PRESET);
     fd.append("folder","soloc-crm/"+cleanPath);
-    // Tout en "image" : PDFs compris. Cloudinary supporte les PDFs en image.
-    // Avantage : toujours public (pas de 401), fl_attachment fonctionne pour le download.
-    var uploadUrl="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/image/upload";
-    var res=await fetch(uploadUrl,{method:"POST",body:fd});
-    if(!res.ok){var t=await res.text();throw new Error("Upload échoué : "+t.slice(0,120));}
-    var data=await res.json();
-    return data;
+    // "auto" détecte le bon type (image, PDF, Word, etc.)
+    // PDF et ZIP delivery est activé dans les settings Cloudinary → fonctionne pour tous
+    var res=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/auto/upload",{method:"POST",body:fd});
+    if(!res.ok){
+      var t=await res.text();
+      // Fallback : si auto échoue, essayer en raw (pour les formats non reconnus)
+      var fd2=new FormData();
+      fd2.append("file",file);
+      fd2.append("upload_preset",CLOUDINARY_PRESET);
+      fd2.append("folder","soloc-crm/"+cleanPath);
+      var res2=await fetch("https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/raw/upload",{method:"POST",body:fd2});
+      if(!res2.ok) throw new Error("Upload échoué : "+file.name);
+      return await res2.json();
+    }
+    return await res.json();
   };
 
   // ── Drag & drop d'un dossier complet ────────────────────────────────
@@ -1506,8 +1513,10 @@ function DossiersPage({addToast}){
   };
 
   const downloadFile=(f)=>{
-    // fl_attachment fonctionne sur le type image (contrairement au type raw)
-    var dlUrl=f.url.replace("/image/upload/","/image/upload/fl_attachment/");
+    // fl_attachment fonctionne sur image et raw avec PDF delivery activé
+    var dlUrl=f.url
+      .replace("/image/upload/","/image/upload/fl_attachment/")
+      .replace("/raw/upload/","/raw/upload/fl_attachment/");
     window.open(dlUrl,"_blank");
   };
 
@@ -1544,6 +1553,37 @@ function DossiersPage({addToast}){
   };
 
   // ── Supprimer un dossier complet ─────────────────────────────────────
+  const renommerDossier=async(dossier)=>{
+    var n=prompt("Nouveau nom :",dossier.nom);
+    if(!n||n.trim()===dossier.nom) return;
+    await fsUpdateDoc(fsDocRef(db,"dossiers",dossier.id),{nom:n.trim()})
+      .then(()=>addToast("Dossier renommé ✓")).catch(()=>addToast("Erreur renommage","error"));
+  };
+
+  const renommerSousDossier=async(clientId,ancien)=>{
+    var n=prompt("Nouveau nom du sous-dossier :",ancien);
+    if(!n||n.trim()===ancien) return;
+    var d=dossiers.find(function(x){return x.id===clientId;});
+    if(!d) return;
+    var newSD=(d.sousDossiers||[]).map(function(s){return s===ancien?n.trim():s;});
+    var newF=(d.fichiers||[]).map(function(f){return f.sousDossier===ancien?Object.assign({},f,{sousDossier:n.trim()}):f;});
+    await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{sousDossiers:newSD,fichiers:newF})
+      .then(()=>{
+        addToast("Sous-dossier renommé ✓");
+        if(nav&&nav.sousDossier===ancien) setNav(function(prev){return {client:Object.assign({},prev.client,{sousDossiers:newSD,fichiers:newF}),sousDossier:n.trim()};});
+      }).catch(()=>addToast("Erreur renommage","error"));
+  };
+
+  const renommerFichier=async(clientId,publicId,nomActuel)=>{
+    var n=prompt("Nouveau nom du fichier :",nomActuel);
+    if(!n||n.trim()===nomActuel) return;
+    var d=dossiers.find(function(x){return x.id===clientId;});
+    if(!d) return;
+    var newF=(d.fichiers||[]).map(function(f){return f.public_id===publicId?Object.assign({},f,{nom:n.trim()}):f;});
+    await fsUpdateDoc(fsDocRef(db,"dossiers",clientId),{fichiers:newF})
+      .then(()=>addToast("Fichier renommé ✓")).catch(()=>addToast("Erreur renommage","error"));
+  };
+
   const deleteDossier=async(dossier)=>{
     if(!confirm("Supprimer définitivement le dossier \""+dossier.nom+"\" et tous ses fichiers ?\nCette action est irréversible.")) return;
     await fsDeleteDoc(fsDocRef(db,"dossiers",dossier.id))
@@ -1614,6 +1654,10 @@ function DossiersPage({addToast}){
                     </div>
                   );})}
                   <div style={{borderTop:"1px solid var(--border)",margin:"4px 0"}}/>
+                  <div onClick={function(e){e.stopPropagation();setStatusDropdown(null);renommerDossier(d);}}
+                    style={{padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",color:"var(--text2)"}}>
+                    ✏️ Renommer
+                  </div>
                   <div onClick={function(e){e.stopPropagation();setStatusDropdown(null);deleteDossier(d);}}
                     style={{padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",color:"var(--red)"}}>
                     🗑 Supprimer le dossier
@@ -1678,6 +1722,9 @@ function DossiersPage({addToast}){
             <div key={sd} className="dos-item is-folder" onClick={()=>setNav({client,sousDossier:sd})}>
               <div className="dos-item-icon"><Ic n="folder" s={18}/></div>
               <div className="dos-item-name">{sd}</div>
+              <div className="dos-item-actions" onClick={function(e){e.stopPropagation();}}>
+                <button className="dia-btn" onClick={function(){renommerSousDossier(client.id,sd);}}>✏️</button>
+              </div>
             </div>
           );})}
           {fichiers.filter(function(f){return !f.sousDossier;}).map(function(f,i){return(
@@ -1685,8 +1732,9 @@ function DossiersPage({addToast}){
               <div className="dos-item-icon">{getFileIcon(f.type)}</div>
               <div className="dos-item-name">{f.nom}</div>
               <div className="dos-item-actions">
-                <button className="dia-btn" onClick={function(){viewFile(f);}}>👁 Voir</button>
-                <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇ DL</button>
+                <button className="dia-btn" onClick={function(){viewFile(f);}}>👁</button>
+                <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇</button>
+                <button className="dia-btn" onClick={function(){renommerFichier(client.id,f.public_id,f.nom);}}>✏️</button>
                 <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
               </div>
             </div>
@@ -1730,8 +1778,9 @@ function DossiersPage({addToast}){
                 <div className="dos-item-icon">{getFileIcon(f.type)}</div>
                 <div className="dos-item-name">{f.nom}</div>
                 <div className="dos-item-actions">
-                  <button className="dia-btn" onClick={function(){viewFile(f);}}>👁 Voir</button>
-                  <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇ DL</button>
+                  <button className="dia-btn" onClick={function(){viewFile(f);}}>👁</button>
+                  <button className="dia-btn" onClick={function(){downloadFile(f);}}>⬇</button>
+                  <button className="dia-btn" onClick={function(){renommerFichier(client.id,f.public_id,f.nom);}}>✏️</button>
                   <button className="dia-btn del" onClick={function(){deleteFichier(client.id,f.public_id);}}>🗑</button>
                 </div>
               </div>
