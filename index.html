@@ -1416,10 +1416,12 @@ function DossiersPage({addToast}){
 
   // ── Upload Cloudinary ────────────────────────────────────────────────
   const uploadFile=async(file,folderPath)=>{
+    // Normaliser le path : remplacer les accents et caractères spéciaux pour des URLs propres
+    var cleanPath=folderPath.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9\-_\/\. ]/g,"").trim();
     var fd=new FormData();
     fd.append("file",file);
     fd.append("upload_preset",CLOUDINARY_PRESET);
-    fd.append("folder","soloc-crm/"+folderPath);
+    fd.append("folder","soloc-crm/"+cleanPath);
     // Images → resource_type image, tout le reste (PDF, doc...) → raw
     var resType=file.type.startsWith("image/")?"image":"raw";
     var uploadUrl="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/"+resType+"/upload";
@@ -1499,17 +1501,31 @@ function DossiersPage({addToast}){
 
   // ── Télécharger tout le dossier en ZIP ──────────────────────────────
   // ── Helpers URL Cloudinary ───────────────────────────────────────────
+  // Encode proprement une URL Cloudinary avec des caractères accentués
+  const safeUrl=(url)=>{
+    try {
+      // Découpe l'URL en protocole+domaine / path, encode chaque segment du path séparément
+      var parts=url.split("/");
+      return parts.map(function(p,i){
+        // Les 4 premiers segments (https:, '', domain, gdx1tmrf) ne bougent pas
+        if(i<4) return p;
+        // Décode d'abord (au cas où déjà partiellement encodé) puis réencode
+        try { return encodeURIComponent(decodeURIComponent(p)).replace(/%2F/g,"/"); }
+        catch(e){ return encodeURIComponent(p); }
+      }).join("/");
+    } catch(e){ return url; }
+  };
+
   const viewFile=(f)=>{
-    // L'URL Cloudinary raw fonctionne directement - pas de transformation à ajouter
-    window.open(f.url,"_blank");
+    window.open(safeUrl(f.url),"_blank");
   };
 
   const downloadFile=async(f)=>{
+    var url=safeUrl(f.url);
     try {
-      // Fetch + blob pour un vrai téléchargement avec le bon nom de fichier
-      var response=await fetch(f.url);
-      if(!response.ok) throw new Error("Fetch failed");
-      var blob=await response.blob();
+      var resp=await fetch(url);
+      if(!resp.ok) throw new Error("fetch "+resp.status);
+      var blob=await resp.blob();
       var a=document.createElement("a");
       a.href=URL.createObjectURL(blob);
       a.download=f.nom;
@@ -1518,8 +1534,8 @@ function DossiersPage({addToast}){
       document.body.removeChild(a);
       setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
     } catch(err){
-      // Fallback : ouvrir l'URL directement dans un nouvel onglet
-      window.open(f.url,"_blank");
+      // Fallback simple : ouvrir dans un onglet, le navigateur propose le téléchargement
+      window.open(url,"_blank");
     }
   };
 
