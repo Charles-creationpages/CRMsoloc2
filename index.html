@@ -1500,31 +1500,26 @@ function DossiersPage({addToast}){
   // ── Télécharger tout le dossier en ZIP ──────────────────────────────
   // ── Helpers URL Cloudinary ───────────────────────────────────────────
   const viewFile=(f)=>{
-    // Pour les raw (PDF, doc), on force fl_attachment:false pour affichage inline
-    // Pour les images, l'URL directe fonctionne
-    var url=f.url;
-    if(f.resType==="raw"){
-      // L'URL raw Cloudinary est directement téléchargeable via le navigateur
-      url=url.replace("/raw/upload/","/raw/upload/fl_attachment:false/");
-    }
-    window.open(url,"_blank");
+    // L'URL Cloudinary raw fonctionne directement - pas de transformation à ajouter
+    window.open(f.url,"_blank");
   };
 
   const downloadFile=async(f)=>{
     try {
-      var response=await fetch(f.url,{mode:"cors"});
+      // Fetch + blob pour un vrai téléchargement avec le bon nom de fichier
+      var response=await fetch(f.url);
       if(!response.ok) throw new Error("Fetch failed");
       var blob=await response.blob();
       var a=document.createElement("a");
       a.href=URL.createObjectURL(blob);
       a.download=f.nom;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      document.body.removeChild(a);
+      setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
     } catch(err){
-      // Fallback : ouvrir dans un nouvel onglet avec flag de téléchargement
-      var url=f.url;
-      if(f.resType==="raw") url=url.replace("/raw/upload/","/raw/upload/fl_attachment:true/");
-      window.open(url,"_blank");
+      // Fallback : ouvrir l'URL directement dans un nouvel onglet
+      window.open(f.url,"_blank");
     }
   };
 
