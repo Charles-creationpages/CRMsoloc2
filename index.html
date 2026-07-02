@@ -1422,13 +1422,12 @@ function DossiersPage({addToast}){
     fd.append("file",file);
     fd.append("upload_preset",CLOUDINARY_PRESET);
     fd.append("folder","soloc-crm/"+cleanPath);
-    // Images → resource_type image, tout le reste (PDF, doc...) → raw
-    var resType=file.type.startsWith("image/")?"image":"raw";
-    var uploadUrl="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/"+resType+"/upload";
+    // Tout en "image" : PDFs compris. Cloudinary supporte les PDFs en image.
+    // Avantage : toujours public (pas de 401), fl_attachment fonctionne pour le download.
+    var uploadUrl="https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD+"/image/upload";
     var res=await fetch(uploadUrl,{method:"POST",body:fd});
     if(!res.ok){var t=await res.text();throw new Error("Upload échoué : "+t.slice(0,120));}
     var data=await res.json();
-    data._resType=resType; // on stocke pour l'affichage
     return data;
   };
 
@@ -1500,89 +1499,47 @@ function DossiersPage({addToast}){
   };
 
   // ── Télécharger tout le dossier en ZIP ──────────────────────────────
-  // ── Helpers URL Cloudinary ───────────────────────────────────────────
-  // Encode chaque segment du path pour gérer les accents et espaces
-  const safeUrl=(url)=>{
-    try {
-      var idx=url.indexOf("/upload/");
-      if(idx===-1) return url;
-      var base=url.slice(0,idx+8); // jusqu'à /upload/ inclus
-      var rest=url.slice(idx+8);   // le path du fichier
-      // Encode chaque segment séparément
-      var encoded=rest.split("/").map(function(seg){
-        try{ return encodeURIComponent(decodeURIComponent(seg)); }
-        catch(e){ return encodeURIComponent(seg); }
-      }).join("/");
-      return base+encoded;
-    } catch(e){ return url; }
-  };
-
-  // Vue : Google Docs Viewer pour PDFs (pas de CORS), URL directe pour images
+  // ── Helpers URL Cloudinary (type image - toujours public) ────────────
   const viewFile=(f)=>{
-    var url=safeUrl(f.url);
-    var isPdf=f.nom&&f.nom.toLowerCase().endsWith(".pdf");
-    var isImg=f.type&&f.type.startsWith("image/");
-    if(isPdf){
-      // Google Docs Viewer : fonctionne cross-origin sans CORS
-      window.open("https://docs.google.com/viewer?embedded=true&url="+encodeURIComponent(f.url),"_blank");
-    } else if(isImg){
-      window.open(url,"_blank");
-    } else {
-      window.open(url,"_blank");
-    }
+    // URL directe image Cloudinary - publique, le navigateur affiche le PDF natif
+    window.open(f.url,"_blank");
   };
 
-  // Téléchargement : ouverture directe (Cloudinary raw → le navigateur propose "Enregistrer")
   const downloadFile=(f)=>{
-    var url=safeUrl(f.url);
-    // Créer un lien temporaire — fonctionne pour les ressources cross-origin
-    var a=document.createElement("a");
-    a.href=url;
-    a.target="_blank"; // ouvre dans nouvel onglet si le browser bloque le download
-    a.rel="noopener";
-    a.download=f.nom; // le browser l'utilisera si même origine, sinon ignore
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // fl_attachment fonctionne sur le type image (contrairement au type raw)
+    var dlUrl=f.url.replace("/image/upload/","/image/upload/fl_attachment/");
+    window.open(dlUrl,"_blank");
   };
 
   const downloadZip=async(dossier)=>{
-    addToast("Préparation du ZIP… (peut prendre quelques secondes)");
+    addToast("Préparation du ZIP…");
     try {
       var zip=new window.JSZip();
       var fichiers=dossier.fichiers||[];
-      var ok=0;var failed=[];
+      var ok=0;
       for(var i=0;i<fichiers.length;i++){
         var f=fichiers[i];
         try {
-          var res=await fetch(safeUrl(f.url),{mode:"cors"});
+          var res=await fetch(f.url);
           if(!res.ok) throw new Error(res.status);
           var blob=await res.blob();
           var path=f.sousDossier ? f.sousDossier+"/"+f.nom : f.nom;
           zip.file(path,blob);
           ok++;
         } catch(fe){
-          failed.push(f.nom);
+          addToast("Impossible de récupérer : "+f.nom,"error");
         }
       }
-      if(ok===0){
-        // CORS pas activé — ouvrir les fichiers individuellement dans des onglets
-        addToast("CORS non activé sur Cloudinary — ouverture individuelle des fichiers","error");
-        fichiers.forEach(function(f){ window.open(safeUrl(f.url),"_blank"); });
-        return;
-      }
+      if(ok===0){addToast("Aucun fichier récupéré — active CORS dans Cloudinary","error");return;}
       var content=await zip.generateAsync({type:"blob"});
       var a=document.createElement("a");
       a.href=URL.createObjectURL(content);
-      a.download=dossier.nom.replace(/[éèêë]/g,"e").replace(/[àâä]/g,"a").replace(/[ùûü]/g,"u")+".zip";
+      a.download=dossier.nom.replace(/[^\w\s\-]/g,"")+".zip";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      if(failed.length>0){
-        addToast(ok+" fichier(s) dans le ZIP — "+failed.length+" échoué(s) : "+failed.join(", "),"error");
-      } else {
-        addToast("ZIP téléchargé ✓ ("+ok+" fichiers)");
-      }
+      setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+      addToast("ZIP téléchargé ✓ ("+ok+"/"+fichiers.length+" fichiers)");
     } catch(err){addToast("Erreur ZIP : "+err.message,"error");}
   };
 
