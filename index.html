@@ -1501,61 +1501,88 @@ function DossiersPage({addToast}){
 
   // ── Télécharger tout le dossier en ZIP ──────────────────────────────
   // ── Helpers URL Cloudinary ───────────────────────────────────────────
-  // Encode proprement une URL Cloudinary avec des caractères accentués
+  // Encode chaque segment du path pour gérer les accents et espaces
   const safeUrl=(url)=>{
     try {
-      // Découpe l'URL en protocole+domaine / path, encode chaque segment du path séparément
-      var parts=url.split("/");
-      return parts.map(function(p,i){
-        // Les 4 premiers segments (https:, '', domain, gdx1tmrf) ne bougent pas
-        if(i<4) return p;
-        // Décode d'abord (au cas où déjà partiellement encodé) puis réencode
-        try { return encodeURIComponent(decodeURIComponent(p)).replace(/%2F/g,"/"); }
-        catch(e){ return encodeURIComponent(p); }
+      var idx=url.indexOf("/upload/");
+      if(idx===-1) return url;
+      var base=url.slice(0,idx+8); // jusqu'à /upload/ inclus
+      var rest=url.slice(idx+8);   // le path du fichier
+      // Encode chaque segment séparément
+      var encoded=rest.split("/").map(function(seg){
+        try{ return encodeURIComponent(decodeURIComponent(seg)); }
+        catch(e){ return encodeURIComponent(seg); }
       }).join("/");
+      return base+encoded;
     } catch(e){ return url; }
   };
 
+  // Vue : Google Docs Viewer pour PDFs (pas de CORS), URL directe pour images
   const viewFile=(f)=>{
-    window.open(safeUrl(f.url),"_blank");
-  };
-
-  const downloadFile=async(f)=>{
     var url=safeUrl(f.url);
-    try {
-      var resp=await fetch(url);
-      if(!resp.ok) throw new Error("fetch "+resp.status);
-      var blob=await resp.blob();
-      var a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);
-      a.download=f.nom;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
-    } catch(err){
-      // Fallback simple : ouvrir dans un onglet, le navigateur propose le téléchargement
+    var isPdf=f.nom&&f.nom.toLowerCase().endsWith(".pdf");
+    var isImg=f.type&&f.type.startsWith("image/");
+    if(isPdf){
+      // Google Docs Viewer : fonctionne cross-origin sans CORS
+      window.open("https://docs.google.com/viewer?embedded=true&url="+encodeURIComponent(f.url),"_blank");
+    } else if(isImg){
+      window.open(url,"_blank");
+    } else {
       window.open(url,"_blank");
     }
   };
 
-  const downloadZip=async(dossier)=>{    addToast("Préparation du ZIP…");
+  // Téléchargement : ouverture directe (Cloudinary raw → le navigateur propose "Enregistrer")
+  const downloadFile=(f)=>{
+    var url=safeUrl(f.url);
+    // Créer un lien temporaire — fonctionne pour les ressources cross-origin
+    var a=document.createElement("a");
+    a.href=url;
+    a.target="_blank"; // ouvre dans nouvel onglet si le browser bloque le download
+    a.rel="noopener";
+    a.download=f.nom; // le browser l'utilisera si même origine, sinon ignore
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const downloadZip=async(dossier)=>{
+    addToast("Préparation du ZIP… (peut prendre quelques secondes)");
     try {
       var zip=new window.JSZip();
       var fichiers=dossier.fichiers||[];
+      var ok=0;var failed=[];
       for(var i=0;i<fichiers.length;i++){
         var f=fichiers[i];
-        var res=await fetch(f.url);
-        var blob=await res.blob();
-        var path=f.sousDossier ? f.sousDossier+"/"+f.nom : f.nom;
-        zip.file(path,blob);
+        try {
+          var res=await fetch(safeUrl(f.url),{mode:"cors"});
+          if(!res.ok) throw new Error(res.status);
+          var blob=await res.blob();
+          var path=f.sousDossier ? f.sousDossier+"/"+f.nom : f.nom;
+          zip.file(path,blob);
+          ok++;
+        } catch(fe){
+          failed.push(f.nom);
+        }
+      }
+      if(ok===0){
+        // CORS pas activé — ouvrir les fichiers individuellement dans des onglets
+        addToast("CORS non activé sur Cloudinary — ouverture individuelle des fichiers","error");
+        fichiers.forEach(function(f){ window.open(safeUrl(f.url),"_blank"); });
+        return;
       }
       var content=await zip.generateAsync({type:"blob"});
       var a=document.createElement("a");
       a.href=URL.createObjectURL(content);
-      a.download=dossier.nom+".zip";
+      a.download=dossier.nom.replace(/[éèêë]/g,"e").replace(/[àâä]/g,"a").replace(/[ùûü]/g,"u")+".zip";
+      document.body.appendChild(a);
       a.click();
-      addToast("ZIP téléchargé ✓");
+      document.body.removeChild(a);
+      if(failed.length>0){
+        addToast(ok+" fichier(s) dans le ZIP — "+failed.length+" échoué(s) : "+failed.join(", "),"error");
+      } else {
+        addToast("ZIP téléchargé ✓ ("+ok+" fichiers)");
+      }
     } catch(err){addToast("Erreur ZIP : "+err.message,"error");}
   };
 
