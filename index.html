@@ -66,10 +66,13 @@ const dateKeyLabel = (key) => {
 const mkEvent = (emoji, text) => ({ id: Date.now()+"-"+Math.random().toString(36).slice(2), at: nowISO(), text: emoji?`${emoji} ${text}`:text });
 const displayNameFromEmail = (email) => { if(!email) return ""; const n = email.split("@")[0].replace(/[._]/g," "); return n.charAt(0).toUpperCase()+n.slice(1); };
 
-const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:"", surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"" };
+const asArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[] };
 const criteriaComplete = (c) => {
   if(!c) return false;
-  const base = c.statutClient && c.typologie && c.surface && c.loyer && c.secteur && c.dateEntreeSouhaitee;
+  const hasTypo = asArray(c.typologie).length > 0;
+  const hasDate = c.dateAsap === true || !!c.dateEntreeSouhaitee;
+  const base = c.statutClient && hasTypo && c.surface && c.loyer && c.secteur && hasDate;
   if(!base) return false;
   if(c.statutClient === "CDI" && c.periodeEssaiValidee === null) return false;
   return true;
@@ -391,38 +394,6 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .todo-history-day{margin-bottom:14px;}
 .todo-history-day-label{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .todo-history-day-pct{font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:20px;padding:1px 8px;}
-
-/* TO-DO */
-.todo-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
-.todo-date-label{font-size:18px;font-weight:800;color:var(--text);font-family:"Sora",sans-serif;letter-spacing:-.02em;}
-.todo-date-today-badge{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-l);border-radius:20px;padding:2px 9px;margin-left:8px;vertical-align:middle;}
-.todo-progress-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:20px;}
-.todo-progress-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
-.todo-progress-label{font-size:13px;font-weight:700;color:var(--text);}
-.todo-progress-pct{font-size:20px;font-weight:800;font-family:"Sora",sans-serif;}
-.todo-progress-bar-bg{background:var(--surface2);border-radius:20px;height:9px;overflow:hidden;}
-.todo-progress-bar-fill{height:100%;border-radius:20px;transition:width .3s ease;}
-.todo-add-row{display:flex;gap:8px;margin-bottom:18px;}
-.todo-add-row input{flex:1;}
-.todo-list{display:flex;flex-direction:column;gap:8px;margin-bottom:22px;}
-.todo-item{display:flex;align-items:flex-start;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 14px;transition:all .15s;}
-.todo-item.done{background:var(--surface2);}
-.todo-checkbox{width:21px;height:21px;border-radius:6px;border:2px solid var(--border2);background:#fff;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .15s;}
-.todo-checkbox:hover{border-color:var(--accent);}
-.todo-checkbox.checked{background:var(--green);border-color:var(--green);color:#fff;}
-.todo-item-body{flex:1;min-width:0;}
-.todo-item-text{font-size:13px;font-weight:600;color:var(--text);line-height:1.45;}
-.todo-item.done .todo-item-text{text-decoration:line-through;color:var(--text3);}
-.todo-item-meta{font-size:10px;color:var(--text3);margin-top:3px;}
-.todo-item-del{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;transition:all .15s;}
-.todo-item-del:hover{color:var(--red);background:var(--red-bg);}
-.todo-item-del:disabled{opacity:.25;cursor:not-allowed;}
-.todo-item-del:disabled:hover{color:var(--text3);background:none;}
-.todo-empty{text-align:center;padding:30px 0;color:var(--text3);font-size:13px;}
-.todo-history-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text2);padding:10px 0;border-top:1px solid var(--border);user-select:none;}
-.todo-history-day{margin-bottom:14px;}
-.todo-history-day-label{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
-.todo-history-day-pct{font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:20px;padding:1px 8px;}
 `;
 
 function useToasts(){
@@ -490,7 +461,8 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
   const cls = ["kb-card"];
   if(stale) cls.push("warn");
   if(lead.column==="valide"&&lead.paid) cls.push("paid");
-  const critSummary = lead.criteria&&lead.criteria.typologie ? `${lead.criteria.typologie} · ${lead.criteria.secteur||"—"} · ${lead.criteria.loyer?lead.criteria.loyer+"€":"—"}` : null;
+  const typoArr = asArray(lead.criteria && lead.criteria.typologie);
+  const critSummary = typoArr.length ? (typoArr.join("/")+" · "+(lead.criteria.secteur||"—")+" · "+(lead.criteria.loyer?lead.criteria.loyer+"€":"—")) : null;
 
   return(
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
@@ -615,13 +587,21 @@ function AddLeadModal({onSave,onClose}){
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
 function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
-  const [form,setForm]=useState({
-    name:lead.name, phone:lead.phone||"", email:lead.email||"",
-    notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column,
-    criteria:{...blankCriteria,...(lead.criteria||{})}
+  const [form,setForm]=useState(()=>{
+    const c={...blankCriteria,...(lead.criteria||{})};
+    c.typologie=asArray(c.typologie);
+    c.etatLogement=asArray(c.etatLogement);
+    if(c.dateAsap===undefined) c.dateAsap=false;
+    return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, criteria:c };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
+  const toggleInArray=(k,val)=>setForm(p=>{
+    const cur=p.criteria[k]||[];
+    const next=cur.includes(val)?cur.filter(x=>x!==val):[...cur,val];
+    return {...p,criteria:{...p.criteria,[k]:next}};
+  });
 
   const handleSave=(forceColumn)=>{
     const targetCol = forceColumn||form.column;
@@ -689,18 +669,20 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
         )}
 
         <div className="modal-section">Critères de recherche</div>
-        <div className="fr">
-          <div className="fg"><label className="fl">Statut client *</label>
-            <select className="fi" value={form.criteria.statutClient} onChange={e=>setCrit("statutClient",e.target.value)}>
-              <option value="">—</option>
-              {STATUTS.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="fg"><label className="fl">Typologie *</label>
-            <select className="fi" value={form.criteria.typologie} onChange={e=>setCrit("typologie",e.target.value)}>
-              <option value="">—</option>
-              {TYPOLOGIES.map(t=><option key={t} value={t}>{t}</option>)}
-            </select>
+        <div className="fg"><label className="fl">Statut client *</label>
+          <select className="fi" value={form.criteria.statutClient} onChange={e=>setCrit("statutClient",e.target.value)}>
+            <option value="">—</option>
+            {STATUTS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="fg">
+          <label className="fl">Typologie * — plusieurs possibles</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+            {TYPOLOGIES.map(t=>{
+              const active=(form.criteria.typologie||[]).includes(t);
+              return <button key={t} type="button" onClick={()=>toggleInArray("typologie",t)}
+                style={{padding:"7px 13px",borderRadius:20,border:"1.5px solid",borderColor:active?"var(--accent)":"var(--border2)",background:active?"var(--accent-l)":"var(--surface2)",color:active?"var(--accent-d)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{t}</button>;
+            })}
           </div>
         </div>
         {form.criteria.statutClient==="CDI"&&(
@@ -718,7 +700,21 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
         </div>
         <div className="fr">
           <div className="fg"><label className="fl">Secteur *</label><input className="fi" placeholder="Lyon 6, Villeurbanne…" value={form.criteria.secteur} onChange={e=>setCrit("secteur",e.target.value)}/></div>
-          <div className="fg"><label className="fl">Date d'entrée souhaitée *</label><input className="fi" type="date" value={form.criteria.dateEntreeSouhaitee} onChange={e=>setCrit("dateEntreeSouhaitee",e.target.value)}/></div>
+          <div className="fg">
+            <label className="fl">Date d'entrée souhaitée *</label>
+            <button type="button" onClick={()=>setCrit("dateAsap",!form.criteria.dateAsap)}
+              style={{width:"100%",marginBottom:6,padding:"8px 0",borderRadius:9,border:"1.5px solid",borderColor:form.criteria.dateAsap?"var(--accent)":"var(--border2)",background:form.criteria.dateAsap?"var(--accent)":"var(--surface2)",color:form.criteria.dateAsap?"#fff":"var(--text2)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>⚡ Dès que possible</button>
+            <input className="fi" type="date" disabled={form.criteria.dateAsap} style={form.criteria.dateAsap?{opacity:.4}:{}} value={form.criteria.dateEntreeSouhaitee} onChange={e=>setCrit("dateEntreeSouhaitee",e.target.value)}/>
+          </div>
+        </div>
+        <div className="fg">
+          <label className="fl">Type de logement — non obligatoire</label>
+          <div className="seg">
+            {["Nu","Meublé"].map(t=>{
+              const active=(form.criteria.etatLogement||[]).includes(t);
+              return <button key={t} type="button" className="seg-btn" style={{background:active?"var(--accent-l)":"var(--surface2)",borderColor:active?"var(--accent)":"var(--border2)",color:active?"var(--accent-d)":"var(--text2)"}} onClick={()=>toggleInArray("etatLogement",t)}>{t}</button>;
+            })}
+          </div>
         </div>
         <div className="fg"><label className="fl">Prestations supplémentaires</label><textarea className="fi" rows="2" value={form.criteria.prestationsSupp} onChange={e=>setCrit("prestationsSupp",e.target.value)}/></div>
 
@@ -766,18 +762,19 @@ function RechercheTable({leads,search}){
   return(
     <table className="list-table">
       <thead><tr>
-        <th>Client</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
+        <th>Client</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
       </tr></thead>
       <tbody>
         {rows.map(l=>(
           <tr key={l.id}>
             <td className="td-name">{l.name}</td>
             <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}</td>
-            <td>{l.criteria.typologie}</td>
+            <td>{asArray(l.criteria.typologie).join(", ")||"—"}</td>
             <td>{l.criteria.surface} m²</td>
             <td>{l.criteria.loyer} €</td>
             <td>{l.criteria.secteur}</td>
-            <td>{fmtDate(l.criteria.dateEntreeSouhaitee)}</td>
+            <td>{asArray(l.criteria.etatLogement).join(" / ")||"Indifférent"}</td>
+            <td>{l.criteria.dateAsap?"⚡ Dès que possible":fmtDate(l.criteria.dateEntreeSouhaitee)}</td>
             <td>{l.criteria.prestationsSupp||"—"}</td>
           </tr>
         ))}
