@@ -92,6 +92,19 @@ const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].inclu
 const STATUTS = ["Étudiant","CDI","CDD","Indépendant"];
 const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
 
+// ─── FINANCE (onglet réservé à Charles) ──────────────────────────────────
+const FINANCE_EMAIL = "charlesblyopro@gmail.com";
+const eurFmt = (n) => Math.round(n||0).toLocaleString("fr-FR")+" €";
+const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
+const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const monthLabel = (mk) => { if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
+const prestationFromLead = (l) => {
+  const c = l.criteria||{};
+  if(c.statutClient==="Étudiant") return {ttc:890,pending:false};
+  if(c.statutClient==="CDI" && c.periodeEssaiValidee===true) return {ttc:990,pending:false};
+  return {ttc:null,pending:true};
+};
+
 // ─── ICONS ───────────────────────────────────────────────────────────────
 const ICONS = (s) => ({
   plus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -124,6 +137,10 @@ const ICONS = (s) => ({
   home:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
   pin:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   upload:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>,
+  minus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  arrowUp:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/></svg>,
+  arrowDown:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="16 17 7 17 7 8"/></svg>,
+  wallet:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M21 12a2 2 0 0 0-2-2h-4a2 2 0 0 0 0 4h4a2 2 0 0 0 2-2z"/></svg>,
 });
 const Ic = ({n,s=16}) => { const m=ICONS(s); return m[n]||null; };
 
@@ -1343,7 +1360,7 @@ function TodoPage({user,addToast}){
   const myName = displayNameFromEmail(user.email);
 
   useEffect(()=>{
-    const unsub=fsOnSnapshot(fsCollection(db,"todosV2"),snap=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"todos"),snap=>{
       setTasks(snap.docs.map(d=>({id:d.id,...d.data()})));
       setLoading(false);
     },()=>addToast("Erreur chargement to-do","error"));
@@ -1360,20 +1377,20 @@ function TodoPage({user,addToast}){
   const addTask=()=>{
     const text=newText.trim();
     if(!text) return;
-    fsAddDoc(fsCollection(db,"todosV2"),{
+    fsAddDoc(fsCollection(db,"todos"),{
       text, done:false, createdBy:myName, createdAt:nowISO(), doneAt:null
     }).then(()=>{setNewText("");}).catch(()=>addToast("Erreur d'ajout","error"));
   };
 
   const toggleTask=(t)=>{
     const willDone=!t.done;
-    fsUpdateDoc(fsDocRef(db,"todosV2",t.id),{done:willDone, doneAt:willDone?nowISO():null})
+    fsUpdateDoc(fsDocRef(db,"todos",t.id),{done:willDone, doneAt:willDone?nowISO():null})
       .catch(()=>addToast("Erreur","error"));
   };
 
   const deleteTask=(t)=>{
     if(!confirm("Supprimer cette tâche ?")) return;
-    fsDeleteDoc(fsDocRef(db,"todosV2",t.id))
+    fsDeleteDoc(fsDocRef(db,"todos",t.id))
       .then(()=>addToast("Tâche supprimée"))
       .catch(()=>addToast("Erreur de suppression","error"));
   };
@@ -1468,6 +1485,216 @@ function TodoPage({user,addToast}){
   );
 }
 
+// ─── FINANCE PAGE (réservée à Charles) ───────────────────────────────────
+function FinancePage({user, leads, addToast}){
+  const [finance,setFinance]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [curMonth,setCurMonth]=useState(null);
+  const [globalView,setGlobalView]=useState(false);
+  const [formType,setFormType]=useState(null);
+  const [fLabel,setFLabel]=useState("");
+  const [fAmount,setFAmount]=useState("");
+  const [fTtc,setFTtc]=useState(false);
+  const creatingRef=useRef(new Set());
+
+  useEffect(()=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"finance"),snap=>{
+      setFinance(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    },()=>addToast("Erreur chargement finance","error"));
+    return unsub;
+  },[]);
+
+  // Import auto des dossiers validés (une seule fois par lead via financeLogged)
+  useEffect(()=>{
+    if(loading) return;
+    leads.filter(l=>l.column==="valide" && !l.financeLogged).forEach(l=>{
+      if(creatingRef.current.has(l.id)) return;
+      creatingRef.current.add(l.id);
+      const info=prestationFromLead(l);
+      const iso=l.validatedAt||nowISO();
+      const entry={
+        type:"in",
+        label:l.name+(l.criteria&&l.criteria.statutClient?(" — "+l.criteria.statutClient):""),
+        amount:info.pending?0:Math.round(info.ttc/1.2),
+        ttc:info.pending?null:info.ttc,
+        pending:info.pending,
+        source:"auto",
+        leadId:l.id,
+        createdAt:iso,
+        monthKey:monthKeyFromISO(iso)
+      };
+      fsAddDoc(fsCollection(db,"finance"),entry)
+        .then(()=>fsUpdateDoc(fsDocRef(db,"leads",l.id),{financeLogged:true}))
+        .catch(()=>{creatingRef.current.delete(l.id);});
+    });
+  },[leads,loading]);
+
+  const fMonth=(f)=>f.monthKey||monthKeyFromISO(f.createdAt);
+  const sumIn=(arr)=>arr.filter(f=>f.type==="in").reduce((s,f)=>s+(f.amount||0),0);
+  const sumOut=(arr)=>arr.filter(f=>f.type==="out").reduce((s,f)=>s+(f.amount||0),0);
+
+  const currentMK=todayKey().slice(0,7);
+  const monthsPresent=Array.from(new Set(finance.map(fMonth)));
+  const months=Array.from(new Set(monthsPresent.concat([currentMK]))).sort();
+  useEffect(()=>{ if(curMonth===null && months.length) setCurMonth(months[months.length-1]); },[months,curMonth]);
+  const activeMonth=curMonth||currentMK;
+
+  const view=globalView?finance:finance.filter(f=>fMonth(f)===activeMonth);
+  const globIn=sumIn(finance), globOut=sumOut(finance);
+  const vin=sumIn(view), vout=sumOut(view);
+  const maxNet=Math.max.apply(null,months.map(mk=>Math.abs(sumIn(finance.filter(f=>fMonth(f)===mk))-sumOut(finance.filter(f=>fMonth(f)===mk)))).concat([1]));
+
+  const prevMonth=()=>{ const i=months.indexOf(activeMonth); if(i>0){setGlobalView(false);setCurMonth(months[i-1]);} };
+  const nextMonth=()=>{ const i=months.indexOf(activeMonth); if(i<months.length-1){setGlobalView(false);setCurMonth(months[i+1]);} };
+
+  const openForm=(type)=>{ setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); };
+  const save=()=>{
+    const lbl=fLabel.trim(); const v=parseFloat(fAmount)||0;
+    if(!lbl||!v){ addToast("Renseigne un libellé et un montant","error"); return; }
+    const amountHT = fTtc ? Math.round(v/1.2) : Math.round(v);
+    const iso=nowISO();
+    fsAddDoc(fsCollection(db,"finance"),{
+      type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null,
+      pending:false, source:"manuel", leadId:null, createdAt:iso, monthKey:monthKeyFromISO(iso)
+    }).then(()=>{ setFormType(null); addToast("✓ Mouvement ajouté"); })
+     .catch(()=>addToast("Erreur d'ajout","error"));
+  };
+  const del=(f)=>{
+    if(!confirm("Supprimer ce mouvement ?")) return;
+    fsDeleteDoc(fsDocRef(db,"finance",f.id)).then(()=>addToast("Mouvement supprimé")).catch(()=>addToast("Erreur","error"));
+  };
+  const complete=(f)=>{
+    const raw=prompt("Montant de la prestation en TTC ? (converti en HT ÷1,2)");
+    if(raw===null) return;
+    const v=parseFloat(String(raw).replace(",","."))||0;
+    if(!v) return;
+    fsUpdateDoc(fsDocRef(db,"finance",f.id),{amount:Math.round(v/1.2), ttc:v, pending:false})
+      .then(()=>addToast("✓ Montant renseigné")).catch(()=>addToast("Erreur","error"));
+  };
+
+  const cardStyle={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  const htPreview = (fTtc&&fAmount) ? ("= "+eurFmt((parseFloat(fAmount)||0)/1.2)+" HT") : "";
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Finance</div>
+          <div className="ps">Montants en HT — entrées auto depuis les dossiers validés</div>
+        </div>
+      </div>
+      <div className="main">
+        {loading?(
+          <div className="empty-state"><div className="es-t">Chargement…</div></div>
+        ):(
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,opacity:globalView?.4:1,pointerEvents:globalView?"none":"auto"}}>
+                <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={prevMonth}><Ic n="chevL" s={15}/></button>
+                <span style={{fontSize:14,fontWeight:700,minWidth:120,textAlign:"center"}}>{monthLabel(activeMonth)}</span>
+                <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={nextMonth}><Ic n="chevR" s={15}/></button>
+              </div>
+              <button className="btn btn-g" style={globalView?{background:"var(--ardoise)",color:"#fff",borderColor:"var(--ardoise)"}:{}} onClick={()=>setGlobalView(g=>!g)}>Global</button>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr 1fr 1fr",gap:10,marginBottom:18}}>
+              <div style={{background:"var(--ardoise)",borderRadius:12,padding:"13px 15px"}}>
+                <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.55)",textTransform:"uppercase",letterSpacing:".06em"}}>Solde global HT</div>
+                <div className="brand-font" style={{fontSize:24,fontWeight:800,color:"#fff",marginTop:4}}>{eurFmt(globIn-globOut)}</div>
+              </div>
+              <div style={cardStyle}>
+                <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".06em"}}>{globalView?"Tout l'historique":"Net du mois"}</div>
+                <div className="brand-font" style={{fontSize:22,fontWeight:800,marginTop:4,color:(vin-vout)>=0?"var(--text)":"var(--red)"}}>{eurFmt(vin-vout)}</div>
+                <div style={{fontSize:10,color:"var(--text3)",marginTop:1}}>Net HT</div>
+              </div>
+              <div style={cardStyle}>
+                <div style={{fontSize:10,fontWeight:700,color:"var(--green)",textTransform:"uppercase",letterSpacing:".06em"}}>Entrées</div>
+                <div className="brand-font" style={{fontSize:22,fontWeight:800,marginTop:4,color:"var(--green)"}}>{eurFmt(vin)}</div>
+              </div>
+              <div style={cardStyle}>
+                <div style={{fontSize:10,fontWeight:700,color:"var(--red)",textTransform:"uppercase",letterSpacing:".06em"}}>Sorties</div>
+                <div className="brand-font" style={{fontSize:22,fontWeight:800,marginTop:4,color:"var(--red)"}}>{eurFmt(vout)}</div>
+              </div>
+            </div>
+
+            <div style={{...cardStyle,marginBottom:18}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:12}}>Net HT par mois</div>
+              <div style={{display:"flex",alignItems:"flex-end",gap:18,height:90,paddingLeft:4,overflowX:"auto"}}>
+                {months.map(mk=>{
+                  const net=sumIn(finance.filter(f=>fMonth(f)===mk))-sumOut(finance.filter(f=>fMonth(f)===mk));
+                  const h=Math.max(6,Math.round(Math.abs(net)/maxNet*70));
+                  const active=!globalView&&mk===activeMonth;
+                  return(
+                    <div key={mk} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}} onClick={()=>{setGlobalView(false);setCurMonth(mk);}}>
+                      <div style={{fontSize:11,fontWeight:700,color:active?"var(--accent)":"var(--text2)",whiteSpace:"nowrap"}}>{eurFmt(net)}</div>
+                      <div style={{width:46,height:h,borderRadius:"6px 6px 0 0",background:active?"var(--accent)":"var(--accent-l2)"}}></div>
+                      <div style={{fontSize:10,color:"var(--text3)",fontWeight:600}}>{monthLabel(mk).split(" ")[0].slice(0,4)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:10,marginBottom:8}}>
+              <button className="btn btn-block" style={{background:"var(--green)",color:"#fff"}} onClick={()=>openForm("in")}><Ic n="plus" s={13}/>Entrée</button>
+              <button className="btn btn-block" style={{background:"var(--red)",color:"#fff"}} onClick={()=>openForm("out")}><Ic n="minus" s={13}/>Dépense</button>
+            </div>
+
+            {formType&&(
+              <div style={{background:"var(--surface)",border:"1.5px solid var(--border)",borderRadius:12,padding:14,marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>{formType==="in"?"Nouvelle entrée":"Nouvelle dépense"}</div>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <input className="fi" style={{flex:2}} placeholder="Libellé" value={fLabel} onChange={e=>setFLabel(e.target.value)} autoFocus/>
+                  <input className="fi" style={{flex:1}} type="number" placeholder="Montant €" value={fAmount} onChange={e=>setFAmount(e.target.value)}/>
+                </div>
+                <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"var(--text2)",marginBottom:10,cursor:"pointer"}}>
+                  <input type="checkbox" checked={fTtc} onChange={e=>setFTtc(e.target.checked)}/> C'est un montant TTC → convertir en HT (÷1,2)
+                  <span style={{marginLeft:"auto",fontWeight:700,color:"var(--accent)"}}>{htPreview}</span>
+                </label>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                  <button className="btn btn-g" onClick={()=>setFormType(null)}>Annuler</button>
+                  <button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Ajouter</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{fontSize:10,fontWeight:800,color:"var(--accent)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:8}}>{globalView?"Mouvements — tout l'historique":"Mouvements — "+monthLabel(activeMonth)}</div>
+            <div style={{...cardStyle,padding:0}}>
+              {view.length===0?(
+                <div style={{padding:22,textAlign:"center",color:"var(--text3)",fontSize:12,fontStyle:"italic"}}>Aucun mouvement sur cette période.</div>
+              ):(
+                view.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map((f,idx,arr)=>{
+                  const isIn=f.type==="in";
+                  return(
+                    <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 13px",borderBottom:idx<arr.length-1?"1px solid var(--border)":"none"}}>
+                      <div style={{width:30,height:30,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isIn?"var(--green-bg)":"var(--red-bg)",color:isIn?"var(--green)":"var(--red)"}}><Ic n={isIn?"arrowUp":"arrowDown"} s={15}/></div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600}}>{f.label}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
+                          <span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(f.createdAt)}</span>
+                          {f.source==="auto"
+                            ?<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#EFF6FF",color:"#1d4ed8"}}>AUTO · validé</span>
+                            :<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}}>MANUEL</span>}
+                          {f.pending&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e"}}>à compléter</span>}
+                        </div>
+                      </div>
+                      {f.pending
+                        ?<button className="btn btn-g btn-sm" onClick={()=>complete(f)}>Compléter</button>
+                        :<div className="brand-font" style={{fontSize:15,fontWeight:800,color:isIn?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>{(isIn?"+":"−")+eurFmt(f.amount||0)}</div>}
+                      <button className="ib" style={{color:"var(--text3)"}} onClick={()=>del(f)} title="Supprimer"><Ic n="trash" s={14}/></button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────
 function App(){
   const [user,setUser]=useState(undefined);
@@ -1525,8 +1752,9 @@ function App(){
       setModal({type:"gate",lead});
       return;
     }
+    const moveExtra = col==="valide" ? {validatedAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",id),{
-      column:col, lastActivity:nowISO(),
+      column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
     }).then(()=>addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name));
   };
@@ -1558,9 +1786,10 @@ function App(){
     const colChanged = targetCol!==lead.column;
     const hist=[...(lead.history||[])];
     if(colChanged) hist.push(mkEvent("",eventLabel(targetCol)));
+    const valExtra = (targetCol==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:targetCol,
+      criteria:form.criteria, column:targetCol, ...valExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
   };
@@ -1588,6 +1817,7 @@ function App(){
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={16}/>To-do</div>
+            {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
           </div>
           <div className="sb-footer">
             <div className="sb-user">{displayNameFromEmail(user.email)}</div>
@@ -1596,7 +1826,9 @@ function App(){
         </aside>
 
         <div className="content">
-          {tab==="partenaires"
+          {(tab==="finance"&&user.email===FINANCE_EMAIL)
+            ? <FinancePage user={user} leads={leads} addToast={addToast}/>
+            : tab==="partenaires"
             ? <PartenairesPage addToast={addToast}/>
             : tab==="biens"
             ? <BiensPage addToast={addToast}/>
