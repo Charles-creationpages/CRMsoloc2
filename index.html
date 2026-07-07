@@ -94,7 +94,8 @@ const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
 
 // ─── FINANCE (onglet réservé à Charles) ──────────────────────────────────
 const FINANCE_EMAIL = "charlesblyopro@gmail.com";
-const eurFmt = (n) => Math.round(n||0).toLocaleString("fr-FR")+" €";
+const round2 = (x) => Math.round((x||0)*100)/100;
+const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
 const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const monthLabel = (mk) => { if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
@@ -1495,7 +1496,9 @@ function FinancePage({user, leads, addToast}){
   const [fLabel,setFLabel]=useState("");
   const [fAmount,setFAmount]=useState("");
   const [fTtc,setFTtc]=useState(false);
+  const [fDate,setFDate]=useState("");
   const creatingRef=useRef(new Set());
+  const seededRef=useRef(false);
 
   useEffect(()=>{
     const unsub=fsOnSnapshot(fsCollection(db,"finance"),snap=>{
@@ -1516,7 +1519,7 @@ function FinancePage({user, leads, addToast}){
       const entry={
         type:"in",
         label:l.name+(l.criteria&&l.criteria.statutClient?(" — "+l.criteria.statutClient):""),
-        amount:info.pending?0:Math.round(info.ttc/1.2),
+        amount:info.pending?0:round2(info.ttc/1.2),
         ttc:info.pending?null:info.ttc,
         pending:info.pending,
         source:"auto",
@@ -1529,6 +1532,23 @@ function FinancePage({user, leads, addToast}){
         .catch(()=>{creatingRef.current.delete(l.id);});
     });
   },[leads,loading]);
+
+  // Seed unique des mouvements de juin 2026 (antérieurs à SOLOC) — ne s'exécute qu'une fois
+  useEffect(()=>{
+    if(loading || seededRef.current) return;
+    if(finance.some(f=>f.seedTag==="june2026")){ seededRef.current=true; return; }
+    seededRef.current=true;
+    const juneISO="2026-06-15T12:00:00.000Z";
+    const base={ pending:false, source:"manuel", leadId:null, createdAt:juneISO, monthKey:"2026-06", seedTag:"june2026" };
+    const items=[
+      {...base, type:"in",  label:"Client logé avant SOLOC (1)", amount:round2(890/1.2), ttc:890},
+      {...base, type:"in",  label:"Client logé avant SOLOC (2)", amount:round2(890/1.2), ttc:890},
+      {...base, type:"out", label:"Commission Kevin (due)",      amount:889.98, ttc:null},
+      {...base, type:"out", label:"Google Ads juin",             amount:365,    ttc:null},
+      {...base, type:"out", label:"Flyers écoles",               amount:33.99,  ttc:null}
+    ];
+    Promise.all(items.map(it=>fsAddDoc(fsCollection(db,"finance"),it))).catch(()=>{seededRef.current=false;});
+  },[loading,finance]);
 
   const fMonth=(f)=>f.monthKey||monthKeyFromISO(f.createdAt);
   const sumIn=(arr)=>arr.filter(f=>f.type==="in").reduce((s,f)=>s+(f.amount||0),0);
@@ -1548,12 +1568,12 @@ function FinancePage({user, leads, addToast}){
   const prevMonth=()=>{ const i=months.indexOf(activeMonth); if(i>0){setGlobalView(false);setCurMonth(months[i-1]);} };
   const nextMonth=()=>{ const i=months.indexOf(activeMonth); if(i<months.length-1){setGlobalView(false);setCurMonth(months[i+1]);} };
 
-  const openForm=(type)=>{ setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); };
+  const openForm=(type)=>{ setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); setFDate(""); };
   const save=()=>{
     const lbl=fLabel.trim(); const v=parseFloat(fAmount)||0;
     if(!lbl||!v){ addToast("Renseigne un libellé et un montant","error"); return; }
-    const amountHT = fTtc ? Math.round(v/1.2) : Math.round(v);
-    const iso=nowISO();
+    const amountHT = fTtc ? round2(v/1.2) : round2(v);
+    const iso = fDate ? new Date(fDate+"T12:00:00").toISOString() : nowISO();
     fsAddDoc(fsCollection(db,"finance"),{
       type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null,
       pending:false, source:"manuel", leadId:null, createdAt:iso, monthKey:monthKeyFromISO(iso)
@@ -1647,6 +1667,10 @@ function FinancePage({user, leads, addToast}){
                 <div style={{display:"flex",gap:8,marginBottom:10}}>
                   <input className="fi" style={{flex:2}} placeholder="Libellé" value={fLabel} onChange={e=>setFLabel(e.target.value)} autoFocus/>
                   <input className="fi" style={{flex:1}} type="number" placeholder="Montant €" value={fAmount} onChange={e=>setFAmount(e.target.value)}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <input className="fi" style={{flex:1}} type="date" value={fDate} onChange={e=>setFDate(e.target.value)}/>
+                  <span style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>vide = aujourd'hui</span>
                 </div>
                 <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"var(--text2)",marginBottom:10,cursor:"pointer"}}>
                   <input type="checkbox" checked={fTtc} onChange={e=>setFTtc(e.target.checked)}/> C'est un montant TTC → convertir en HT (÷1,2)
