@@ -1333,71 +1333,81 @@ function PartenairesPage({addToast}){
   );
 }
 
-// ─── TODO PAGE ───────────────────────────────────────────────────────────
+// ─── TODO PAGE (v2 — liste persistante d'Emmy) ───────────────────────────
 function TodoPage({user,addToast}){
-  const [todos,setTodos]=useState([]);
+  const [tasks,setTasks]=useState([]);
   const [loading,setLoading]=useState(true);
   const [newText,setNewText]=useState("");
-  const [showHistory,setShowHistory]=useState(false);
+  const [showDone,setShowDone]=useState(false);
 
   const myName = displayNameFromEmail(user.email);
-  const dayKey = todayKey();
 
   useEffect(()=>{
-    const unsub=fsOnSnapshot(fsCollection(db,"todos"),snap=>{
-      setTodos(snap.docs.map(d=>({id:d.id,...d.data()})));
+    const unsub=fsOnSnapshot(fsCollection(db,"todosV2"),snap=>{
+      setTasks(snap.docs.map(d=>({id:d.id,...d.data()})));
       setLoading(false);
     },()=>addToast("Erreur chargement to-do","error"));
     return unsub;
   },[]);
 
-  const todayTodos = todos.filter(t=>t.dayKey===dayKey).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
-  const doneCount = todayTodos.filter(t=>t.done).length;
-  const totalCount = todayTodos.length;
-  const pct = totalCount>0 ? Math.round((doneCount/totalCount)*100) : 0;
+  const openTasks = tasks.filter(t=>!t.done).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+  const doneTasks = tasks.filter(t=>t.done).sort((a,b)=>new Date(b.doneAt||0)-new Date(a.doneAt||0));
+  const total = tasks.length;
+  const doneCount = doneTasks.length;
+  const pct = total>0 ? Math.round((doneCount/total)*100) : 0;
+  const progressColor = pct===100 ? "var(--green)" : pct>=50 ? "var(--accent)" : "var(--orange)";
 
-  const pastDays = {};
-  todos.filter(t=>t.dayKey!==dayKey).forEach(t=>{
-    if(!pastDays[t.dayKey]) pastDays[t.dayKey]=[];
-    pastDays[t.dayKey].push(t);
-  });
-  const pastDayKeys = Object.keys(pastDays).sort((a,b)=>b.localeCompare(a));
-
-  const addTodo=()=>{
+  const addTask=()=>{
     const text=newText.trim();
     if(!text) return;
-    fsAddDoc(fsCollection(db,"todos"),{
-      text, done:false, dayKey, createdBy:myName, createdAt:nowISO()
+    fsAddDoc(fsCollection(db,"todosV2"),{
+      text, done:false, createdBy:myName, createdAt:nowISO(), doneAt:null
     }).then(()=>{setNewText("");}).catch(()=>addToast("Erreur d'ajout","error"));
   };
 
-  const toggleTodo=(todo)=>{
-    fsUpdateDoc(fsDocRef(db,"todos",todo.id),{done:!todo.done})
+  const toggleTask=(t)=>{
+    const willDone=!t.done;
+    fsUpdateDoc(fsDocRef(db,"todosV2",t.id),{done:willDone, doneAt:willDone?nowISO():null})
       .catch(()=>addToast("Erreur","error"));
   };
 
-  const deleteTodo=(todo)=>{
-    if(todo.createdBy!==myName) return; // sécurité front, les règles Firestore protègent aussi côté serveur
+  const deleteTask=(t)=>{
     if(!confirm("Supprimer cette tâche ?")) return;
-    fsDeleteDoc(fsDocRef(db,"todos",todo.id))
+    fsDeleteDoc(fsDocRef(db,"todosV2",t.id))
       .then(()=>addToast("Tâche supprimée"))
       .catch(()=>addToast("Erreur de suppression","error"));
   };
 
-  const progressColor = pct===100 ? "var(--green)" : pct>=50 ? "var(--accent)" : "var(--orange)";
+  const AgeBadge=({t})=>{
+    const d=Math.floor(daysSince(t.createdAt));
+    if(d>=3) return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e",whiteSpace:"nowrap"}}>⏳ depuis {d}j</span>;
+    if(d<=0) return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)",whiteSpace:"nowrap"}}>aujourd'hui</span>;
+    return <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:"var(--surface2)",color:"var(--text3)",whiteSpace:"nowrap"}}>il y a {d}j</span>;
+  };
 
-  const TodoRow=({t})=>(
-    <div className={"todo-item"+(t.done?" done":"")}>
-      <div className={"todo-checkbox"+(t.done?" checked":"")} onClick={()=>toggleTodo(t)}>
-        {t.done&&<Ic n="check" s={13}/>}
+  const OpenRow=({t})=>{
+    const overdue=Math.floor(daysSince(t.createdAt))>=3;
+    return(
+      <div className="todo-item" style={overdue?{borderLeft:"3px solid var(--orange)"}:{}}>
+        <div className="todo-checkbox" onClick={()=>toggleTask(t)}></div>
+        <div className="todo-item-body">
+          <div className="todo-item-text">{t.text}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <AgeBadge t={t}/>
+          <button className="todo-item-del" onClick={()=>deleteTask(t)} title="Supprimer"><Ic n="trash" s={14}/></button>
+        </div>
       </div>
+    );
+  };
+
+  const DoneRow=({t})=>(
+    <div className="todo-item done">
+      <div className="todo-checkbox checked" onClick={()=>toggleTask(t)}><Ic n="check" s={13}/></div>
       <div className="todo-item-body">
         <div className="todo-item-text">{t.text}</div>
-        <div className="todo-item-meta">Ajoutée par {t.createdBy||"—"}</div>
       </div>
-      <button className="todo-item-del" disabled={t.createdBy!==myName} onClick={()=>deleteTodo(t)} title={t.createdBy===myName?"Supprimer":"Seul l'auteur peut supprimer"}>
-        <Ic n="trash" s={14}/>
-      </button>
+      <button className="todo-item-del" onClick={()=>deleteTask(t)} title="Supprimer"><Ic n="trash" s={14}/></button>
     </div>
   );
 
@@ -1406,7 +1416,7 @@ function TodoPage({user,addToast}){
       <div className="topbar">
         <div>
           <div className="pt">To-do</div>
-          <div className="ps">Tâches du jour partagées entre Charles et Emmy</div>
+          <div className="ps">Les tâches restent affichées tant qu'elles ne sont pas cochées</div>
         </div>
       </div>
       <div className="main">
@@ -1414,57 +1424,42 @@ function TodoPage({user,addToast}){
           <div className="empty-state"><div className="es-t">Chargement…</div></div>
         ):(
           <>
-            <div className="todo-header-row">
-              <div className="todo-date-label">{dateKeyLabel(dayKey)}<span className="todo-date-today-badge">Aujourd'hui</span></div>
-            </div>
-
             <div className="todo-progress-card">
               <div className="todo-progress-top">
-                <span className="todo-progress-label">{doneCount} / {totalCount} tâche{totalCount!==1?"s":""} terminée{doneCount!==1?"s":""}</span>
-                <span className="todo-progress-pct" style={{color:progressColor}}>{pct}%</span>
+                <span className="todo-progress-label">{openTasks.length} à faire</span>
+                <span className="todo-progress-pct" style={{color:progressColor}}>{doneCount} / {total}</span>
               </div>
               <div className="todo-progress-bar-bg"><div className="todo-progress-bar-fill" style={{width:pct+"%",background:progressColor}}/></div>
             </div>
 
             <div className="todo-add-row">
-              <input className="fi" placeholder="Ajouter une tâche…" value={newText}
+              <input className="fi" placeholder="Nouvelle tâche…" value={newText}
                 onChange={e=>setNewText(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter")addTodo();}}/>
-              <button className="btn btn-p" onClick={addTodo}><Ic n="plus" s={13}/>Ajouter</button>
+                onKeyDown={e=>{if(e.key==="Enter")addTask();}}/>
+              <button className="btn btn-p" onClick={addTask}><Ic n="plus" s={13}/>Ajouter</button>
             </div>
 
-            {todayTodos.length===0?(
-              <div className="todo-empty">Aucune tâche pour aujourd'hui. Ajoutes-en une ci-dessus.</div>
+            <div style={{fontSize:10,fontWeight:800,color:"var(--accent)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>À faire</div>
+            {openTasks.length===0?(
+              <div className="todo-empty">Tout est fait. Rien à faire pour le moment.</div>
             ):(
               <div className="todo-list">
-                {todayTodos.map(t=><TodoRow key={t.id} t={t}/>)}
+                {openTasks.map(t=><OpenRow key={t.id} t={t}/>)}
               </div>
             )}
 
-            <div className="todo-history-toggle" onClick={()=>setShowHistory(s=>!s)}>
-              <Ic n={showHistory?"chevDown":"chevR"} s={13}/>
-              Historique des jours précédents {pastDayKeys.length>0&&`(${pastDayKeys.length})`}
+            <div className="todo-history-toggle" onClick={()=>setShowDone(s=>!s)}>
+              <Ic n={showDone?"chevDown":"chevR"} s={13}/>
+              Terminées ({doneCount})
             </div>
-
-            {showHistory&&(
-              pastDayKeys.length===0?(
-                <div className="todo-empty">Pas encore d'historique.</div>
-              ):pastDayKeys.map(dk=>{
-                const dayTodos=pastDays[dk].sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
-                const dDone=dayTodos.filter(t=>t.done).length;
-                const dPct=dayTodos.length>0?Math.round((dDone/dayTodos.length)*100):0;
-                return(
-                  <div key={dk} className="todo-history-day">
-                    <div className="todo-history-day-label">
-                      <Ic n="calendar" s={12}/>{dateKeyLabel(dk)}
-                      <span className="todo-history-day-pct">{dDone}/{dayTodos.length} · {dPct}%</span>
-                    </div>
-                    <div className="todo-list">
-                      {dayTodos.map(t=><TodoRow key={t.id} t={t}/>)}
-                    </div>
-                  </div>
-                );
-              })
+            {showDone&&(
+              doneCount===0?(
+                <div className="todo-empty">Aucune tâche terminée.</div>
+              ):(
+                <div className="todo-list">
+                  {doneTasks.map(t=><DoneRow key={t.id} t={t}/>)}
+                </div>
+              )
             )}
           </>
         )}
