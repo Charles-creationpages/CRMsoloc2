@@ -1518,7 +1518,7 @@ function FinancePage({user, leads, addToast}){
       const iso=l.validatedAt||nowISO();
       const entry={
         type:"in",
-        label:l.name+(l.criteria&&l.criteria.statutClient?(" — "+l.criteria.statutClient):""),
+        label:"Client logé - "+l.name,
         amount:info.pending?0:round2(info.ttc/1.2),
         ttc:info.pending?null:info.ttc,
         pending:info.pending,
@@ -1541,8 +1541,8 @@ function FinancePage({user, leads, addToast}){
     const juneISO="2026-06-15T12:00:00.000Z";
     const base={ pending:false, source:"manuel", leadId:null, createdAt:juneISO, monthKey:"2026-06", seedTag:"june2026" };
     const items=[
-      {...base, type:"in",  label:"Client logé avant SOLOC (1)", amount:round2(890/1.2), ttc:890},
-      {...base, type:"in",  label:"Client logé avant SOLOC (2)", amount:round2(890/1.2), ttc:890},
+      {...base, type:"in",  label:"Client logé - Juline MALEYSSON", amount:round2(890/1.2), ttc:890},
+      {...base, type:"in",  label:"Client logé - Inès CHAMBON",     amount:round2(890/1.2), ttc:890},
       {...base, type:"out", label:"Commission Kevin (due)",      amount:889.98, ttc:null},
       {...base, type:"out", label:"Google Ads juin",             amount:365,    ttc:null},
       {...base, type:"out", label:"Flyers écoles",               amount:33.99,  ttc:null}
