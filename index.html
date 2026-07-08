@@ -1497,6 +1497,7 @@ function FinancePage({user, leads, addToast}){
   const [fAmount,setFAmount]=useState("");
   const [fTtc,setFTtc]=useState(false);
   const [fDate,setFDate]=useState("");
+  const [editId,setEditId]=useState(null);
   const creatingRef=useRef(new Set());
   const seededRef=useRef(false);
 
@@ -1568,17 +1569,24 @@ function FinancePage({user, leads, addToast}){
   const prevMonth=()=>{ const i=months.indexOf(activeMonth); if(i>0){setGlobalView(false);setCurMonth(months[i-1]);} };
   const nextMonth=()=>{ const i=months.indexOf(activeMonth); if(i<months.length-1){setGlobalView(false);setCurMonth(months[i+1]);} };
 
-  const openForm=(type)=>{ setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); setFDate(""); };
+  const openForm=(type)=>{ setEditId(null); setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); setFDate(""); };
+  const openEdit=(f)=>{ setEditId(f.id); setFormType(f.type); setFLabel(f.label||""); setFAmount(String(f.amount||0)); setFTtc(false); setFDate(f.createdAt?String(f.createdAt).slice(0,10):""); };
+  const closeForm=()=>{ setFormType(null); setEditId(null); };
   const save=()=>{
     const lbl=fLabel.trim(); const v=parseFloat(fAmount)||0;
     if(!lbl||!v){ addToast("Renseigne un libellé et un montant","error"); return; }
     const amountHT = fTtc ? round2(v/1.2) : round2(v);
     const iso = fDate ? new Date(fDate+"T12:00:00").toISOString() : nowISO();
-    fsAddDoc(fsCollection(db,"finance"),{
-      type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null,
-      pending:false, source:"manuel", leadId:null, createdAt:iso, monthKey:monthKeyFromISO(iso)
-    }).then(()=>{ setFormType(null); addToast("✓ Mouvement ajouté"); })
-     .catch(()=>addToast("Erreur d'ajout","error"));
+    const payload = { type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null, pending:false, createdAt:iso, monthKey:monthKeyFromISO(iso) };
+    if(editId){
+      fsUpdateDoc(fsDocRef(db,"finance",editId), payload)
+        .then(()=>{ closeForm(); addToast("✓ Mouvement modifié"); })
+        .catch(()=>addToast("Erreur","error"));
+    } else {
+      fsAddDoc(fsCollection(db,"finance"), {...payload, source:"manuel", leadId:null})
+        .then(()=>{ closeForm(); addToast("✓ Mouvement ajouté"); })
+        .catch(()=>addToast("Erreur d'ajout","error"));
+    }
   };
   const del=(f)=>{
     if(!confirm("Supprimer ce mouvement ?")) return;
@@ -1663,7 +1671,13 @@ function FinancePage({user, leads, addToast}){
 
             {formType&&(
               <div style={{background:"var(--surface)",border:"1.5px solid var(--border)",borderRadius:12,padding:14,marginBottom:16}}>
-                <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>{formType==="in"?"Nouvelle entrée":"Nouvelle dépense"}</div>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>{editId?"Modifier le mouvement":(formType==="in"?"Nouvelle entrée":"Nouvelle dépense")}</div>
+                {editId&&(
+                  <div className="seg" style={{marginBottom:10}}>
+                    <button type="button" className="seg-btn" style={formType==="in"?{background:"var(--accent)",borderColor:"var(--accent)",color:"#fff"}:{}} onClick={()=>setFormType("in")}>Entrée</button>
+                    <button type="button" className="seg-btn" style={formType==="out"?{background:"var(--accent)",borderColor:"var(--accent)",color:"#fff"}:{}} onClick={()=>setFormType("out")}>Dépense</button>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:8,marginBottom:10}}>
                   <input className="fi" style={{flex:2}} placeholder="Libellé" value={fLabel} onChange={e=>setFLabel(e.target.value)} autoFocus/>
                   <input className="fi" style={{flex:1}} type="number" placeholder="Montant €" value={fAmount} onChange={e=>setFAmount(e.target.value)}/>
@@ -1677,7 +1691,7 @@ function FinancePage({user, leads, addToast}){
                   <span style={{marginLeft:"auto",fontWeight:700,color:"var(--accent)"}}>{htPreview}</span>
                 </label>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                  <button className="btn btn-g" onClick={()=>setFormType(null)}>Annuler</button>
+                  <button className="btn btn-g" onClick={closeForm}>Annuler</button>
                   <button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Ajouter</button>
                 </div>
               </div>
@@ -1706,6 +1720,7 @@ function FinancePage({user, leads, addToast}){
                       {f.pending
                         ?<button className="btn btn-g btn-sm" onClick={()=>complete(f)}>Compléter</button>
                         :<div className="brand-font" style={{fontSize:15,fontWeight:800,color:isIn?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>{(isIn?"+":"−")+eurFmt(f.amount||0)}</div>}
+                      <button className="ib" onClick={()=>openEdit(f)} title="Modifier"><Ic n="edit" s={14}/></button>
                       <button className="ib" style={{color:"var(--text3)"}} onClick={()=>del(f)} title="Supprimer"><Ic n="trash" s={14}/></button>
                     </div>
                   );
