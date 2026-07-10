@@ -4,6 +4,13 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>SOLOC' CRM</title>
+<meta name="theme-color" content="#2C3E50"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="SOLOC'"/>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -412,6 +419,23 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .todo-history-day{margin-bottom:14px;}
 .todo-history-day-label{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .todo-history-day-pct{font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:20px;padding:1px 8px;}
+
+/* ─── RESPONSIVE MOBILE ─── */
+.bottom-nav{display:none;}
+@media(max-width:768px){
+  .sb{display:none;}
+  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:8px 4px 10px;z-index:90;}
+  .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text3);font-size:9px;font-weight:700;cursor:pointer;background:none;border:none;font-family:"Inter",sans-serif;padding:2px;}
+  .bn-item.active{color:var(--accent);}
+  .topbar{padding:12px 16px;}
+  .pt{font-size:18px;}
+  .main{padding:16px 16px 88px;}
+  .search-bar{flex:1;width:auto;}
+  .tb-right{width:100%;}
+  .overlay{padding:0;}
+  .modal{width:100%!important;max-width:100%!important;max-height:100vh!important;border-radius:0!important;}
+  .fr{grid-template-columns:1fr;}
+}
 `;
 
 function useToasts(){
@@ -422,6 +446,16 @@ function useToasts(){
     setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),3400);
   },[]);
   return [toasts,add];
+}
+
+function useIsMobile(){
+  const [m,setM]=useState(typeof window!=="undefined" && window.innerWidth<=768);
+  useEffect(()=>{
+    const h=()=>setM(window.innerWidth<=768);
+    window.addEventListener("resize",h);
+    return ()=>window.removeEventListener("resize",h);
+  },[]);
+  return m;
 }
 
 // ─── LOGIN SCREEN ────────────────────────────────────────────────────────
@@ -526,8 +560,9 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
 }
 
 // ─── KANBAN BOARD ────────────────────────────────────────────────────────
-function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid}){
+function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile}){
   const [dragOver,setDragOver]=useState(null);
+  const [selStage,setSelStage]=useState("premier_contact");
   const dragId=useRef(null);
 
   const sortCol=(colLeads)=>{
@@ -540,6 +575,32 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid}){
       return new Date(b.lastActivity||0)-new Date(a.lastActivity||0);
     });
   };
+
+  if(isMobile){
+    const counts={};
+    PIPELINE_COLS.forEach(c=>{counts[c.id]=leads.filter(l=>l.column===c.id).length;});
+    const colLeads=sortCol(leads.filter(l=>l.column===selStage));
+    return(
+      <div>
+        <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:12,marginBottom:6}}>
+          {PIPELINE_COLS.map(col=>{
+            const on=selStage===col.id;
+            return(
+              <button key={col.id} onClick={()=>setSelStage(col.id)} style={{padding:"7px 13px",borderRadius:20,border:"1.5px solid",borderColor:on?"var(--accent)":"var(--border2)",background:on?"var(--accent)":"var(--surface2)",color:on?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,fontFamily:"'Inter',sans-serif",cursor:"pointer",flexShrink:0}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:col.color,display:"inline-block"}}></span>{col.label}
+                <span style={{background:on?"rgba(255,255,255,.25)":"var(--border2)",borderRadius:20,padding:"0 6px",fontSize:11}}>{counts[col.id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        {colLeads.length===0
+          ?<div style={{textAlign:"center",padding:"40px 0",color:"var(--text3)",fontSize:13,fontStyle:"italic"}}>Aucun lead à cette étape</div>
+          :colLeads.map(lead=>(
+            <LeadCard key={lead.id} lead={lead} onOpen={onOpen} onDragStart={()=>{}} onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid}/>
+          ))}
+      </div>
+    );
+  }
 
   return(
     <div className="kb-wrap">
@@ -778,6 +839,7 @@ function RechercheTable({leads,search}){
   }
 
   return(
+    <div style={{overflowX:"auto"}}>
     <table className="list-table">
       <thead><tr>
         <th>Client</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
@@ -798,6 +860,7 @@ function RechercheTable({leads,search}){
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -1322,6 +1385,7 @@ function PartenairesPage({addToast}){
           </div>
         )}
         {!loading&&rows.length>0&&(
+          <div style={{overflowX:"auto"}}>
           <table className="list-table">
             <thead><tr>
               <th>Agence</th><th>Prénom</th><th>NOM</th><th>Téléphone</th><th>Email</th><th style={{width:80}}></th>
@@ -1344,6 +1408,7 @@ function PartenairesPage({addToast}){
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
       {modal&&<PartenaireModal partenaire={modal.type==="edit"?modal.p:null} onSave={savePartenaire} onClose={()=>setModal(null)}/>}
@@ -1487,7 +1552,7 @@ function TodoPage({user,addToast}){
 }
 
 // ─── FINANCE PAGE (réservée à Charles) ───────────────────────────────────
-function FinancePage({user, leads, addToast}){
+function FinancePage({user, leads, addToast, isMobile}){
   const [finance,setFinance]=useState([]);
   const [loading,setLoading]=useState(true);
   const [curMonth,setCurMonth]=useState(null);
@@ -1626,7 +1691,7 @@ function FinancePage({user, leads, addToast}){
               <button className="btn btn-g" style={globalView?{background:"var(--ardoise)",color:"#fff",borderColor:"var(--ardoise)"}:{}} onClick={()=>setGlobalView(g=>!g)}>Global</button>
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr 1fr 1fr",gap:10,marginBottom:18}}>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1.3fr 1fr 1fr 1fr",gap:10,marginBottom:18}}>
               <div style={{background:"var(--ardoise)",borderRadius:12,padding:"13px 15px"}}>
                 <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.55)",textTransform:"uppercase",letterSpacing:".06em"}}>Solde global HT</div>
                 <div className="brand-font" style={{fontSize:24,fontWeight:800,color:"#fff",marginTop:4}}>{eurFmt(globIn-globOut)}</div>
@@ -1742,6 +1807,7 @@ function App(){
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
   const [toasts,addToast]=useToasts();
+  const isMobile=useIsMobile();
 
   useEffect(()=>{
     const unsub=fsOnAuthStateChanged(auth,u=>setUser(u));
@@ -1866,7 +1932,7 @@ function App(){
 
         <div className="content">
           {(tab==="finance"&&user.email===FINANCE_EMAIL)
-            ? <FinancePage user={user} leads={leads} addToast={addToast}/>
+            ? <FinancePage user={user} leads={leads} addToast={addToast} isMobile={isMobile}/>
             : tab==="partenaires"
             ? <PartenairesPage addToast={addToast}/>
             : tab==="biens"
@@ -1886,11 +1952,20 @@ function App(){
               </div>
               <div className="main">
                 {tab==="pipeline"
-                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid}/>
+                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile}/>
                   : <RechercheTable leads={filteredLeads} search={search}/>}
               </div>
             </>)}
         </div>
+
+        <nav className="bottom-nav">
+          <button className={"bn-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="trendUp" s={21}/>Pipeline</button>
+          <button className={"bn-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={21}/>Recherche</button>
+          <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
+          <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
+          <button className={"bn-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={21}/>To-do</button>
+          {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
+        </nav>
       </div>
 
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
@@ -1929,6 +2004,13 @@ if(window.__fb) boot(); else window.addEventListener("fbready", boot, {once:true
   s.text = out;
   document.body.appendChild(s);
 })();
+</script>
+<script>
+if("serviceWorker" in navigator){
+  window.addEventListener("load",function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
