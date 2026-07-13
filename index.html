@@ -74,6 +74,10 @@ const mkEvent = (emoji, text) => ({ id: Date.now()+"-"+Math.random().toString(36
 const displayNameFromEmail = (email) => { if(!email) return ""; const n = email.split("@")[0].replace(/[._]/g," "); return n.charAt(0).toUpperCase()+n.slice(1); };
 
 const asArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+const normPhone = (p) => { if(!p) return ""; let s=String(p).replace(/[^0-9+]/g,""); if(s.indexOf("+33")===0) s="0"+s.slice(3); else if(s.indexOf("0033")===0) s="0"+s.slice(4); return s.replace(/\+/g,""); };
+const normEmail = (e) => e ? String(e).trim().toLowerCase() : "";
+const unionArr = (a,b) => Array.from(new Set([...asArray(a),...asArray(b)]));
+const mergeCriteria = (k,d) => { k=k||{}; d=d||{}; return { statutClient:k.statutClient||d.statutClient||"", periodeEssaiValidee:(k.periodeEssaiValidee!=null)?k.periodeEssaiValidee:((d.periodeEssaiValidee!=null)?d.periodeEssaiValidee:null), typologie:unionArr(k.typologie,d.typologie), surface:k.surface||d.surface||"", loyer:k.loyer||d.loyer||"", secteur:k.secteur||d.secteur||"", prestationsSupp:k.prestationsSupp||d.prestationsSupp||"", dateEntreeSouhaitee:k.dateEntreeSouhaitee||d.dateEntreeSouhaitee||"", dateAsap:k.dateAsap||d.dateAsap||false, etatLogement:unionArr(k.etatLogement,d.etatLogement) }; };
 const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[] };
 const criteriaComplete = (c) => {
   if(!c) return false;
@@ -510,7 +514,7 @@ function LoginScreen(){
 }
 
 // ─── LEAD CARD ───────────────────────────────────────────────────────────
-function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
+function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isDupe}){
   const stale = ACTIVE_ALERT_COLS.includes(lead.column) && daysSince(lead.lastActivity)>=3;
   const cls = ["kb-card"];
   if(stale) cls.push("warn");
@@ -527,6 +531,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
       </div>
       {critSummary&&<div className="kb-crit">{critSummary}</div>}
       <div className="kb-badges">
+        {isDupe&&<span className="badge orange">⚠ Doublon possible</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {stale&&<span className="badge orange">⚠ {Math.floor(daysSince(lead.lastActivity))}j sans suivi</span>}
         {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
@@ -562,7 +567,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid}){
 }
 
 // ─── KANBAN BOARD ────────────────────────────────────────────────────────
-function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile}){
+function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile, dupeIds}){
   const [dragOver,setDragOver]=useState(null);
   const [selStage,setSelStage]=useState("premier_contact");
   const dragId=useRef(null);
@@ -598,7 +603,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
         {colLeads.length===0
           ?<div style={{textAlign:"center",padding:"40px 0",color:"var(--text3)",fontSize:13,fontStyle:"italic"}}>Aucun lead à cette étape</div>
           :colLeads.map(lead=>(
-            <LeadCard key={lead.id} lead={lead} onOpen={onOpen} onDragStart={()=>{}} onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid}/>
+            <LeadCard key={lead.id} lead={lead} onOpen={onOpen} onDragStart={()=>{}} onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)}/>
           ))}
       </div>
     );
@@ -622,7 +627,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
             {colLeads.map(lead=>(
               <LeadCard key={lead.id} lead={lead} onOpen={onOpen}
                 onDragStart={(e,id)=>{dragId.current=id;e.dataTransfer.setData("text",id);}}
-                onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid}/>
+                onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)}/>
             ))}
           </div>
         );
@@ -667,7 +672,7 @@ function AddLeadModal({onSave,onClose}){
 }
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
-function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
+function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge}){
   const [form,setForm]=useState(()=>{
     const c={...blankCriteria,...(lead.criteria||{})};
     c.typologie=asArray(c.typologie);
@@ -699,6 +704,19 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-title">{lead.name}</div>
         <div className="modal-sub">Créé le {fmtDate(lead.createdAt)} — dernier mouvement {fmtDate(lead.lastActivity)}</div>
+
+        {dupePartners&&dupePartners.length>0&&(
+          <div style={{background:"var(--orange-bg)",border:"1.5px solid #F3C775",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#92400e",marginBottom:2}}>⚠ Doublon possible</div>
+            <div style={{fontSize:11,color:"#92400e",marginBottom:6}}>Ce contact partage un numéro ou un email avec :</div>
+            {dupePartners.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:5}}>
+                <span style={{fontSize:12,color:"#92400e",fontWeight:600}}>{p.name} · {p.phone||p.email||"—"}</span>
+                <button className="btn btn-g btn-sm" onClick={()=>onMerge(p)}>Fusionner</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {gateTarget&&(
           <div className="gate-banner">🔒 Pour passer en « En recherche », tous les critères ci-dessous (sauf prestations supp.) doivent être remplis.</div>
@@ -819,6 +837,54 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete}){
           {gateTarget
             ? <button className="btn btn-p" onClick={()=>handleSave("en_recherche")}><Ic n="check" s={13}/>Valider et passer en recherche</button>
             : <button className="btn btn-p" onClick={()=>handleSave()}><Ic n="check" s={13}/>Enregistrer</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MERGE MODAL (fusion de doublons) ────────────────────────────────────
+function MergeModal({leadA, leadB, onClose, onConfirm}){
+  const [keepId,setKeepId]=useState(null);
+  const colLabel=(id)=>{const c=PIPELINE_COLS.find(x=>x.id===id);return c?c.label:(id||"—");};
+  const critSum=(l)=>{const t=asArray(l.criteria&&l.criteria.typologie);return t.length?(t.join("/")+" · "+((l.criteria&&l.criteria.secteur)||"—")):"—";};
+  const canal=(l)=>{ if(l.calendlyRdv&&l.whatsappContact) return "Calendly + WhatsApp"; if(l.calendlyRdv) return "Calendly"; if(l.whatsappContact) return "WhatsApp"; return "Manuel"; };
+  const card=(l)=>{
+    const sel=keepId===l.id;
+    return(
+      <div onClick={()=>setKeepId(l.id)} style={{border:"2px solid",borderColor:sel?"var(--accent)":"var(--border)",borderRadius:12,padding:13,cursor:"pointer",background:"var(--surface)"}}>
+        <div style={{fontSize:14,fontWeight:800,marginBottom:8}}>{l.name}</div>
+        <div style={{fontSize:11,color:"var(--text2)",lineHeight:1.9}}>
+          <div>📞 {l.phone||"—"}</div>
+          <div>✉️ {l.email||"—"}</div>
+          <div>Étape : <b>{colLabel(l.column)}</b></div>
+          <div>Critères : {critSum(l)}</div>
+          <div>Canal : {canal(l)}</div>
+          <div>Créée le {fmtDate(l.createdAt)}</div>
+        </div>
+        <div style={{marginTop:10,padding:7,borderRadius:8,textAlign:"center",fontSize:12,fontWeight:700,background:sel?"var(--accent)":"var(--surface2)",color:sel?"#fff":"var(--text2)"}}>{sel?"✓ Principal":"Garder comme principal"}</div>
+      </div>
+    );
+  };
+  const keep = keepId===leadA.id?leadA:(keepId===leadB.id?leadB:null);
+  const drop = keep?(keep.id===leadA.id?leadB:leadA):null;
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Fusionner les doublons</div>
+        <div className="modal-sub">Choisis la fiche à conserver comme principale. L'autre sera fusionnée dedans puis supprimée.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+          {card(leadA)}
+          {card(leadB)}
+        </div>
+        <div style={{background:"var(--surface2)",borderRadius:9,padding:"11px 13px",fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
+          {keep
+            ? "Fiche conservée : "+keep.name+" (étape "+colLabel(keep.column)+"). On complète ses champs vides depuis l'autre, on cumule les critères, on garde les canaux Calendly/WhatsApp, on fusionne historiques et remarques, puis « "+drop.name+" » est supprimée."
+            : "Sélectionne la fiche principale ci-dessus pour voir le résultat."}
+        </div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" disabled={!keep} onClick={()=>onConfirm(keep,drop)}><Ic n="check" s={13}/>Fusionner</button>
         </div>
       </div>
     </div>
@@ -1910,8 +1976,29 @@ function App(){
     fsDeleteDoc(fsDocRef(db,"leads",lead.id)).then(()=>{addToast(lead.name+" supprimé");setModal(null);});
   };
 
+  const mergeLeads=(keep,drop)=>{
+    if(!keep||!drop) return;
+    const hist=[...(keep.history||[]),...(drop.history||[]),mkEvent("🔗","Fusionnée avec le doublon « "+drop.name+" »")].sort((a,b)=>new Date(a.at||0)-new Date(b.at||0));
+    const notes=[keep.notes,drop.notes].filter(Boolean).join("\n— — —\n");
+    fsUpdateDoc(fsDocRef(db,"leads",keep.id),{
+      phone:keep.phone||drop.phone||"",
+      email:keep.email||drop.email||"",
+      criteria:mergeCriteria(keep.criteria,drop.criteria),
+      calendlyRdv:keep.calendlyRdv||drop.calendlyRdv||null,
+      whatsappContact:keep.whatsappContact||drop.whatsappContact||null,
+      calendlyEventUri:keep.calendlyEventUri||drop.calendlyEventUri||null,
+      notes:notes, history:hist, lastActivity:nowISO()
+    }).then(()=>fsDeleteDoc(fsDocRef(db,"leads",drop.id)))
+      .then(()=>{addToast("✓ Fiches fusionnées");setModal(null);})
+      .catch(()=>addToast("Erreur de fusion","error"));
+  };
+
   const q=search.toLowerCase();
   const filteredLeads = leads.filter(l=>!q||l.name.toLowerCase().includes(q)||(l.phone||"").includes(q)||(l.email||"").toLowerCase().includes(q));
+
+  const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
+  const dupeIds=new Set();
+  leads.forEach(l=>{ if(partnersOf(l).length>0) dupeIds.add(l.id); });
 
   return(
     <>
@@ -1959,7 +2046,7 @@ function App(){
               </div>
               <div className="main">
                 {tab==="pipeline"
-                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile}/>
+                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds}/>
                   : <RechercheTable leads={filteredLeads} search={search}/>}
               </div>
             </>)}
@@ -1977,7 +2064,10 @@ function App(){
 
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
       {(modal?.type==="detail"||modal?.type==="gate")&&
-        <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}/>}
+        <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}
+          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})}/>}
+      {modal?.type==="merge"&&
+        <MergeModal leadA={modal.a} leadB={modal.b} onClose={()=>setModal(null)} onConfirm={mergeLeads}/>}
 
       <div className="toast-wrap">
         {toasts.map(t=><div key={t.id} className={"toast"+(t.type==="error"?" error":"")}>{t.text}</div>)}
