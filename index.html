@@ -100,6 +100,7 @@ const PIPELINE_COLS = [
   {id:"valide",        label:"Validé",          color:"#16A34A"},
 ];
 const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].includes(c.id)).map(c=>c.id);
+const SANS_SUITE_TTL_DAYS = 15;
 const STATUTS = ["Étudiant","CDI","CDD","Indépendant"];
 const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
 
@@ -1950,6 +1951,15 @@ function App(){
     return unsub;
   },[user]);
 
+  const cleanupRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user) return;
+    const toDelete=leads.filter(l=>l.column==="sans_suite" && daysSince(l.sansSuiteAt||l.lastActivity)>SANS_SUITE_TTL_DAYS && !cleanupRef.current.has(l.id));
+    if(toDelete.length===0) return;
+    toDelete.forEach(l=>{ cleanupRef.current.add(l.id); fsDeleteDoc(fsDocRef(db,"leads",l.id)).catch(()=>cleanupRef.current.delete(l.id)); });
+    addToast(toDelete.length+" fiche"+(toDelete.length>1?"s":"")+" en sans suite supprimée"+(toDelete.length>1?"s":"")+" (+15j)");
+  },[leads,user]);
+
   if(user===undefined) return <div style={{minHeight:"100vh",background:"var(--ardoise)"}}/>;
   if(user===null) return (<><style>{CSS}</style><LoginScreen/></>);
 
@@ -1985,7 +1995,7 @@ function App(){
       setModal({type:"gate",lead});
       return;
     }
-    const moveExtra = col==="valide" ? {validatedAt:nowISO()} : {};
+    const moveExtra = col==="valide" ? {validatedAt:nowISO()} : (col==="sans_suite" ? {sansSuiteAt:nowISO()} : {});
     fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
@@ -1996,7 +2006,7 @@ function App(){
     const newCount=(lead.relanceCount||0)+1;
     if(newCount>=3){
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
-        column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(),
+        column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(), sansSuiteAt:nowISO(),
         history:[...(lead.history||[]),mkEvent("❌","3 relances sans réponse — passé en Sans suite")]
       }).then(()=>addToast(lead.name+" passé en Sans suite","error"));
     } else {
@@ -2020,9 +2030,10 @@ function App(){
     const hist=[...(lead.history||[])];
     if(colChanged) hist.push(mkEvent("",eventLabel(targetCol)));
     const valExtra = (targetCol==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
+    const ssExtra = (targetCol==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:targetCol, ...valExtra,
+      criteria:form.criteria, column:targetCol, ...valExtra, ...ssExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
   };
