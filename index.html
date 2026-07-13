@@ -117,6 +117,19 @@ const prestationFromLead = (l) => {
   return {ttc:null,pending:true};
 };
 
+// ─── PRIORITÉS TO-DO ─────────────────────────────────────────────────────
+const PRIORITIES = {
+  urgent:      {rank:0, label:"Urgent",      color:"#DC2626", bg:"#FEE2E2", fg:"#991B1B"},
+  prioritaire: {rank:1, label:"Prioritaire", color:"#D97706", bg:"#FEF3C7", fg:"#92400e"},
+  normale:     {rank:2, label:"Normale",     color:"#5A6B7B", bg:"#F2E8DA", fg:"#5A6B7B"},
+  basse:       {rank:3, label:"Basse",       color:"#9AA7B2", bg:"#F2E8DA", fg:"#9AA7B2"}
+};
+const PRIORITY_ORDER = ["urgent","prioritaire","normale","basse"];
+const priOf = (t) => PRIORITIES[(t&&t.priority)||"normale"] || PRIORITIES.normale;
+
+// URL du script Apps Script d'envoi de la to-do à Emmy (à coller après déploiement)
+const EMMY_MAIL_WEBAPP_URL = "";
+
 // ─── ICONS ───────────────────────────────────────────────────────────────
 const ICONS = (s) => ({
   plus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -153,6 +166,7 @@ const ICONS = (s) => ({
   arrowUp:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/></svg>,
   arrowDown:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="16 17 7 17 7 8"/></svg>,
   wallet:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M21 12a2 2 0 0 0-2-2h-4a2 2 0 0 0 0 4h4a2 2 0 0 0 2-2z"/></svg>,
+  flag:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>,
 });
 const Ic = ({n,s=16}) => { const m=ICONS(s); return m[n]||null; };
 
@@ -1486,14 +1500,17 @@ function PartenairesPage({addToast}){
   );
 }
 
-// ─── TODO PAGE (v2 — liste persistante d'Emmy) ───────────────────────────
+// ─── TODO PAGE (v3 — priorités + envoi Emmy) ─────────────────────────────
 function TodoPage({user,addToast}){
   const [tasks,setTasks]=useState([]);
   const [loading,setLoading]=useState(true);
   const [newText,setNewText]=useState("");
+  const [newPri,setNewPri]=useState("normale");
   const [showDone,setShowDone]=useState(false);
+  const [sending,setSending]=useState(false);
 
   const myName = displayNameFromEmail(user.email);
+  const isCharles = user.email===FINANCE_EMAIL;
 
   useEffect(()=>{
     const unsub=fsOnSnapshot(fsCollection(db,"todos"),snap=>{
@@ -1503,18 +1520,24 @@ function TodoPage({user,addToast}){
     return unsub;
   },[]);
 
-  const openTasks = tasks.filter(t=>!t.done).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+  const isToday=(iso)=>{ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); };
+
+  const openTasks = tasks.filter(t=>!t.done).sort((a,b)=>{
+    const r=priOf(a).rank-priOf(b).rank;
+    return r!==0 ? r : new Date(a.createdAt||0)-new Date(b.createdAt||0);
+  });
   const doneTasks = tasks.filter(t=>t.done).sort((a,b)=>new Date(b.doneAt||0)-new Date(a.doneAt||0));
-  const total = tasks.length;
   const doneCount = doneTasks.length;
-  const pct = total>0 ? Math.round((doneCount/total)*100) : 0;
-  const progressColor = pct===100 ? "var(--green)" : pct>=50 ? "var(--accent)" : "var(--orange)";
+  const doneToday = tasks.filter(t=>t.done && isToday(t.doneAt)).length;
+
+  const counts={urgent:0,prioritaire:0,normale:0,basse:0};
+  openTasks.forEach(t=>{ counts[(t.priority)||"normale"]=(counts[(t.priority)||"normale"]||0)+1; });
 
   const addTask=()=>{
     const text=newText.trim();
     if(!text) return;
     fsAddDoc(fsCollection(db,"todos"),{
-      text, done:false, createdBy:myName, createdAt:nowISO(), doneAt:null
+      text, done:false, priority:newPri, createdBy:myName, createdAt:nowISO(), doneAt:null
     }).then(()=>{setNewText("");}).catch(()=>addToast("Erreur d'ajout","error"));
   };
 
@@ -1524,6 +1547,12 @@ function TodoPage({user,addToast}){
       .catch(()=>addToast("Erreur","error"));
   };
 
+  const cyclePriority=(t)=>{
+    const i=PRIORITY_ORDER.indexOf((t.priority)||"normale");
+    const next=PRIORITY_ORDER[(i+1)%PRIORITY_ORDER.length];
+    fsUpdateDoc(fsDocRef(db,"todos",t.id),{priority:next}).catch(()=>addToast("Erreur","error"));
+  };
+
   const deleteTask=(t)=>{
     if(!confirm("Supprimer cette tâche ?")) return;
     fsDeleteDoc(fsDocRef(db,"todos",t.id))
@@ -1531,23 +1560,31 @@ function TodoPage({user,addToast}){
       .catch(()=>addToast("Erreur de suppression","error"));
   };
 
-  const AgeBadge=({t})=>{
-    const d=Math.floor(daysSince(t.createdAt));
-    if(d>=3) return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e",whiteSpace:"nowrap"}}>⏳ depuis {d}j</span>;
-    if(d<=0) return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)",whiteSpace:"nowrap"}}>aujourd'hui</span>;
-    return <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:"var(--surface2)",color:"var(--text3)",whiteSpace:"nowrap"}}>il y a {d}j</span>;
+  const sendToEmmy=()=>{
+    if(!EMMY_MAIL_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
+    if(openTasks.length===0){ addToast("Aucune tâche à envoyer","error"); return; }
+    setSending(true);
+    addToast("Envoi de la to-do à Emmy…");
+    fetch(EMMY_MAIL_WEBAPP_URL,{method:"POST",mode:"no-cors"})
+      .then(()=>{ setTimeout(()=>{ setSending(false); addToast("✓ To-do envoyée à Emmy"); },700); })
+      .catch(()=>{ setSending(false); addToast("Erreur d'envoi","error"); });
   };
 
   const OpenRow=({t})=>{
+    const pr=priOf(t);
     const overdue=Math.floor(daysSince(t.createdAt))>=3;
+    const showBorder = t.priority==="urgent"||t.priority==="prioritaire";
+    const showChip = t.priority==="urgent"||t.priority==="prioritaire"||t.priority==="basse";
     return(
-      <div className="todo-item" style={overdue?{borderLeft:"3px solid var(--orange)"}:{}}>
+      <div className="todo-item" style={showBorder?{borderLeft:"3px solid "+pr.color}:{}}>
         <div className="todo-checkbox" onClick={()=>toggleTask(t)}></div>
+        <button className="ib" style={{color:pr.color,padding:2,flexShrink:0}} title="Changer la priorité" onClick={()=>cyclePriority(t)}><Ic n="flag" s={16}/></button>
         <div className="todo-item-body">
           <div className="todo-item-text">{t.text}</div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <AgeBadge t={t}/>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {overdue&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e",whiteSpace:"nowrap"}}>depuis {Math.floor(daysSince(t.createdAt))}j</span>}
+          {showChip&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:pr.bg,color:pr.fg,whiteSpace:"nowrap"}}>{pr.label}</span>}
           <button className="todo-item-del" onClick={()=>deleteTask(t)} title="Supprimer"><Ic n="trash" s={14}/></button>
         </div>
       </div>
@@ -1571,7 +1608,10 @@ function TodoPage({user,addToast}){
           <div className="pt">To-do</div>
           <div className="ps">Les tâches restent affichées tant qu'elles ne sont pas cochées</div>
         </div>
-        <div className="tb-right"><button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button></div>
+        <div className="tb-right">
+          {isCharles&&<button className="btn btn-p" onClick={sendToEmmy} disabled={sending}><Ic n="mail" s={14}/>{sending?"Envoi…":"Envoyer à Emmy"}</button>}
+          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
+        </div>
       </div>
       <div className="main">
         {loading?(
@@ -1580,10 +1620,19 @@ function TodoPage({user,addToast}){
           <>
             <div className="todo-progress-card">
               <div className="todo-progress-top">
-                <span className="todo-progress-label">{openTasks.length} à faire</span>
-                <span className="todo-progress-pct" style={{color:progressColor}}>{doneCount} / {total}</span>
+                <span className="todo-progress-label">{openTasks.length} tâche{openTasks.length!==1?"s":""} à faire</span>
+                <span style={{fontSize:11,color:"var(--green)",fontWeight:700}}>{doneToday} terminée{doneToday!==1?"s":""} aujourd'hui</span>
               </div>
-              <div className="todo-progress-bar-bg"><div className="todo-progress-bar-fill" style={{width:pct+"%",background:progressColor}}/></div>
+              <div style={{display:"flex",height:10,borderRadius:20,overflow:"hidden",background:"var(--surface2)"}}>
+                {openTasks.length===0
+                  ? <div style={{flex:1,background:"var(--green)"}}/>
+                  : PRIORITY_ORDER.map(k=> counts[k]>0 ? <div key={k} style={{flex:counts[k],background:PRIORITIES[k].color}}/> : null)}
+              </div>
+              <div style={{display:"flex",gap:14,marginTop:8,fontSize:10,color:"var(--text3)",fontWeight:600,flexWrap:"wrap"}}>
+                {PRIORITY_ORDER.map(k=>(
+                  <span key={k}><span style={{display:"inline-block",width:8,height:8,borderRadius:2,background:PRIORITIES[k].color,marginRight:4}}/>{PRIORITIES[k].label}</span>
+                ))}
+              </div>
             </div>
 
             <div className="todo-add-row">
@@ -1591,6 +1640,13 @@ function TodoPage({user,addToast}){
                 onChange={e=>setNewText(e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter")addTask();}}/>
               <button className="btn btn-p" onClick={addTask}><Ic n="plus" s={13}/>Ajouter</button>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:20,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Priorité :</span>
+              {PRIORITY_ORDER.map(k=>{
+                const on=newPri===k;
+                return <button key={k} type="button" onClick={()=>setNewPri(k)} style={{padding:"5px 11px",borderRadius:8,border:"1.5px solid",borderColor:on?PRIORITIES[k].color:"var(--border2)",background:on?PRIORITIES[k].color:"var(--surface2)",color:on?"#fff":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{PRIORITIES[k].label}</button>;
+              })}
             </div>
 
             <div style={{fontSize:10,fontWeight:800,color:"var(--accent)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>À faire</div>
