@@ -739,6 +739,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         {err&&<div className="ferr">{err}</div>}
 
         <div className="modal-section">Coordonnées</div>
+        <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
         <div className="fr">
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
@@ -2032,7 +2033,7 @@ function App(){
     const valExtra = (targetCol==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
     const ssExtra = (targetCol==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
-      phone:form.phone, email:form.email, notes:form.notes,
+      name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
       criteria:form.criteria, column:targetCol, ...valExtra, ...ssExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
