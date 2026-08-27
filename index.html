@@ -107,6 +107,17 @@ const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
 
 // ─── FINANCE (onglet réservé à Charles) ──────────────────────────────────
 const FINANCE_EMAIL = "charlesblyopro@gmail.com";
+
+// ─── ASSIGNATION DES LEADS (Emmy / Aya) ──────────────────────────────────
+// email : à renseigner avec l'email de connexion Firebase de chacune
+const ASSIGNEES = {
+  emmy: { label:"Emmy", color:"#C1614F", email:"emmymariet8@gmail.com" },
+  aya:  { label:"Aya",  color:"#2563EB", email:"ayabelkebir213@gmail.com" }
+};
+const roleOfEmail = (email) => {
+  for (var k in ASSIGNEES) { if (ASSIGNEES[k].email && ASSIGNEES[k].email===email) return k; }
+  return "admin"; // Charles et tout autre compte = vue centralisée
+};
 const round2 = (x) => Math.round((x||0)*100)/100;
 const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
 const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
@@ -555,6 +566,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
       </div>
       {critSummary&&<div className="kb-crit">{critSummary}</div>}
       <div className="kb-badges">
+        {lead.assignedTo&&ASSIGNEES[lead.assignedTo]&&<span className="badge" style={{background:ASSIGNEES[lead.assignedTo].color,color:"#fff"}}>{ASSIGNEES[lead.assignedTo].label}</span>}
         {isDupe&&<span className="badge orange">⚠ Doublon possible</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {stale&&<span className="badge orange">⚠ {Math.floor(daysSince(lead.lastActivity))}j sans suivi</span>}
@@ -696,14 +708,14 @@ function AddLeadModal({onSave,onClose}){
 }
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
-function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge}){
+function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin}){
   const [form,setForm]=useState(()=>{
     const c={...blankCriteria,...(lead.criteria||{})};
     c.typologie=asArray(c.typologie);
     c.etatLogement=asArray(c.etatLogement);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, criteria:c };
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:lead.assignedTo||"", criteria:c };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -746,6 +758,18 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
           <div className="gate-banner">🔒 Pour passer en « En recherche », tous les critères ci-dessous (sauf prestations supp.) doivent être remplis.</div>
         )}
         {err&&<div className="ferr">{err}</div>}
+
+        {isAdmin&&(
+          <>
+            <div className="modal-section">Assigné à</div>
+            <div className="seg" style={{marginBottom:4}}>
+              <button type="button" className={"seg-btn"+(!form.assignedTo?" active":"")} onClick={()=>setForm(p=>({...p,assignedTo:""}))}>Non assigné</button>
+              {Object.keys(ASSIGNEES).map(k=>(
+                <button key={k} type="button" className={"seg-btn"+(form.assignedTo===k?" active":"")} style={form.assignedTo===k?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>setForm(p=>({...p,assignedTo:k}))}>{ASSIGNEES[k].label}</button>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="modal-section">Coordonnées</div>
         <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
@@ -942,12 +966,13 @@ function RechercheTable({leads,search}){
     <div style={{overflowX:"auto"}}>
     <table className="list-table">
       <thead><tr>
-        <th>Client</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
+        <th>Client</th><th>Suivi par</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
       </tr></thead>
       <tbody>
         {rows.map(l=>(
           <tr key={l.id}>
             <td className="td-name">{l.name}</td>
+            <td>{l.assignedTo&&ASSIGNEES[l.assignedTo]?<span className="badge" style={{background:ASSIGNEES[l.assignedTo].color,color:"#fff"}}>{ASSIGNEES[l.assignedTo].label}</span>:<span style={{color:"var(--text3)",fontSize:11}}>—</span>}</td>
             <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}{l.criteria.statutClient==="Colocation"&&(" ("+(parseInt(l.criteria.nbColoc)||2)+" pers.)")}</td>
             <td>{asArray(l.criteria.typologie).join(", ")||"—"}</td>
             <td>{l.criteria.surface} m²</td>
@@ -2060,7 +2085,7 @@ function App(){
     const evExtra = (targetCol==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:targetCol, ...valExtra, ...ssExtra, ...evExtra,
+      criteria:form.criteria, column:targetCol, assignedTo:form.assignedTo||"", ...valExtra, ...ssExtra, ...evExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
   };
@@ -2089,6 +2114,12 @@ function App(){
 
   const q=search.toLowerCase();
   const filteredLeads = leads.filter(l=>!q||l.name.toLowerCase().includes(q)||(l.phone||"").includes(q)||(l.email||"").toLowerCase().includes(q));
+
+  // Vue par rôle : admin (Charles) voit tout le pipeline ; Emmy/Aya seulement leurs leads.
+  // L'onglet "En recherche" reste commun à tout le monde (non filtré).
+  const myRole = roleOfEmail(user.email);
+  const isAdmin = myRole==="admin";
+  const pipelineLeads = isAdmin ? filteredLeads : filteredLeads.filter(l=>l.assignedTo===myRole);
 
   const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
@@ -2130,7 +2161,7 @@ function App(){
               <div className="topbar">
                 <div>
                   <div className="pt">{tab==="pipeline"?"Pipeline":"Recherche"}</div>
-                  <div className="ps">{tab==="pipeline"?leads.length+" lead"+(leads.length!==1?"s":"")+" au total":"Recherches en cours en un coup d'œil"}</div>
+                  <div className="ps">{tab==="pipeline"?pipelineLeads.length+" lead"+(pipelineLeads.length!==1?"s":"")+" au total":"Recherches en cours en un coup d'œil"}</div>
                 </div>
                 <div className="tb-right">
                   <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -2140,7 +2171,7 @@ function App(){
               </div>
               <div className="main">
                 {tab==="pipeline"
-                  ? <KanbanBoard leads={filteredLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds}/>
+                  ? <KanbanBoard leads={pipelineLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds}/>
                   : <RechercheTable leads={filteredLeads} search={search}/>}
               </div>
             </>)}
@@ -2159,7 +2190,7 @@ function App(){
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
       {(modal?.type==="detail"||modal?.type==="gate")&&
         <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}
-          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})}/>}
+          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})} isAdmin={isAdmin}/>}
       {modal?.type==="merge"&&
         <MergeModal leadA={modal.a} leadB={modal.b} onClose={()=>setModal(null)} onConfirm={mergeLeads}/>}
 
