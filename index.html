@@ -118,6 +118,16 @@ const roleOfEmail = (email) => {
   for (var k in ASSIGNEES) { if (ASSIGNEES[k].email && ASSIGNEES[k].email===email) return k; }
   return "admin"; // Charles et tout autre compte = vue centralisée
 };
+
+// Répartition auto par jour (heure locale du navigateur, France) :
+//   lundi / mardi / week-end → Emmy   |   mercredi / jeudi / vendredi → Aya
+// Calendly = jour du RDV ; WhatsApp = jour de réception. Manuel = choisi à la main.
+const assigneeFromDate = (iso) => {
+  if(!iso) return "";
+  const d = new Date(iso).getDay(); // 0=dim … 6=sam
+  if(d===3||d===4||d===5) return "aya";      // mer/jeu/ven
+  return "emmy";                             // lun/mar/sam/dim
+};
 const round2 = (x) => Math.round((x||0)*100)/100;
 const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
 const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
@@ -674,7 +684,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
 
 // ─── ADD LEAD MODAL ──────────────────────────────────────────────────────
 function AddLeadModal({onSave,onClose}){
-  const [form,setForm]=useState({firstName:"",lastName:"",phone:"",email:""});
+  const [form,setForm]=useState({firstName:"",lastName:"",phone:"",email:"",assignedTo:""});
   const [err,setErr]=useState("");
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
@@ -683,6 +693,7 @@ function AddLeadModal({onSave,onClose}){
     const hasContact = form.phone.trim()||form.email.trim();
     if(!hasIdentity){setErr("Renseigne au moins un prénom ou un nom.");return;}
     if(!hasContact){setErr("Renseigne au moins un téléphone ou un email.");return;}
+    if(!form.assignedTo){setErr("Choisis qui suit ce lead : Emmy ou Aya.");return;}
     onSave(form);
   };
 
@@ -698,6 +709,14 @@ function AddLeadModal({onSave,onClose}){
         </div>
         <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
         <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
+        <div className="fg">
+          <label className="fl">Assigné à *</label>
+          <div className="seg">
+            {Object.keys(ASSIGNEES).map(k=>(
+              <button key={k} type="button" className={"seg-btn"+(form.assignedTo===k?" active":"")} style={form.assignedTo===k?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>set("assignedTo",k)}>{ASSIGNEES[k].label}</button>
+            ))}
+          </div>
+        </div>
         <div className="fa">
           <button className="btn btn-g" onClick={onClose}>Annuler</button>
           <button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>Ajouter</button>
@@ -2011,6 +2030,22 @@ function App(){
     addToast(toDelete.length+" fiche"+(toDelete.length>1?"s":"")+" supprimée"+(toDelete.length>1?"s":"")+" automatiquement (délai dépassé)");
   },[leads,user]);
 
+  // Auto-répartition des leads non assignés (Calendly = jour du RDV, WhatsApp = jour de réception).
+  // Les leads manuels arrivent déjà assignés (choix obligatoire à l'ajout), donc ne passent pas ici.
+  const assignRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user) return;
+    leads.forEach(l=>{
+      if(l.assignedTo) return;
+      if(assignRef.current.has(l.id)) return;
+      const dateRef = (l.calendlyRdv && l.calendlyRdv.startTime) || l.createdAt;
+      const who = assigneeFromDate(dateRef);
+      if(!who) return;
+      assignRef.current.add(l.id);
+      fsUpdateDoc(fsDocRef(db,"leads",l.id),{assignedTo:who}).catch(()=>assignRef.current.delete(l.id));
+    });
+  },[leads,user]);
+
   if(user===undefined) return <div style={{minHeight:"100vh",background:"var(--ardoise)"}}/>;
   if(user===null) return (<><style>{CSS}</style><LoginScreen/></>);
 
@@ -2031,7 +2066,7 @@ function App(){
       firstName:form.firstName, lastName:form.lastName, name:fullName,
       phone:form.phone, email:form.email,
       column:"premier_contact", relanceCount:0, paid:false, notes:"",
-      criteria:blankCriteria,
+      criteria:blankCriteria, assignedTo:form.assignedTo||"", source:"manuel",
       createdAt:nowISO(), lastActivity:nowISO(),
       history:[mkEvent("🌱","Lead créé")]
     };
