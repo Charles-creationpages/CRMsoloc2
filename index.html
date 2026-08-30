@@ -577,6 +577,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
       {critSummary&&<div className="kb-crit">{critSummary}</div>}
       <div className="kb-badges">
         {lead.assignedTo&&ASSIGNEES[lead.assignedTo]&&<span className="badge" style={{background:ASSIGNEES[lead.assignedTo].color,color:"#fff"}}>{ASSIGNEES[lead.assignedTo].label}</span>}
+        {!lead.assignedTo&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)"}}>Non assigné</span>}
         {isDupe&&<span className="badge orange">⚠ Doublon possible</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {stale&&<span className="badge orange">⚠ {Math.floor(daysSince(lead.lastActivity))}j sans suivi</span>}
@@ -727,7 +728,7 @@ function AddLeadModal({onSave,onClose}){
 }
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
-function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin}){
+function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin, onAddNewsletter}){
   const [form,setForm]=useState(()=>{
     const c={...blankCriteria,...(lead.criteria||{})};
     c.typologie=asArray(c.typologie);
@@ -791,6 +792,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         )}
 
         <div className="modal-section">Coordonnées</div>
+        <button className="btn btn-g" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onAddNewsletter(lead)}><Ic n="mail" s={13}/>Ajouter à la newsletter</button>
         <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
         <div className="fr">
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
@@ -1995,10 +1997,139 @@ function FinancePage({user, leads, addToast, isMobile}){
   );
 }
 
+// ─── NEWSLETTER ──────────────────────────────────────────────────────────
+function NewsletterModal({entry, onSave, onClose}){
+  const [form,setForm]=useState(()=>({
+    firstName:entry&&entry.firstName||"", lastName:entry&&entry.lastName||"",
+    email:entry&&entry.email||"", phone:entry&&entry.phone||"",
+    typologie:asArray(entry&&entry.typologie), budgetMax:entry&&entry.budgetMax||"",
+    surfaceMin:entry&&entry.surfaceMin||"", secteur:entry&&entry.secteur||""
+  }));
+  const [err,setErr]=useState("");
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const toggleTypo=(t)=>setForm(p=>{ const cur=asArray(p.typologie); return {...p,typologie:cur.includes(t)?cur.filter(x=>x!==t):[...cur,t]}; });
+  const submit=()=>{
+    if(!form.firstName.trim()&&!form.lastName.trim()){setErr("Renseigne un prénom ou un nom.");return;}
+    if(!form.phone.trim()&&!form.email.trim()){setErr("Renseigne un téléphone ou un email.");return;}
+    onSave(form);
+  };
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{entry?"Modifier le contact":"Ajouter à la newsletter"}</div>
+        {err&&<div className="ferr">{err}</div>}
+        <div className="fr">
+          <div className="fg"><label className="fl">Prénom</label><input className="fi" autoFocus value={form.firstName} onChange={e=>set("firstName",e.target.value)}/></div>
+          <div className="fg"><label className="fl">NOM</label><input className="fi" value={form.lastName} onChange={e=>set("lastName",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
+        </div>
+        <div className="modal-section">Critères de recherche</div>
+        <div className="fg">
+          <label className="fl">Typologie — plusieurs possibles</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+            {TYPOLOGIES.map(t=>{
+              const active=asArray(form.typologie).includes(t);
+              return <button key={t} type="button" onClick={()=>toggleTypo(t)}
+                style={{padding:"7px 13px",borderRadius:20,border:"1.5px solid",borderColor:active?"var(--accent)":"var(--border2)",background:active?"var(--accent-l)":"var(--surface2)",color:active?"var(--accent-d)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{t}</button>;
+            })}
+          </div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Budget max (€)</label><input className="fi" type="number" value={form.budgetMax} onChange={e=>set("budgetMax",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Surface min (m²)</label><input className="fi" type="number" value={form.surfaceMin} onChange={e=>set("surfaceMin",e.target.value)}/></div>
+        </div>
+        <div className="fg"><label className="fl">Secteur</label><input className="fi" value={form.secteur} onChange={e=>set("secteur",e.target.value)}/></div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>{entry?"Enregistrer":"Ajouter"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewsletterPage({user, rows, addToast}){
+  const [search,setSearch]=useState("");
+  const [modal,setModal]=useState(null);
+
+  const save=(form)=>{
+    const name=[form.firstName.trim(),form.lastName.trim()].filter(Boolean).join(" ");
+    const data={ firstName:form.firstName, lastName:form.lastName, name, email:form.email, phone:form.phone,
+      typologie:asArray(form.typologie), budgetMax:form.budgetMax, surfaceMin:form.surfaceMin, secteur:form.secteur };
+    if(modal&&modal.type==="edit"){
+      fsUpdateDoc(fsDocRef(db,"newsletter",modal.entry.id),data).then(()=>{addToast("✓ Contact mis à jour");setModal(null);}).catch(()=>addToast("Erreur","error"));
+    } else {
+      fsAddDoc(fsCollection(db,"newsletter"),{...data,createdAt:nowISO()}).then(()=>{addToast("✓ Ajouté à la newsletter");setModal(null);}).catch(()=>addToast("Erreur","error"));
+    }
+  };
+  const del=(entry)=>{
+    if(!confirm("Supprimer "+entry.name+" de la newsletter ?")) return;
+    fsDeleteDoc(fsDocRef(db,"newsletter",entry.id)).then(()=>addToast("Contact supprimé")).catch(()=>addToast("Erreur","error"));
+  };
+
+  const q=search.toLowerCase();
+  const filtered=(rows||[]).filter(r=>!q||(r.name||"").toLowerCase().includes(q)||(r.email||"").toLowerCase().includes(q)||(r.phone||"").includes(q)||asArray(r.typologie).join(",").toLowerCase().includes(q)||(r.secteur||"").toLowerCase().includes(q));
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Newsletter</div>
+          <div className="ps">{(rows||[]).length} contact{(rows||[]).length!==1?"s":""} — base de diffusion des biens</div>
+        </div>
+        <div className="tb-right">
+          <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+          <button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter</button>
+          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
+        </div>
+      </div>
+      <div className="main">
+        {filtered.length===0?(
+          <div className="empty-state">
+            <div className="es-ic">📣</div>
+            <div className="es-t">Aucun contact newsletter</div>
+            <div>Ajoute des contacts ici, ou depuis la fiche d'un lead avec « Ajouter à la newsletter ».</div>
+          </div>
+        ):(
+          <div style={{overflowX:"auto"}}>
+          <table className="list-table">
+            <thead><tr>
+              <th>Nom</th><th>Téléphone</th><th>Email</th><th>Typologie</th><th>Budget max</th><th>Surface min</th><th>Secteur</th><th style={{width:80}}></th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(r=>(
+                <tr key={r.id}>
+                  <td className="td-name">{r.name}</td>
+                  <td>{r.phone||"—"}</td>
+                  <td>{r.email||"—"}</td>
+                  <td>{asArray(r.typologie).join(", ")||"—"}</td>
+                  <td>{r.budgetMax?r.budgetMax+"€":"—"}</td>
+                  <td>{r.surfaceMin?r.surfaceMin+"m²":"—"}</td>
+                  <td>{r.secteur||"—"}</td>
+                  <td style={{whiteSpace:"nowrap"}}>
+                    <button className="ib" onClick={()=>setModal({type:"edit",entry:r})} title="Modifier"><Ic n="edit" s={14}/></button>
+                    <button className="ib" style={{color:"var(--text3)"}} onClick={()=>del(r)} title="Supprimer"><Ic n="trash" s={14}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        )}
+      </div>
+      {modal&&<NewsletterModal entry={modal.type==="edit"?modal.entry:null} onSave={save} onClose={()=>setModal(null)}/>}
+    </>
+  );
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────
 function App(){
   const [user,setUser]=useState(undefined);
   const [leads,setLeads]=useState([]);
+  const [newsletter,setNewsletter]=useState([]);
   const [tab,setTab]=useState("pipeline");
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
@@ -2036,15 +2167,54 @@ function App(){
   useEffect(()=>{
     if(!user) return;
     leads.forEach(l=>{
-      if(l.assignedTo) return;
+      if(l.assignedTo || l.assignTouched) return;
       if(assignRef.current.has(l.id)) return;
       const dateRef = (l.calendlyRdv && l.calendlyRdv.startTime) || l.createdAt;
       const who = assigneeFromDate(dateRef);
       if(!who) return;
       assignRef.current.add(l.id);
-      fsUpdateDoc(fsDocRef(db,"leads",l.id),{assignedTo:who}).catch(()=>assignRef.current.delete(l.id));
+      fsUpdateDoc(fsDocRef(db,"leads",l.id),{assignedTo:who, assignTouched:true}).catch(()=>assignRef.current.delete(l.id));
     });
   },[leads,user]);
+
+  // Newsletter : base de diffusion (accessible à toute l'équipe)
+  useEffect(()=>{
+    if(!user) return;
+    const unsub=fsOnSnapshot(fsCollection(db,"newsletter"),snap=>{
+      setNewsletter(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },()=>{});
+    return unsub;
+  },[user]);
+
+  // Dédoublonnage auto : si un contact newsletter est aussi En recherche (même tél/email),
+  // il a signé la lettre de mission → on retire son entrée newsletter.
+  const nlDedupRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user) return;
+    const enRecherche=leads.filter(l=>l.column==="en_recherche");
+    if(enRecherche.length===0||newsletter.length===0) return;
+    newsletter.forEach(n=>{
+      if(nlDedupRef.current.has(n.id)) return;
+      const np=normPhone(n.phone), ne=normEmail(n.email);
+      const match=enRecherche.some(l=>(np&&normPhone(l.phone)===np)||(ne&&normEmail(l.email)===ne));
+      if(match){
+        nlDedupRef.current.add(n.id);
+        fsDeleteDoc(fsDocRef(db,"newsletter",n.id)).catch(()=>nlDedupRef.current.delete(n.id));
+      }
+    });
+  },[leads,newsletter,user]);
+
+  const addToNewsletter=(lead)=>{
+    const np=normPhone(lead.phone), ne=normEmail(lead.email);
+    if(newsletter.some(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne))){ addToast("Déjà dans la newsletter","error"); return; }
+    const c=lead.criteria||{};
+    fsAddDoc(fsCollection(db,"newsletter"),{
+      firstName:lead.firstName||"", lastName:lead.lastName||"", name:lead.name,
+      email:lead.email||"", phone:lead.phone||"",
+      typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
+      createdAt:nowISO(), fromLead:true
+    }).then(()=>addToast("✓ Ajouté à la newsletter")).catch(()=>addToast("Erreur","error"));
+  };
 
   if(user===undefined) return <div style={{minHeight:"100vh",background:"var(--ardoise)"}}/>;
   if(user===null) return (<><style>{CSS}</style><LoginScreen/></>);
@@ -2066,7 +2236,7 @@ function App(){
       firstName:form.firstName, lastName:form.lastName, name:fullName,
       phone:form.phone, email:form.email,
       column:"premier_contact", relanceCount:0, paid:false, notes:"",
-      criteria:blankCriteria, assignedTo:form.assignedTo||"", source:"manuel",
+      criteria:blankCriteria, assignedTo:form.assignedTo||"", assignTouched:true, source:"manuel",
       createdAt:nowISO(), lastActivity:nowISO(),
       history:[mkEvent("🌱","Lead créé")]
     };
@@ -2120,7 +2290,7 @@ function App(){
     const evExtra = (targetCol==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:targetCol, assignedTo:form.assignedTo||"", ...valExtra, ...ssExtra, ...evExtra,
+      criteria:form.criteria, column:targetCol, assignedTo:form.assignedTo||"", assignTouched:true, ...valExtra, ...ssExtra, ...evExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
   };
@@ -2172,6 +2342,7 @@ function App(){
           <div className="sb-nav">
             <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="trendUp" s={16}/>Pipeline</div>
             <div className={"nav-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={16}/>Recherche</div>
+            <div className={"nav-item"+(tab==="newsletter"?" active":"")} onClick={()=>setTab("newsletter")}><Ic n="mail" s={16}/>Newsletter</div>
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={16}/>To-do</div>
@@ -2192,6 +2363,8 @@ function App(){
             ? <BiensPage addToast={addToast}/>
             : tab==="todo"
             ? <TodoPage user={user} addToast={addToast}/>
+            : tab==="newsletter"
+            ? <NewsletterPage user={user} rows={newsletter} addToast={addToast}/>
             : (<>
               <div className="topbar">
                 <div>
@@ -2215,6 +2388,7 @@ function App(){
         <nav className="bottom-nav">
           <button className={"bn-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="trendUp" s={21}/>Pipeline</button>
           <button className={"bn-item"+(tab==="recherche"?" active":"")} onClick={()=>setTab("recherche")}><Ic n="table" s={21}/>Recherche</button>
+          <button className={"bn-item"+(tab==="newsletter"?" active":"")} onClick={()=>setTab("newsletter")}><Ic n="mail" s={21}/>News</button>
           <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
           <button className={"bn-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={21}/>To-do</button>
@@ -2225,7 +2399,7 @@ function App(){
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
       {(modal?.type==="detail"||modal?.type==="gate")&&
         <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}
-          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})} isAdmin={isAdmin}/>}
+          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})} isAdmin={isAdmin} onAddNewsletter={addToNewsletter}/>}
       {modal?.type==="merge"&&
         <MergeModal leadA={modal.a} leadB={modal.b} onClose={()=>setModal(null)} onConfirm={mergeLeads}/>}
 
