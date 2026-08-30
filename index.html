@@ -1011,7 +1011,17 @@ function RechercheTable({leads,search}){
 }
 
 // ─── CONSTANTS BIENS ─────────────────────────────────────────────────────
-const ANNEXES_LIST = ["Cave","Parking collectif","Place de parking","Garage fermé","Balcon","Terrasse","Cuisine équipée","Ascenseur","Gardien"];
+const ATOUTS_LIST = ["Ascenseur","Balcon","Terrasse","Cave","Parking","Garage","Cuisine équipée","Gardien","Interphone","Dernier étage","Lumineux","Traversant","Calme","Rénové","Parquet","Fibre"];
+const HONO_AGENCE_M2 = 13.2;
+const HONO_SOLOC_DEF = 890;
+const bienLoc = (b)=>b.secteur||b.titre||"";
+const bienRue = (b)=>b.rue||"";
+const bienLoyerCC = (b)=>b.loyerCC||b.loyer||"";
+const bienAtouts = (b)=>asArray((b.atouts&&b.atouts.length)?b.atouts:b.annexes);
+const bienTitre = (b)=>{ const parts=[b.typologie,b.surface?b.surface+" m²":""].filter(Boolean); const loc=bienLoc(b); return (parts.join(" · ")+(loc?" · "+loc:""))||"Bien"; };
+const honoAgenceOf = (b)=>Math.round((parseFloat(b.surface)||0)*HONO_AGENCE_M2);
+const honoSolocOf = (b)=>{ const v=parseFloat(b.honoSoloc); return isNaN(v)?HONO_SOLOC_DEF:v; };
+const depotOf = (b)=>{ const hc=parseFloat(b.loyerHC||b.loyer)||0; return Math.round(hc*(b.meuble?2:1)); };
 const FRAIS_PAR_M2 = 13.12;
 
 // ─── HONORAIRES CALC ─────────────────────────────────────────────────────
@@ -1057,40 +1067,44 @@ function HonorairesCalc({surface, onSelect}){
 }
 
 // ─── BIEN FORM MODAL ─────────────────────────────────────────────────────
-const blankBien = {titre:"",adresse:"",typologie:"",surface:"",loyer:"",depotGarantie:"",etage:"",meuble:false,dateDisponibilite:"",annexes:[],description:"",photos:[]};
+const blankBien = {typologie:"",surface:"",loyerCC:"",loyerHC:"",rue:"",secteur:"",etage:"",dispoAsap:true,dateDisponibilite:"",meuble:false,atouts:[],description:"",honoSoloc:"890",photos:[],video:""};
 
 function BienFormModal({bien, onSave, onClose, onDelete}){
   const editing=!!bien;
-  const [form,setForm]=useState(editing?{...blankBien,...bien}:{...blankBien});
+  const [form,setForm]=useState(editing?{...blankBien,...bien, atouts:bienAtouts(bien), loyerCC:bienLoyerCC(bien), secteur:bienLoc(bien), rue:bienRue(bien), dispoAsap:bien.dispoAsap!==undefined?bien.dispoAsap:!bien.dateDisponibilite}:{...blankBien});
   const [uploading,setUploading]=useState(false);
   const [uploadPct,setUploadPct]=useState(0);
   const [err,setErr]=useState("");
   const fileRef=useRef();
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-  const toggleAnnexe=(a)=>setForm(p=>({...p,annexes:p.annexes.includes(a)?p.annexes.filter(x=>x!==a):[...p.annexes,a]}));
+  const toggleAtout=(a)=>setForm(p=>{const cur=asArray(p.atouts);return {...p,atouts:cur.includes(a)?cur.filter(x=>x!==a):[...cur,a]};});
+  const eur=(n)=>Math.round(n).toLocaleString("fr-FR")+" €";
 
   const uploadPhotos=(files)=>{
     if(!files||!files.length) return;
-    setUploading(true);
-    setUploadPct(0);
-    const arr=Array.from(files);
-    let done=0;
-    Promise.all(arr.map(file=>
-      uploadToImgBB(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })
-    )).then(urls=>{
-      setForm(p=>({...p,photos:[...(p.photos||[]),...urls]}));
-      setUploading(false); setUploadPct(0);
-    }).catch(()=>{ setErr("Erreur upload — vérifie ta connexion."); setUploading(false); });
+    setUploading(true); setUploadPct(0);
+    const arr=Array.from(files); let done=0;
+    Promise.all(arr.map(file=>uploadToImgBB(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })))
+      .then(urls=>{ setForm(p=>({...p,photos:[...(p.photos||[]),...urls]})); setUploading(false); setUploadPct(0); })
+      .catch(()=>{ setErr("Erreur upload — vérifie ta connexion."); setUploading(false); });
   };
-
   const removePhoto=(idx)=>setForm(p=>({...p,photos:p.photos.filter((_,i)=>i!==idx)}));
 
+  const surf=parseFloat(form.surface)||0;
+  const hc=parseFloat(form.loyerHC)||0;
+  const honoAgence=Math.round(surf*HONO_AGENCE_M2);
+  const depot=Math.round(hc*(form.meuble?2:1));
+
   const submit=()=>{
-    if(!form.adresse.trim()){setErr("L'adresse est obligatoire.");return;}
-    if(!form.loyer){setErr("Le loyer est obligatoire.");return;}
+    if(!form.typologie){setErr("Choisis une typologie.");return;}
+    if(!form.loyerCC){setErr("Le loyer charges comprises est obligatoire.");return;}
+    if(!(form.secteur||"").trim()){setErr("Renseigne l'arrondissement / ville.");return;}
     setErr("");
     onSave(form);
   };
+
+  const chipStyle=(active)=>({padding:"7px 13px",borderRadius:20,border:"1.5px solid",borderColor:active?"var(--accent)":"var(--border2)",background:active?"var(--accent-l)":"var(--surface2)",color:active?"var(--accent-d)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"});
+  const atoutStyle=(active)=>({padding:"7px 12px",borderRadius:9,border:"1.5px solid",borderColor:active?"var(--green)":"var(--border2)",background:active?"var(--green-bg)":"var(--surface)",color:active?"#166534":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"});
 
   return(
     <div className="overlay" onClick={onClose}>
@@ -1098,51 +1112,71 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
         <div className="modal-title">{editing?"Modifier le bien":"Ajouter un bien"}</div>
         {err&&<div className="ferr">{err}</div>}
 
-        <div className="modal-section">Informations principales</div>
-        <div className="fr">
-          <div className="fg"><label className="fl">Adresse *</label><input className="fi" value={form.adresse} onChange={e=>set("adresse",e.target.value)} placeholder="14 rue Vendôme, 69006 Lyon"/></div>
-          <div className="fg"><label className="fl">Secteur / Quartier</label><input className="fi" value={form.titre} onChange={e=>set("titre",e.target.value)} placeholder="Brotteaux, Lyon 6…"/></div>
-        </div>
-        <div className="fr">
-          <div className="fg"><label className="fl">Typologie</label>
-            <select className="fi" value={form.typologie} onChange={e=>set("typologie",e.target.value)}>
-              <option value="">—</option>
-              {["Studio","T1","T2","T3","T4","T5+"].map(t=><option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="fg"><label className="fl">Surface (m²)</label><input className="fi" type="number" value={form.surface} onChange={e=>set("surface",e.target.value)}/></div>
-        </div>
-        <div className="fr">
-          <div className="fg"><label className="fl">Loyer CC (€) *</label><input className="fi" type="number" value={form.loyer} onChange={e=>set("loyer",e.target.value)}/></div>
-          <div className="fg"><label className="fl">Dépôt de garantie (€)</label><input className="fi" type="number" value={form.depotGarantie} onChange={e=>set("depotGarantie",e.target.value)}/></div>
-        </div>
-        <div className="fr">
-          <div className="fg"><label className="fl">Étage</label><input className="fi" value={form.etage} onChange={e=>set("etage",e.target.value)} placeholder="Ex: 3e / 5 · Ascenseur"/></div>
-          <div className="fg"><label className="fl">Date de disponibilité</label><input className="fi" type="date" value={form.dateDisponibilite} onChange={e=>set("dateDisponibilite",e.target.value)}/></div>
-        </div>
+        <div className="modal-section">Le bien</div>
         <div className="fg">
-          <label className="fl">État</label>
-          <div className="seg">
-            <button type="button" className={"seg-btn"+(!form.meuble?" active":"")} onClick={()=>set("meuble",false)}>Vide</button>
-            <button type="button" className={"seg-btn"+(form.meuble?" active":"")} onClick={()=>set("meuble",true)}>Meublé</button>
+          <label className="fl">Typologie *</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+            {["Studio","T1","T2","T3","T4","T5+"].map(t=>(
+              <button key={t} type="button" style={chipStyle(form.typologie===t)} onClick={()=>set("typologie",t)}>{t}</button>
+            ))}
+          </div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Surface (m²)</label><input className="fi" type="number" value={form.surface} onChange={e=>set("surface",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Loyer charges comprises (€) *</label><input className="fi" type="number" value={form.loyerCC} onChange={e=>set("loyerCC",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Loyer HORS charges (€) — interne</label><input className="fi" type="number" value={form.loyerHC} onChange={e=>set("loyerHC",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Étage</label><input className="fi" value={form.etage} onChange={e=>set("etage",e.target.value)} placeholder="3e"/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Rue (sans numéro) — proposée</label><input className="fi" value={form.rue} onChange={e=>set("rue",e.target.value)} placeholder="rue Béchevelin"/></div>
+          <div className="fg"><label className="fl">Arrondissement / Ville *</label><input className="fi" value={form.secteur} onChange={e=>set("secteur",e.target.value)} placeholder="Lyon 7 · Villeurbanne"/></div>
+        </div>
+        <div className="fr">
+          <div className="fg">
+            <label className="fl">Disponibilité</label>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button type="button" style={atoutStyle(form.dispoAsap)} onClick={()=>set("dispoAsap",!form.dispoAsap)}>⚡ Dès maintenant</button>
+              {!form.dispoAsap&&<input className="fi" type="date" style={{flex:1}} value={form.dateDisponibilite} onChange={e=>set("dateDisponibilite",e.target.value)}/>}
+            </div>
+          </div>
+          <div className="fg">
+            <label className="fl">État</label>
+            <div className="seg">
+              <button type="button" className={"seg-btn"+(!form.meuble?" active":"")} onClick={()=>set("meuble",false)}>Vide</button>
+              <button type="button" className={"seg-btn"+(form.meuble?" active":"")} onClick={()=>set("meuble",true)}>Meublé</button>
+            </div>
           </div>
         </div>
 
-        <div className="modal-section">Annexes</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
-          {ANNEXES_LIST.map(a=>(
-            <button key={a} type="button" onClick={()=>toggleAnnexe(a)}
-              className="badge"
-              style={{padding:"4px 10px",border:"1.5px solid",borderColor:form.annexes.includes(a)?"var(--accent)":"var(--border2)",background:form.annexes.includes(a)?"var(--accent-l)":"var(--surface2)",color:form.annexes.includes(a)?"var(--accent-d)":"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:700,borderRadius:20}}>
-              {a}
-            </button>
+        <div className="modal-section">Atouts — coche ce qui s'applique</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+          {ATOUTS_LIST.map(a=>(
+            <button key={a} type="button" style={atoutStyle(asArray(form.atouts).includes(a))} onClick={()=>toggleAtout(a)}>{a}</button>
           ))}
         </div>
 
-        <div className="modal-section">Description</div>
-        <textarea className="fi" rows="3" value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Points forts, remarques, informations utiles…"/>
+        <div className="modal-section">Honoraires &amp; dépôt — automatiques</div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"4px 15px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid var(--border)",fontSize:13}}>
+            <span>Honoraires agence partenaire <span style={{color:"var(--text3)",fontWeight:600}}>(surface × 13,2 €)</span></span>
+            <span className="brand-font" style={{fontWeight:800}}>{surf>0?eur(honoAgence):"—"}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid var(--border)",fontSize:13}}>
+            <span>Honoraires SOLOC' <span style={{color:"var(--text3)",fontWeight:600}}>(modifiable)</span></span>
+            <input className="fi" type="number" value={form.honoSoloc} onChange={e=>set("honoSoloc",e.target.value)} style={{width:110,textAlign:"right",fontWeight:800}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",fontSize:13}}>
+            <span>Dépôt de garantie <span style={{color:"var(--text3)",fontWeight:600}}>{form.meuble?"(2× loyer HC — meublé)":"(1× loyer HC — vide)"}</span></span>
+            <span className="brand-font" style={{fontWeight:800,color:"var(--accent)"}}>{hc>0?eur(depot):"—"}</span>
+          </div>
+        </div>
 
-        <div className="modal-section">Photos</div>
+        <div className="modal-section">Description</div>
+        <textarea className="fi" rows="2" value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Points forts ET négatifs, infos utiles…"/>
+
+        <div className="modal-section">Médias — optionnel</div>
         <div className="upload-zone" onClick={()=>!uploading&&fileRef.current.click()}>
           <Ic n="upload" s={18}/><br/>
           {uploading?`Upload en cours… ${uploadPct}%`:"Cliquer pour ajouter des photos (plusieurs possibles)"}
@@ -1150,7 +1184,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
         </div>
         <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>uploadPhotos(e.target.files)}/>
         {form.photos&&form.photos.length>0&&(
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,marginBottom:8}}>
             {form.photos.map((url,i)=>(
               <div key={i} style={{position:"relative"}}>
                 <img src={url} style={{width:72,height:54,objectFit:"cover",borderRadius:7,border:"1px solid var(--border)"}}/>
@@ -1159,6 +1193,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
             ))}
           </div>
         )}
+        <div className="fg" style={{marginTop:8}}><label className="fl">Lien vidéo (YouTube, Drive…) — optionnel</label><input className="fi" value={form.video} onChange={e=>set("video",e.target.value)} placeholder="https://…"/></div>
 
         <div className="fa">
           {editing&&<button className="btn btn-g" style={{color:"var(--red)"}} onClick={()=>onDelete(bien)}><Ic n="trash" s={13}/>Supprimer</button>}
@@ -1173,55 +1208,50 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
 // ─── BIEN DETAIL MODAL ────────────────────────────────────────────────────
 function BienDetailModal({bien, onClose, onEdit, addToast}){
   const [photoIdx,setPhotoIdx]=useState(0);
-  const [honoData,setHonoData]=useState(null);
   const photos=bien.photos||[];
   const prev=()=>setPhotoIdx(i=>i===0?photos.length-1:i-1);
   const next=()=>setPhotoIdx(i=>i===photos.length-1?0:i+1);
 
-  const titre=bien.typologie&&bien.surface&&(bien.titre||bien.adresse)?`${bien.typologie} – ${bien.surface} m² – ${bien.titre||bien.adresse.split(",")[0]}`:(bien.adresse||"Bien");
+  const titre=bienTitre(bien);
+  const addr=[bienRue(bien),bienLoc(bien)].filter(Boolean).join(" · ");
+  const loyerCC=bienLoyerCC(bien);
+  const depot=depotOf(bien);
+  const agence=honoAgenceOf(bien);
+  const soloc=honoSolocOf(bien);
+  const atouts=bienAtouts(bien);
+  const dispoLabel=bien.dispoAsap?"Dès maintenant":(bien.dateDisponibilite?fmtDate(bien.dateDisponibilite):"");
 
   const generateFiche=()=>{
     try {
-    var fraisAgence=Math.round((parseFloat(bien.surface)||0)*13.12);
     var coverUrl=(bien.photos&&bien.photos[0])||"";
     var otherPhotos=(bien.photos||[]).slice(1,4);
-    var annexesHtml="";
-    (bien.annexes||[]).forEach(function(a){
-      annexesHtml+='<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px 3px 3px 0;">'+a+'</span>';
-    });
-    if(!annexesHtml)annexesHtml='<span style="color:#aaa;font-size:13px;">Aucune</span>';
+    var atoutsHtml="";
+    atouts.forEach(function(a){ atoutsHtml+='<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px 3px 3px 0;">'+a+'</span>'; });
+    if(!atoutsHtml)atoutsHtml='<span style="color:#aaa;font-size:13px;">—</span>';
     var heroHtml="";
     if(coverUrl){
       var subHtml="";
       otherPhotos.forEach(function(u){subHtml+='<img src="'+u+'" class="sub-photo" alt="photo"/>'});
-      heroHtml='<div class="hero"><img src="'+coverUrl+'" alt="photo"/><div class="hero-overlay"><div class="hero-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="hero-title">'+titre+'</div><div class="hero-addr">'+(bien.adresse||"")+'</div></div></div>'+(subHtml?'<div class="sub-photos">'+subHtml+"</div>":"");
+      heroHtml='<div class="hero"><img src="'+coverUrl+'" alt="photo"/><div class="hero-overlay"><div class="hero-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="hero-title">'+titre+'</div><div class="hero-addr">'+addr+'</div></div></div>'+(subHtml?'<div class="sub-photos">'+subHtml+"</div>":"");
     }else{
-      heroHtml='<div class="title-block"><div class="title-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="title-h1">'+titre+'</div><div class="title-addr">'+(bien.adresse||"")+'</div></div>';
+      heroHtml='<div class="title-block"><div class="title-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="title-h1">'+titre+'</div><div class="title-addr">'+addr+'</div></div>';
     }
-    var statsHtml='<div class="stats-bar"><div class="stat"><div class="stat-label">Loyer CC</div><div class="stat-val">'+(bien.loyer||"")+' EUR</div><div class="stat-sub">Charges comprises</div></div>';
-    if(bien.depotGarantie)statsHtml+='<div class="stat"><div class="stat-label">Depot de garantie</div><div class="stat-val">'+bien.depotGarantie+' EUR</div></div>';
+    var statsHtml='<div class="stats-bar"><div class="stat"><div class="stat-label">Loyer CC</div><div class="stat-val">'+(loyerCC||"")+' EUR</div><div class="stat-sub">Charges comprises</div></div>';
+    statsHtml+='<div class="stat"><div class="stat-label">Depot de garantie</div><div class="stat-val">'+depot+' EUR</div></div>';
     if(bien.surface)statsHtml+='<div class="stat"><div class="stat-label">Surface</div><div class="stat-val">'+bien.surface+' m2</div></div>';
-    if(bien.dateDisponibilite)statsHtml+='<div class="stat"><div class="stat-label">Disponible le</div><div class="stat-val">'+fmtDate(bien.dateDisponibilite)+'</div></div>';
+    if(dispoLabel)statsHtml+='<div class="stat"><div class="stat-label">Disponibilite</div><div class="stat-val" style="font-size:14px;">'+dispoLabel+'</div></div>';
     statsHtml+='</div>';
     var infoPratique=(bien.etage?'<div class="info-row"><div class="info-l">Etage</div><div class="info-v">'+bien.etage+"</div></div>":"");
     infoPratique+='<div class="info-row"><div class="info-l">Etat</div><div class="info-v">'+(bien.meuble?'<span class="meuble-tag">Meuble</span>':"Vide")+'</div></div>';
-    var cardsHtml='<div class="cards"><div class="card"><div class="card-label">Infos pratiques</div>'+infoPratique+'</div><div class="card"><div class="card-label">Annexes</div><div style="margin-top:4px;">'+annexesHtml+'</div></div>';
+    if(bien.video)infoPratique+='<div class="info-row"><div class="info-l">Video</div><div class="info-v"><a href="'+bien.video+'" style="color:#C1614F;">Voir la visite</a></div></div>';
+    var cardsHtml='<div class="cards"><div class="card"><div class="card-label">Infos pratiques</div>'+infoPratique+'</div><div class="card"><div class="card-label">Atouts</div><div style="margin-top:4px;">'+atoutsHtml+'</div></div>';
     if(bien.description)cardsHtml+='<div class="card" style="grid-column:1/-1;"><div class="card-label">Description</div><div style="font-size:13px;color:#5A6B7B;line-height:1.7;margin-top:4px;">'+bien.description+'</div></div>';
     cardsHtml+='</div>';
-    var honoHtml="";
-    if(honoData&&honoData.total){
-      honoHtml='<div class="hono-selected"><div class="hono-sel-label">Profil selectionne : <strong>'+(honoData.label||"")+'</strong></div>';
-      honoHtml+='<div class="hono-sel-rows"><div class="hsel-row"><span>Honoraires SOLOC</span><span>'+(honoData.honos||"")+' EUR</span></div>';
-      honoHtml+='<div class="hsel-row"><span>Frais agence ('+(bien.surface||"?")+' m2 x 13.12)</span><span>'+(honoData.frais||"")+' EUR</span></div>';
-      honoHtml+='<div class="hsel-row hsel-total"><span>Total client</span><span>'+(honoData.total||"")+' EUR</span></div></div></div>';
-      honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
-    }else{
-      honoHtml='<div class="hono-grid"><div class="hono-box"><div class="hb-label">Etudiant</div><div class="hb-val">890 EUR</div><div class="hb-sub">+ '+fraisAgence+' EUR frais agence</div></div>';
-      honoHtml+='<div class="hono-box"><div class="hb-label">CDI essai valide</div><div class="hb-val">990 EUR</div><div class="hb-sub">+ '+fraisAgence+' EUR frais agence</div></div>';
-      honoHtml+='<div class="hono-box hono-box-neutral"><div class="hb-label">Autre profil</div><div class="hb-val" style="font-size:16px;">Sur devis</div></div></div>';
-      honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
-    }
-    var css="*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;}.header{background:#2C3E50;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;}.header-left{display:flex;align-items:center;gap:14px;}.logo{width:42px;height:42px;background:#C1614F;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px;}.brand{color:#fff;font-size:20px;font-weight:800;}.brand-sub{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:.1em;margin-top:2px;}.header-badge{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;}.hero{position:relative;width:100%;height:300px;background:#1e2b38;overflow:hidden;}.hero img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}.hero-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(44,62,80,.9));padding:20px 32px 16px;}.hero-badge{display:inline-block;background:#C1614F;color:#fff;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:8px;}.hero-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:3px;}.hero-addr{font-size:12px;color:rgba(255,255,255,.7);}.title-block{padding:24px 32px 0;border-top:4px solid #C1614F;}.title-badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:10px;}.title-h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}.title-addr{font-size:12px;color:#9AA7B2;}.sub-photos{display:flex;gap:5px;padding:5px;background:#1e2b38;}.sub-photo{flex:1;height:90px;object-fit:contain;background:#1e2b38;border-radius:4px;}.body{padding:20px 32px;}.stats-bar{display:flex;gap:0;margin-bottom:20px;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;}.stat{flex:1;padding:12px 14px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}.stat-val{font-size:18px;font-weight:800;color:#C1614F;}.stat-sub{font-size:10px;color:#9AA7B2;margin-top:2px;}.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}.card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.card-label{font-size:9px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;border-left:3px solid #C1614F;padding-left:7px;}.info-row{margin-bottom:6px;}.info-l{font-size:9px;color:#9AA7B2;font-weight:600;margin-bottom:1px;}.info-v{font-size:12px;font-weight:700;color:#2C3E50;}.meuble-tag{display:inline-block;background:#DCFCE7;color:#166534;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;}.hono-card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;margin-bottom:16px;}.hono-grid{display:flex;gap:8px;margin-top:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:10px;padding:10px;text-align:center;}.hono-box-neutral{background:#f8f8f8;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:4px;}.hb-val{font-size:16px;font-weight:800;color:#C1614F;}.hb-sub{font-size:9px;color:#9AA7B2;margin-top:3px;}.hono-selected{margin-top:8px;background:#fff;border-radius:10px;border:1.5px solid #C1614F;overflow:hidden;}.hono-sel-label{background:#C1614F;color:#fff;padding:7px 12px;font-size:11px;font-weight:700;}.hono-sel-rows{padding:8px 12px;}.hsel-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0E8DE;font-size:12px;}.hsel-row:last-child{border-bottom:none;}.hsel-total{font-weight:800;font-size:14px;color:#C1614F;padding-top:7px;}.hono-note{font-size:9px;color:#9AA7B2;text-align:center;margin-top:8px;}.footer{background:#2C3E50;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;}}";
+    var honoHtml='<div class="hono-grid"><div class="hono-box"><div class="hb-label">Honoraires SOLOC</div><div class="hb-val">'+soloc+' EUR</div></div>';
+    honoHtml+='<div class="hono-box"><div class="hb-label">Frais agence ('+(bien.surface||"?")+' m2 x 13,2)</div><div class="hb-val">'+agence+' EUR</div></div>';
+    honoHtml+='<div class="hono-box"><div class="hb-label">Depot de garantie</div><div class="hb-val">'+depot+' EUR</div></div></div>';
+    honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
+    var css="*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;}.header{background:#2C3E50;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;}.header-left{display:flex;align-items:center;gap:14px;}.logo{width:42px;height:42px;background:#C1614F;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px;}.brand{color:#fff;font-size:20px;font-weight:800;}.brand-sub{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:.1em;margin-top:2px;}.header-badge{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;}.hero{position:relative;width:100%;height:300px;background:#1e2b38;overflow:hidden;}.hero img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}.hero-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(44,62,80,.9));padding:20px 32px 16px;}.hero-badge{display:inline-block;background:#C1614F;color:#fff;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:8px;}.hero-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:3px;}.hero-addr{font-size:12px;color:rgba(255,255,255,.7);}.title-block{padding:24px 32px 0;border-top:4px solid #C1614F;}.title-badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:10px;}.title-h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}.title-addr{font-size:12px;color:#9AA7B2;}.sub-photos{display:flex;gap:5px;padding:5px;background:#1e2b38;}.sub-photo{flex:1;height:90px;object-fit:contain;background:#1e2b38;border-radius:4px;}.body{padding:20px 32px;}.stats-bar{display:flex;gap:0;margin-bottom:20px;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;}.stat{flex:1;padding:12px 14px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}.stat-val{font-size:18px;font-weight:800;color:#C1614F;}.stat-sub{font-size:10px;color:#9AA7B2;margin-top:2px;}.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}.card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.card-label{font-size:9px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;border-left:3px solid #C1614F;padding-left:7px;}.info-row{margin-bottom:6px;}.info-l{font-size:9px;color:#9AA7B2;font-weight:600;margin-bottom:1px;}.info-v{font-size:12px;font-weight:700;color:#2C3E50;}.meuble-tag{display:inline-block;background:#DCFCE7;color:#166534;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;}.hono-card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;margin-bottom:16px;}.hono-grid{display:flex;gap:8px;margin-top:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:10px;padding:10px;text-align:center;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:4px;}.hb-val{font-size:16px;font-weight:800;color:#C1614F;}.hono-note{font-size:9px;color:#9AA7B2;text-align:center;margin-top:8px;}.footer{background:#2C3E50;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;}}";
     var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+titre+'</title><style>'+css+'</style></head><body><div class="page">';
     html+='<div class="header"><div class="header-left"><div class="logo">S</div><div><div class="brand">soloc\'</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="header-badge">Bien disponible</div></div>';
     html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
@@ -1234,16 +1264,14 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
     var w=window.open(url,"_blank");
     if(!w){
       var a=document.createElement("a");
-      a.href=url; a.download="fiche-"+(bien.adresse||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
+      a.href=url; a.download="fiche-"+(bienLoc(bien)||"bien").replace(/[^a-z0-9]/gi,"-").slice(0,40)+".html";
       a.style.display="none"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
       addToast("Fiche téléchargée — ouvre le fichier et Cmd+P pour PDF");
     } else {
       addToast("✓ Fiche ouverte — choisis Enregistrer en PDF dans l'impression");
     }
     setTimeout(function(){URL.revokeObjectURL(url);},5000);
-    } catch(err){
-      alert("Erreur : "+err.message+"\n\n"+err.stack);
-    }
+    } catch(err){ alert("Erreur : "+err.message); }
   };
 
   return(
@@ -1279,32 +1307,29 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
             <div className="bien-detail-info">
               <span className="bien-detail-typebadge">{bien.typologie||"—"} · {bien.surface||"?"} m²</span>
               <div className="bien-detail-title">{titre}</div>
-              <div className="bien-detail-addr"><Ic n="pin" s={13}/>{bien.adresse||"Adresse non renseignée"}</div>
-              <div className="bien-detail-attrs">
-                {bien.typologie&&<span className="bien-detail-attr"><Ic n="home" s={13}/>{bien.typologie}</span>}
-                {bien.surface&&<span className="bien-detail-attr"><Ic n="search" s={12}/>{bien.surface} m²</span>}
-              </div>
+              <div className="bien-detail-addr"><Ic n="pin" s={13}/>{addr||"Secteur non renseigné"}</div>
+              {bien.video&&<a href={bien.video} target="_blank" rel="noreferrer" className="bien-detail-attr" style={{marginTop:8,display:"inline-flex",color:"var(--accent)"}}><Ic n="upload" s={12}/>Voir la vidéo</a>}
             </div>
           </div>
           <div className="bien-detail-right">
             <div className="bc-row2">
               <div className="bc">
                 <div className="bc-label"><Ic n="plus" s={12}/>Loyer</div>
-                <div className="bc-val">{bien.loyer} €</div>
+                <div className="bc-val">{loyerCC} €</div>
                 <div className="bc-sub">Charges comprises</div>
-                {bien.depotGarantie&&<div className="bc-sub" style={{marginTop:4}}>Dépôt de garantie : {bien.depotGarantie} €</div>}
+                <div className="bc-sub" style={{marginTop:4}}>Dépôt de garantie : {depot} €</div>
               </div>
               <div className="bc">
-                <div className="bc-label"><Ic n="building" s={12}/>Annexes</div>
-                {bien.annexes&&bien.annexes.length>0
-                  ?<div style={{marginTop:4}}>{bien.annexes.map(a=><span key={a} className="annexe-pill">{a}</span>)}</div>
-                  :<div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Aucune annexe</div>}
+                <div className="bc-label"><Ic n="building" s={12}/>Atouts</div>
+                {atouts.length>0
+                  ?<div style={{marginTop:4}}>{atouts.map(a=><span key={a} className="annexe-pill">{a}</span>)}</div>
+                  :<div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Aucun atout</div>}
               </div>
             </div>
             <div className="bc-row2">
               <div className="bc">
                 <div className="bc-label"><Ic n="clock" s={12}/>Infos pratiques</div>
-                {bien.dateDisponibilite&&<div className="info-item"><div className="info-item-label">Disponible le</div><div className="info-item-val">{fmtDate(bien.dateDisponibilite)}</div></div>}
+                {dispoLabel&&<div className="info-item"><div className="info-item-label">Disponibilité</div><div className="info-item-val">{dispoLabel}</div></div>}
                 {bien.etage&&<div className="info-item"><div className="info-item-label">Étage</div><div className="info-item-val">{bien.etage}</div></div>}
                 <div className="info-item"><div className="info-item-label">État</div><div className="info-item-val"><span className={bien.meuble?"meuble-tag":""} style={bien.meuble?{}:{fontWeight:700}}>{bien.meuble?"Meublé":"Vide"}</span></div></div>
               </div>
@@ -1314,8 +1339,21 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
               </div>
             </div>
             <div className="bc">
-              <div className="bc-label"><Ic n="check" s={12}/>Honoraires SOLOC'</div>
-              <HonorairesCalc surface={bien.surface} onSelect={setHonoData}/>
+              <div className="bc-label"><Ic n="check" s={12}/>Honoraires &amp; dépôt</div>
+              <div style={{display:"flex",gap:8,marginTop:6}}>
+                <div style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:"9px 10px",textAlign:"center"}}>
+                  <div style={{fontSize:9,color:"var(--text3)",marginBottom:3}}>SOLOC'</div>
+                  <div className="brand-font" style={{fontSize:16,fontWeight:800,color:"var(--accent)"}}>{soloc} €</div>
+                </div>
+                <div style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:"9px 10px",textAlign:"center"}}>
+                  <div style={{fontSize:9,color:"var(--text3)",marginBottom:3}}>Agence ({bien.surface||"?"}m²)</div>
+                  <div className="brand-font" style={{fontSize:16,fontWeight:800}}>{agence} €</div>
+                </div>
+                <div style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:"9px 10px",textAlign:"center"}}>
+                  <div style={{fontSize:9,color:"var(--text3)",marginBottom:3}}>Dépôt</div>
+                  <div className="brand-font" style={{fontSize:16,fontWeight:800}}>{depot} €</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1360,22 +1398,23 @@ function BiensPage({addToast}){
   };
 
   const q=search.toLowerCase();
-  const rows=biens.filter(b=>!q||(b.adresse||"").toLowerCase().includes(q)||(b.titre||"").toLowerCase().includes(q)||(b.typologie||"").toLowerCase().includes(q));
+  const rows=biens.filter(b=>!q||bienLoc(b).toLowerCase().includes(q)||bienRue(b).toLowerCase().includes(q)||(b.typologie||"").toLowerCase().includes(q));
 
   const BienThumb=({b})=>{
     const cover=b.photos&&b.photos[0];
-    const titre=b.typologie&&b.surface?`${b.typologie} · ${b.surface} m²`:"Bien";
+    const typ=b.typologie&&b.surface?`${b.typologie} · ${b.surface} m²`:(b.typologie||"Bien");
+    const dispo=b.dispoAsap?"Dispo maintenant":(b.dateDisponibilite?"Dès le "+fmtDate(b.dateDisponibilite):"");
     return(
       <div className="bien-card" onClick={()=>setModal({type:"detail",bien:b})}>
         <div className="bien-card-photo">
-          {cover?<img src={cover} alt={titre}/>:<><Ic n="img" s={28}/></>}
+          {cover?<img src={cover} alt={typ}/>:<><Ic n="img" s={28}/></>}
         </div>
         <div className="bien-card-body">
-          <span className="bien-card-type">{titre}</span>
-          <div className="bien-card-title">{b.titre||b.adresse?.split(",")[0]||"—"}</div>
-          <div className="bien-card-addr"><Ic n="pin" s={12}/>{b.adresse||"Adresse non renseignée"}</div>
+          <span className="bien-card-type">{typ}</span>
+          <div className="bien-card-title">{bienLoc(b)||bienRue(b)||"—"}</div>
+          <div className="bien-card-addr"><Ic n="pin" s={12}/>{bienRue(b)||"Rue non renseignée"}</div>
           <div className="bien-card-bottom">
-            <div><span className="bien-card-loyer">{b.loyer} €</span><span className="bien-card-loyer-sub"> CC/mois</span></div>
+            <div><span className="bien-card-loyer">{bienLoyerCC(b)} €</span><span className="bien-card-loyer-sub"> CC/mois</span></div>
             <div className="bien-card-attrs">
               {b.surface&&<span className="bien-card-attr"><Ic n="search" s={11}/>{b.surface} m²</span>}
               {b.meuble!==undefined&&<span className={b.meuble?"dispo-badge ok":"dispo-badge soon"}>{b.meuble?"Meublé":"Vide"}</span>}
