@@ -103,7 +103,7 @@ const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].inclu
 const SANS_SUITE_TTL_DAYS = 15;
 const ENVOYE_TTL_DAYS = 20;
 const STATUTS = ["Étudiant","CDI","CDD","Indépendant","Colocation"];
-const TYPOLOGIES = ["Studio","T1","T2","T3","T4","T5+"];
+const TYPOLOGIES = ["Studio / T1","T2","T3","T4","T5+"];
 
 // ─── FINANCE (onglet réservé à Charles) ──────────────────────────────────
 const FINANCE_EMAIL = "charlesblyopro@gmail.com";
@@ -1116,7 +1116,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
         <div className="fg">
           <label className="fl">Typologie *</label>
           <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-            {["Studio","T1","T2","T3","T4","T5+"].map(t=>(
+            {TYPOLOGIES.map(t=>(
               <button key={t} type="button" style={chipStyle(form.typologie===t)} onClick={()=>set("typologie",t)}>{t}</button>
             ))}
           </div>
