@@ -133,12 +133,20 @@ const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,
 const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const monthLabel = (mk) => { if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
+// Barème honoraires SOLOC' par profil (source unique, utilisée finance + fiche + envoi)
+const honoForProfile = (statut, o) => {
+  o=o||{};
+  if(statut==="Étudiant") return 890;
+  if(statut==="CDI") return o.periodeEssaiValidee===true ? 990 : 1090;
+  if(statut==="CDD") return 1090;
+  if(statut==="Indépendant") return 1190;
+  if(statut==="Colocation") return 590*(parseInt(o.nbColoc)||2);
+  return 890;
+};
 const prestationFromLead = (l) => {
   const c = l.criteria||{};
-  if(c.statutClient==="Étudiant") return {ttc:890,pending:false};
-  if(c.statutClient==="CDI" && c.periodeEssaiValidee===true) return {ttc:990,pending:false};
-  if(c.statutClient==="Colocation"){ const n=parseInt(c.nbColoc)||2; return {ttc:590*n,pending:false}; }
-  return {ttc:null,pending:true};
+  if(!c.statutClient) return {ttc:null,pending:true};
+  return {ttc:honoForProfile(c.statutClient,c), pending:false};
 };
 
 // ─── PRIORITÉS TO-DO ─────────────────────────────────────────────────────
@@ -2042,7 +2050,8 @@ function NewsletterModal({entry, onSave, onClose}){
     firstName:entry&&entry.firstName||"", lastName:entry&&entry.lastName||"",
     email:entry&&entry.email||"", phone:entry&&entry.phone||"",
     typologie:asArray(entry&&entry.typologie), budgetMax:entry&&entry.budgetMax||"",
-    surfaceMin:entry&&entry.surfaceMin||"", secteur:entry&&entry.secteur||""
+    surfaceMin:entry&&entry.surfaceMin||"", secteur:entry&&entry.secteur||"",
+    statutClient:entry&&entry.statutClient||"", periodeEssaiValidee:entry&&entry.periodeEssaiValidee!==undefined?entry.periodeEssaiValidee:null, nbColoc:entry&&entry.nbColoc||2
   }));
   const [err,setErr]=useState("");
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -2050,8 +2059,10 @@ function NewsletterModal({entry, onSave, onClose}){
   const submit=()=>{
     if(!form.firstName.trim()&&!form.lastName.trim()){setErr("Renseigne un prénom ou un nom.");return;}
     if(!form.phone.trim()&&!form.email.trim()){setErr("Renseigne un téléphone ou un email.");return;}
+    if(!form.statutClient){setErr("Choisis le profil (il détermine les honoraires).");return;}
     onSave(form);
   };
+  const hono=form.statutClient?honoForProfile(form.statutClient,form):null;
   return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
@@ -2065,6 +2076,26 @@ function NewsletterModal({entry, onSave, onClose}){
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
         </div>
+        <div className="modal-section">Profil — détermine les honoraires *</div>
+        <div className="fg">
+          <select className="fi" value={form.statutClient} onChange={e=>set("statutClient",e.target.value)}>
+            <option value="">— Choisir un profil —</option>
+            {STATUTS.map(s=><option key={s}>{s}</option>)}
+          </select>
+        </div>
+        {form.statutClient==="CDI"&&(
+          <div className="fg">
+            <label className="fl">Période d'essai validée ?</label>
+            <div className="seg">
+              <button type="button" className={"seg-btn"+(form.periodeEssaiValidee===true?" active":"")} onClick={()=>set("periodeEssaiValidee",true)}>Oui (990 €)</button>
+              <button type="button" className={"seg-btn"+(form.periodeEssaiValidee===false?" active":"")} onClick={()=>set("periodeEssaiValidee",false)}>Non (1090 €)</button>
+            </div>
+          </div>
+        )}
+        {form.statutClient==="Colocation"&&(
+          <div className="fg"><label className="fl">Nombre de colocataires</label><input className="fi" type="number" min="2" value={form.nbColoc} onChange={e=>set("nbColoc",e.target.value)}/></div>
+        )}
+        {hono!==null&&<div style={{fontSize:12,fontWeight:700,color:"var(--accent)",marginBottom:10}}>Honoraires SOLOC' pour ce profil : {hono.toLocaleString("fr-FR")} €</div>}
         <div className="modal-section">Critères de recherche</div>
         <div className="fg">
           <label className="fl">Typologie — plusieurs possibles</label>
@@ -2097,7 +2128,8 @@ function NewsletterPage({user, rows, addToast}){
   const save=(form)=>{
     const name=[form.firstName.trim(),form.lastName.trim()].filter(Boolean).join(" ");
     const data={ firstName:form.firstName, lastName:form.lastName, name, email:form.email, phone:form.phone,
-      typologie:asArray(form.typologie), budgetMax:form.budgetMax, surfaceMin:form.surfaceMin, secteur:form.secteur };
+      typologie:asArray(form.typologie), budgetMax:form.budgetMax, surfaceMin:form.surfaceMin, secteur:form.secteur,
+      statutClient:form.statutClient||"", periodeEssaiValidee:(form.periodeEssaiValidee!=null?form.periodeEssaiValidee:null), nbColoc:form.nbColoc||2 };
     if(modal&&modal.type==="edit"){
       fsUpdateDoc(fsDocRef(db,"newsletter",modal.entry.id),data).then(()=>{addToast("✓ Contact mis à jour");setModal(null);}).catch(()=>addToast("Erreur","error"));
     } else {
@@ -2136,12 +2168,13 @@ function NewsletterPage({user, rows, addToast}){
           <div style={{overflowX:"auto"}}>
           <table className="list-table">
             <thead><tr>
-              <th>Nom</th><th>Téléphone</th><th>Email</th><th>Typologie</th><th>Budget max</th><th>Surface min</th><th>Secteur</th><th style={{width:80}}></th>
+              <th>Nom</th><th>Profil</th><th>Téléphone</th><th>Email</th><th>Typologie</th><th>Budget max</th><th>Surface min</th><th>Secteur</th><th style={{width:80}}></th>
             </tr></thead>
             <tbody>
               {filtered.map(r=>(
                 <tr key={r.id}>
                   <td className="td-name">{r.name}</td>
+                  <td>{r.statutClient?<span style={{fontSize:12}}>{r.statutClient} · <b style={{color:"var(--accent)"}}>{honoForProfile(r.statutClient,r)} €</b></span>:<span style={{color:"var(--text3)",fontSize:11}}>—</span>}</td>
                   <td>{r.phone||"—"}</td>
                   <td>{r.email||"—"}</td>
                   <td>{asArray(r.typologie).join(", ")||"—"}</td>
@@ -2251,6 +2284,7 @@ function App(){
       firstName:lead.firstName||"", lastName:lead.lastName||"", name:lead.name,
       email:lead.email||"", phone:lead.phone||"",
       typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
+      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
       createdAt:nowISO(), fromLead:true
     }).then(()=>addToast("✓ Ajouté à la newsletter")).catch(()=>addToast("Erreur","error"));
   };
