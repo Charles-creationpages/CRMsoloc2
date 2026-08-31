@@ -162,6 +162,9 @@ const priOf = (t) => PRIORITIES[(t&&t.priority)||"normale"] || PRIORITIES.normal
 // URL du script Apps Script d'envoi de la to-do à Emmy (à coller après déploiement)
 const EMMY_MAIL_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx-xKRRC20lZmwMs5r8mriyohGlQwXnH-QwJ_tuG2cgK0-WMXxWiEDBSP4ErY1Xh2t2_A/exec";
 
+// URL du script Apps Script d'envoi d'un bien par mail (à coller après déploiement)
+const SEND_BIEN_WEBAPP_URL = "";
+
 // Partenaires du réseau de Charles rendus visibles à toute l'équipe (identifiés par email)
 const PARTENAIRES_PARTAGES = [
   "gestionnaire.ng4@leneufgestion.com",
@@ -1206,7 +1209,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
         <div className="fa">
           {editing&&<button className="btn btn-g" style={{color:"var(--red)"}} onClick={()=>onDelete(bien)}><Ic n="trash" s={13}/>Supprimer</button>}
           <button className="btn btn-g" onClick={onClose}>Annuler</button>
-          <button className="btn btn-p" onClick={submit} disabled={uploading}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter"}</button>
+          <button className="btn btn-p" onClick={submit} disabled={uploading}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter & envoyer"}</button>
         </div>
       </div>
     </div>
@@ -1214,7 +1217,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
 }
 
 // ─── BIEN DETAIL MODAL ────────────────────────────────────────────────────
-function BienDetailModal({bien, onClose, onEdit, addToast}){
+function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
   const [photoIdx,setPhotoIdx]=useState(0);
   const photos=bien.photos||[];
   const prev=()=>setPhotoIdx(i=>i===0?photos.length-1:i-1);
@@ -1303,6 +1306,7 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
           <div className="modal-title" style={{margin:0}}>{titre}</div>
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-g btn-sm" onClick={generateFiche}><Ic n="upload" s={12}/>Télécharger la fiche</button>
+            {onSend&&<button className="btn btn-p btn-sm" onClick={onSend}><Ic n="mail" s={12}/>Envoyer</button>}
             <button className="btn btn-g btn-sm" onClick={onEdit}><Ic n="edit" s={12}/>Modifier</button>
             <button className="ib" onClick={onClose}><Ic n="x" s={18}/></button>
           </div>
@@ -1385,7 +1389,61 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
 }
 
 // ─── BIENS PAGE ──────────────────────────────────────────────────────────
-function BiensPage({addToast}){
+// ─── ENVOI D'UN BIEN PAR MAIL ────────────────────────────────────────────
+function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
+  const typo = bien.typologie;
+  const nlMatch = (newsletter||[]).filter(n=>asArray(n.typologie).includes(typo) && (n.email||"").trim());
+  const missionMatch = (leads||[]).filter(l=>l.column==="en_recherche" && asArray(l.criteria&&l.criteria.typologie).includes(typo) && (l.email||"").trim());
+  const myRole = roleOfEmail(user.email);
+  const [sendNl,setSendNl]=useState(true);
+  const [sendMi,setSendMi]=useState(true);
+  const [sender,setSender]=useState((myRole==="emmy"||myRole==="aya")?myRole:"equipe");
+  const [sending,setSending]=useState(false);
+  const total = (sendNl?nlMatch.length:0)+(sendMi?missionMatch.length:0);
+  const senderLabels={emmy:"Emmy",aya:"Aya",equipe:"Équipe SOLOC'"};
+
+  const send=()=>{
+    if(!SEND_BIEN_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
+    if(!sendNl&&!sendMi){ addToast("Coche au moins une liste","error"); return; }
+    if(total===0){ addToast("Aucun destinataire ne correspond","error"); return; }
+    setSending(true); addToast("Envoi en cours…");
+    fetch(SEND_BIEN_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({bienId:bien.id, newsletter:sendNl, mission:sendMi, sender:sender})})
+      .then(()=>{ setTimeout(()=>{ setSending(false); addToast("✓ Bien envoyé à "+total+" destinataire"+(total>1?"s":"")); onClose(); },1000); })
+      .catch(()=>{ setSending(false); addToast("Erreur d'envoi","error"); });
+  };
+
+  const box=(checked,setF,title,sub)=>(
+    <label style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px",border:"1.5px solid",borderColor:checked?"var(--accent)":"var(--border2)",borderRadius:10,marginBottom:8,cursor:"pointer",background:checked?"var(--accent-l)":"var(--surface)"}}>
+      <input type="checkbox" checked={checked} onChange={e=>setF(e.target.checked)}/>
+      <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{title}</div><div style={{fontSize:11,color:"var(--text3)"}}>{sub}</div></div>
+    </label>
+  );
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Envoyer le bien</div>
+        <div className="modal-sub">{bienTitre(bien)} · typologie {typo||"—"}</div>
+        <div className="modal-section">À qui ?</div>
+        {box(sendNl,setSendNl,"Newsletter",nlMatch.length+" contact"+(nlMatch.length!==1?"s":"")+" qui cherche"+(nlMatch.length!==1?"nt":"")+" du "+(typo||"—"))}
+        {box(sendMi,setSendMi,"Lettre de Mission (En recherche)",missionMatch.length+" client"+(missionMatch.length!==1?"s":"")+" suivi"+(missionMatch.length!==1?"s":"")+" · honoraires selon profil")}
+        <div className="modal-section">Signature du mail</div>
+        <div className="seg">
+          {["emmy","aya","equipe"].map(s=>(
+            <button key={s} type="button" className={"seg-btn"+(sender===s?" active":"")} onClick={()=>setSender(s)}>{senderLabels[s]}</button>
+          ))}
+        </div>
+        <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>Envoi depuis hello@solocimmo.fr — un mail personnalisé par destinataire (honoraires selon profil).</div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>{total===0?"Fermer":"Annuler"}</button>
+          <button className="btn btn-p" onClick={send} disabled={sending||total===0}><Ic n="mail" s={13}/>{sending?"Envoi…":"Envoyer ("+total+")"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BiensPage({user, newsletter, leads, addToast}){
   const [biens,setBiens]=useState([]);
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState("");
@@ -1407,7 +1465,7 @@ function BiensPage({addToast}){
         .catch(()=>addToast("Erreur","error"));
     } else {
       fsAddDoc(fsCollection(db,"biens"),{...form,createdAt:nowISO()})
-        .then(()=>{addToast("✓ Bien ajouté");setModal(null);})
+        .then(ref=>{addToast("✓ Bien ajouté");setModal({type:"send",bien:{...form,id:ref.id}});})
         .catch(()=>addToast("Erreur","error"));
     }
   };
@@ -1477,7 +1535,10 @@ function BiensPage({addToast}){
       )}
       {modal?.type==="detail"&&(
         <BienDetailModal bien={modal.bien} onClose={()=>setModal(null)} addToast={addToast}
-          onEdit={()=>setModal({type:"edit",bien:modal.bien})}/>
+          onEdit={()=>setModal({type:"edit",bien:modal.bien})} onSend={()=>setModal({type:"send",bien:modal.bien})}/>
+      )}
+      {modal?.type==="send"&&(
+        <SendBienModal bien={modal.bien} newsletter={newsletter} leads={leads} user={user} onClose={()=>setModal(null)} addToast={addToast}/>
       )}
     </>
   );
@@ -2447,7 +2508,7 @@ function App(){
             : tab==="partenaires"
             ? <PartenairesPage user={user} addToast={addToast}/>
             : tab==="biens"
-            ? <BiensPage addToast={addToast}/>
+            ? <BiensPage user={user} newsletter={newsletter} leads={leads} addToast={addToast}/>
             : tab==="todo"
             ? <TodoPage user={user} addToast={addToast}/>
             : tab==="newsletter"
