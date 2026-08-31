@@ -1231,41 +1231,55 @@ function BienDetailModal({bien, onClose, onEdit, addToast}){
 
   const generateFiche=()=>{
     try {
-    var coverUrl=(bien.photos&&bien.photos[0])||"";
-    var otherPhotos=(bien.photos||[]).slice(1,4);
-    var atoutsHtml="";
-    atouts.forEach(function(a){ atoutsHtml+='<span style="display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;margin:3px 3px 3px 0;">'+a+'</span>'; });
-    if(!atoutsHtml)atoutsHtml='<span style="color:#aaa;font-size:13px;">—</span>';
-    var heroHtml="";
-    if(coverUrl){
-      var subHtml="";
-      otherPhotos.forEach(function(u){subHtml+='<img src="'+u+'" class="sub-photo" alt="photo"/>'});
-      heroHtml='<div class="hero"><img src="'+coverUrl+'" alt="photo"/><div class="hero-overlay"><div class="hero-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="hero-title">'+titre+'</div><div class="hero-addr">'+addr+'</div></div></div>'+(subHtml?'<div class="sub-photos">'+subHtml+"</div>":"");
-    }else{
-      heroHtml='<div class="title-block"><div class="title-badge">'+(bien.typologie||"-")+" - "+(bien.surface||"?")+' m2</div><div class="title-h1">'+titre+'</div><div class="title-addr">'+addr+'</div></div>';
+    var allPhotos=bien.photos||[];
+    var cover=allPhotos[0]||"";
+    var thumbs=allPhotos.slice(1,5);
+    var extra=allPhotos.length>5?(allPhotos.length-5):0;
+    var rue=bienRue(bien);
+    var loc=bienLoc(bien);
+    var badge=dispoLabel||"Bien disponible";
+
+    var photoHtml="";
+    if(cover){
+      photoHtml='<div class="hero"><img src="'+cover+'" alt="photo"/></div>';
+      if(thumbs.length){
+        photoHtml+='<div class="thumbs">';
+        thumbs.forEach(function(u,i){
+          var more=(i===thumbs.length-1 && extra>0)?'<div class="thumb-more">+'+extra+'</div>':'';
+          photoHtml+='<div class="thumb"><img src="'+u+'" alt="photo"/>'+more+'</div>';
+        });
+        photoHtml+='</div>';
+      }
     }
-    var statsHtml='<div class="stats-bar"><div class="stat"><div class="stat-label">Loyer CC</div><div class="stat-val">'+(loyerCC||"")+' EUR</div><div class="stat-sub">Charges comprises</div></div>';
-    statsHtml+='<div class="stat"><div class="stat-label">Depot de garantie</div><div class="stat-val">'+depot+' EUR</div></div>';
-    if(bien.surface)statsHtml+='<div class="stat"><div class="stat-label">Surface</div><div class="stat-val">'+bien.surface+' m2</div></div>';
-    if(dispoLabel)statsHtml+='<div class="stat"><div class="stat-label">Disponibilite</div><div class="stat-val" style="font-size:14px;">'+dispoLabel+'</div></div>';
-    statsHtml+='</div>';
-    var infoPratique=(bien.etage?'<div class="info-row"><div class="info-l">Etage</div><div class="info-v">'+bien.etage+"</div></div>":"");
-    infoPratique+='<div class="info-row"><div class="info-l">Etat</div><div class="info-v">'+(bien.meuble?'<span class="meuble-tag">Meuble</span>':"Vide")+'</div></div>';
-    if(bien.video)infoPratique+='<div class="info-row"><div class="info-l">Video</div><div class="info-v"><a href="'+bien.video+'" style="color:#C1614F;">Voir la visite</a></div></div>';
-    var cardsHtml='<div class="cards"><div class="card"><div class="card-label">Infos pratiques</div>'+infoPratique+'</div><div class="card"><div class="card-label">Atouts</div><div style="margin-top:4px;">'+atoutsHtml+'</div></div>';
-    if(bien.description)cardsHtml+='<div class="card" style="grid-column:1/-1;"><div class="card-label">Description</div><div style="font-size:13px;color:#5A6B7B;line-height:1.7;margin-top:4px;">'+bien.description+'</div></div>';
-    cardsHtml+='</div>';
-    var honoHtml='<div class="hono-grid"><div class="hono-box"><div class="hb-label">Honoraires SOLOC</div><div class="hb-val">'+soloc+' EUR</div></div>';
-    honoHtml+='<div class="hono-box"><div class="hb-label">Frais agence ('+(bien.surface||"?")+' m2 x 13,2)</div><div class="hb-val">'+agence+' EUR</div></div>';
-    honoHtml+='<div class="hono-box"><div class="hb-label">Depot de garantie</div><div class="hb-val">'+depot+' EUR</div></div></div>';
-    honoHtml+='<div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div>';
-    var css="*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;}.header{background:#2C3E50;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;}.header-left{display:flex;align-items:center;gap:14px;}.logo{width:42px;height:42px;background:#C1614F;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px;}.brand{color:#fff;font-size:20px;font-weight:800;}.brand-sub{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:.1em;margin-top:2px;}.header-badge{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;}.hero{position:relative;width:100%;height:300px;background:#1e2b38;overflow:hidden;}.hero img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}.hero-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(44,62,80,.9));padding:20px 32px 16px;}.hero-badge{display:inline-block;background:#C1614F;color:#fff;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:8px;}.hero-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:3px;}.hero-addr{font-size:12px;color:rgba(255,255,255,.7);}.title-block{padding:24px 32px 0;border-top:4px solid #C1614F;}.title-badge{display:inline-block;background:#F5E2DD;color:#A14E3F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:10px;}.title-h1{font-size:26px;font-weight:800;color:#2C3E50;margin-bottom:5px;}.title-addr{font-size:12px;color:#9AA7B2;}.sub-photos{display:flex;gap:5px;padding:5px;background:#1e2b38;}.sub-photo{flex:1;height:90px;object-fit:contain;background:#1e2b38;border-radius:4px;}.body{padding:20px 32px;}.stats-bar{display:flex;gap:0;margin-bottom:20px;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;}.stat{flex:1;padding:12px 14px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}.stat-val{font-size:18px;font-weight:800;color:#C1614F;}.stat-sub{font-size:10px;color:#9AA7B2;margin-top:2px;}.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}.card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.card-label{font-size:9px;font-weight:700;color:#C1614F;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;border-left:3px solid #C1614F;padding-left:7px;}.info-row{margin-bottom:6px;}.info-l{font-size:9px;color:#9AA7B2;font-weight:600;margin-bottom:1px;}.info-v{font-size:12px;font-weight:700;color:#2C3E50;}.meuble-tag{display:inline-block;background:#DCFCE7;color:#166534;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;}.hono-card{background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;margin-bottom:16px;}.hono-grid{display:flex;gap:8px;margin-top:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:10px;padding:10px;text-align:center;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:4px;}.hb-val{font-size:16px;font-weight:800;color:#C1614F;}.hono-note{font-size:9px;color:#9AA7B2;text-align:center;margin-top:8px;}.footer{background:#2C3E50;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;}}";
+    var atoutsHtml="";
+    atouts.forEach(function(a){ atoutsHtml+='<span class="pill">'+a+'</span>'; });
+    if(!atoutsHtml)atoutsHtml='<span style="color:#aaa;font-size:12px;">—</span>';
+    var pin='<svg width="12" height="12" viewBox="0 0 24 24" fill="#C1614F" style="vertical-align:-1px;margin-right:3px;"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>';
+    var statsHtml='<div class="stats-bar">'
+      +'<div class="stat statfirst"><div class="stat-label">Typologie</div><div class="stat-val" style="color:#C1614F;">'+(bien.typologie||"—")+'</div></div>'
+      +'<div class="stat"><div class="stat-label">Surface</div><div class="stat-val">'+(bien.surface?bien.surface+' m2':"—")+'</div></div>'
+      +'<div class="stat"><div class="stat-label">Meuble</div><div class="stat-val">'+(bien.meuble?"Oui":"Non")+'</div></div>'
+      +'<div class="stat"><div class="stat-label">Etage</div><div class="stat-val">'+(bien.etage||"—")+'</div></div>'
+      +'</div>';
+    var honoHtml='<div class="hono"><div class="sec" style="margin-top:0;">Honoraires &amp; depot</div><div class="hono-grid">'
+      +'<div class="hono-box"><div class="hb-label">Honoraires SOLOC</div><div class="hb-val" style="color:#C1614F;">'+soloc+' EUR</div></div>'
+      +'<div class="hono-box"><div class="hb-label">Frais agence ('+(bien.surface||"?")+' m2 x 13,2)</div><div class="hb-val">'+agence+' EUR</div></div>'
+      +'<div class="hono-box"><div class="hb-label">Depot de garantie</div><div class="hb-val">'+depot+' EUR</div></div>'
+      +'</div><div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div></div>';
+
+    var css="@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Sora:wght@700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;border:1px solid #E5D9C6;}.header{background:#2C3E50;padding:18px 30px;display:flex;align-items:center;justify-content:space-between;}.hleft{display:flex;align-items:center;gap:12px;}.logo{width:40px;height:40px;background:#C1614F;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:19px;font-family:'Sora',sans-serif;}.brand{color:#fff;font-size:18px;font-weight:800;font-family:'Sora',sans-serif;}.brand-sub{color:rgba(255,255,255,.5);font-size:9px;letter-spacing:.08em;}.hbadge{background:rgba(255,255,255,.12);color:#fff;border-radius:20px;padding:5px 13px;font-size:11px;font-weight:700;}.hero{width:100%;height:300px;overflow:hidden;background:#E7E0D4;}.hero img{width:100%;height:100%;object-fit:cover;display:block;}.thumbs{display:flex;gap:3px;}.thumb{flex:1;height:96px;overflow:hidden;background:#E7E0D4;position:relative;}.thumb img{width:100%;height:100%;object-fit:cover;display:block;}.thumb-more{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(44,62,80,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;font-family:'Sora',sans-serif;}.body{padding:20px 30px;}.title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}.t-rue{font-family:'Sora',sans-serif;font-size:24px;font-weight:800;color:#2C3E50;line-height:1.1;}.t-loc{font-size:13px;color:#9AA7B2;font-weight:600;margin-top:4px;}.t-loyer{font-family:'Sora',sans-serif;font-size:28px;font-weight:800;color:#C1614F;line-height:1;text-align:right;white-space:nowrap;}.t-loyer-sub{font-size:11px;color:#9AA7B2;font-weight:600;margin-top:3px;text-align:right;}.stats-bar{display:flex;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;margin-top:16px;}.stat{flex:1;padding:12px 8px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.statfirst{background:#FBF7F0;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}.stat-val{font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#2C3E50;}.sec{font-size:10px;font-weight:800;color:#C1614F;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 7px;}.pill{display:inline-block;background:#F2E8DA;color:#5A6B7B;border:1px solid #E5D9C6;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;margin:3px 4px 0 0;}.desc{font-size:13px;color:#5A6B7B;line-height:1.65;}.hono{margin-top:16px;background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.hono-grid{display:flex;gap:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:9px;padding:9px;text-align:center;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:3px;}.hb-val{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:#2C3E50;}.hono-note{font-size:10px;color:#9AA7B2;text-align:center;margin-top:9px;}.footer{background:#2C3E50;padding:13px 30px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;border:none;}}";
     var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+titre+'</title><style>'+css+'</style></head><body><div class="page">';
-    html+='<div class="header"><div class="header-left"><div class="logo">S</div><div><div class="brand">soloc\'</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="header-badge">Bien disponible</div></div>';
-    html+=heroHtml+'<div class="body">'+statsHtml+cardsHtml;
-    html+='<div class="hono-card"><div class="card-label">Honoraires SOLOC\'</div>'+honoHtml+'</div></div>';
+    html+='<div class="header"><div class="hleft"><div class="logo">S</div><div><div class="brand">soloc\'</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="hbadge">'+badge+'</div></div>';
+    html+=photoHtml;
+    html+='<div class="body"><div class="title-row"><div><div class="t-rue">'+(rue||loc||"Bien")+'</div>'+(loc?'<div class="t-loc">'+pin+loc+'</div>':'')+'</div><div><div class="t-loyer">'+(loyerCC||"?")+' EUR</div><div class="t-loyer-sub">charges comprises / mois</div></div></div>';
+    html+=statsHtml;
+    html+='<div class="sec">Atouts</div><div>'+atoutsHtml+'</div>';
+    if(bien.description)html+='<div class="sec">Description</div><div class="desc">'+bien.description+'</div>';
+    if(bien.video)html+='<div class="sec">Visite video</div><div class="desc"><a href="'+bien.video+'" style="color:#C1614F;font-weight:700;">Voir la video commentee</a></div>';
+    html+=honoHtml;
+    html+='</div>';
     html+='<div class="footer"><div class="footer-brand">SOLOC\' - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
-    html+='<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>';
+    html+='<script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script>';
     html+='</body></html>';
     var blob=new Blob([html],{type:"text/html;charset=utf-8"});
     var url=URL.createObjectURL(blob);
