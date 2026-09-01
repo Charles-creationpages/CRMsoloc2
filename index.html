@@ -2420,6 +2420,7 @@ function App(){
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
   const [toasts,addToast]=useToasts();
   const isMobile=useIsMobile();
+  const [pipeFilter,setPipeFilter]=useState("all");
 
   useEffect(()=>{
     const unsub=fsOnAuthStateChanged(auth,u=>setUser(u));
@@ -2610,7 +2611,9 @@ function App(){
   // L'onglet "En recherche" reste commun à tout le monde (non filtré).
   const myRole = roleOfEmail(user.email);
   const isAdmin = myRole==="admin";
-  const pipelineLeads = isAdmin ? filteredLeads : filteredLeads.filter(l=>l.assignedTo===myRole);
+  const pipelineLeads = isAdmin
+    ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>l.assignedTo===pipeFilter))
+    : filteredLeads.filter(l=>l.assignedTo===myRole);
 
   const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
@@ -2662,6 +2665,13 @@ function App(){
                 </div>
                 <div className="tb-right">
                   <div className="search-bar"><Ic n="search" s={14}/><input placeholder="Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                  {tab==="pipeline"&&isAdmin&&(
+                    <div className="seg" style={{flexShrink:0}}>
+                      <button type="button" className={"seg-btn"+(pipeFilter==="all"?" active":"")} onClick={()=>setPipeFilter("all")}>Tous</button>
+                      <button type="button" className={"seg-btn"+(pipeFilter==="emmy"?" active":"")} style={pipeFilter==="emmy"?{background:ASSIGNEES.emmy.color,borderColor:ASSIGNEES.emmy.color,color:"#fff"}:{}} onClick={()=>setPipeFilter("emmy")}>Emmy</button>
+                      <button type="button" className={"seg-btn"+(pipeFilter==="aya"?" active":"")} style={pipeFilter==="aya"?{background:ASSIGNEES.aya.color,borderColor:ASSIGNEES.aya.color,color:"#fff"}:{}} onClick={()=>setPipeFilter("aya")}>Aya</button>
+                    </div>
+                  )}
                   {tab==="pipeline"&&<button className="btn btn-p" onClick={()=>setModal({type:"add"})}><Ic n="plus" s={13}/>Ajouter un lead</button>}
                   <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
                 </div>
