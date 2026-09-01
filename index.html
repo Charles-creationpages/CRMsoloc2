@@ -1877,6 +1877,7 @@ function TodoPage({user,addToast}){
 // ─── PILOTAGE (réservé à Charles) ────────────────────────────────────────
 function PilotagePage({user, leads}){
   const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
+  const [funnelMode,setFunnelMode]=useState("total");
   const mkOf=(iso)=>iso?String(iso).slice(0,7):"";
   const objOf=(mk)=>OBJECTIFS_MENSUELS[mk.slice(5,7)]||0;
   const mLabel=(mk)=>{ if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
@@ -1902,7 +1903,8 @@ function PilotagePage({user, leads}){
   const caReal=sigCur*PANIER_MOYEN_TTC;
   const caObj=objCur*PANIER_MOYEN_TTC;
 
-  const funnel=PIPELINE_COLS.map(c=>({...c,n:leads.filter(l=>l.column===c.id).length}));
+  const funnelLeads = funnelMode==="month" ? leads.filter(l=>mkOf(l.createdAt)===selMonth) : leads;
+  const funnel=PIPELINE_COLS.map(c=>({...c,n:funnelLeads.filter(l=>l.column===c.id).length}));
   const maxF=Math.max(1,...funnel.map(f=>f.n));
 
   const CYCLE_START = "2026-09-01T00:00:00";
@@ -1962,7 +1964,13 @@ function PilotagePage({user, leads}){
         </div>
 
         {/* ENTONNOIR */}
-        <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase",margin:"18px 0 10px"}}>Entonnoir — où sont les leads</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,margin:"18px 0 10px"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase"}}>Entonnoir — {funnelMode==="month"?("leads reçus en "+mLabel(selMonth).split(" ")[0]):"où sont les leads"}</div>
+          <div className="seg" style={{flexShrink:0}}>
+            <button type="button" className={"seg-btn"+(funnelMode==="month"?" active":"")} onClick={()=>setFunnelMode("month")}>Ce mois</button>
+            <button type="button" className={"seg-btn"+(funnelMode==="total"?" active":"")} onClick={()=>setFunnelMode("total")}>Total</button>
+          </div>
+        </div>
         <div style={card}>
           {funnel.map(f=>(
             <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
