@@ -108,6 +108,10 @@ const TYPOLOGIES = ["Studio / T1","T2","T3","T4","T5+"];
 // ─── FINANCE (onglet réservé à Charles) ──────────────────────────────────
 const FINANCE_EMAIL = "charlesblyopro@gmail.com";
 
+// ─── PILOTAGE : objectifs mensuels internes (cycle sept→août, 60 dossiers/an) ─
+const OBJECTIFS_MENSUELS = { "09":4, "10":4, "11":4, "12":3, "01":3, "02":4, "03":5, "04":5, "05":5, "06":6, "07":9, "08":9 };
+const PANIER_MOYEN_TTC = 920;
+
 // ─── ASSIGNATION DES LEADS (Emmy / Aya) ──────────────────────────────────
 // email : à renseigner avec l'email de connexion Firebase de chacune
 const ASSIGNEES = {
@@ -486,8 +490,8 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 @media(max-width:768px){
   .sb{display:none;}
   .mobile-logout{display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1.5px solid var(--border2);color:var(--text2);width:38px;height:38px;border-radius:9px;cursor:pointer;flex-shrink:0;}
-  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:8px 4px 10px;z-index:90;}
-  .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text3);font-size:9px;font-weight:700;cursor:pointer;background:none;border:none;font-family:"Inter",sans-serif;padding:2px;}
+  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:8px 4px 10px;z-index:90;overflow-x:auto;}
+  .bn-item{flex:1 0 auto;min-width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text3);font-size:9px;font-weight:700;cursor:pointer;background:none;border:none;font-family:"Inter",sans-serif;padding:2px;}
   .bn-item.active{color:var(--accent);}
   .topbar{padding:12px 16px;}
   .pt{font-size:18px;}
@@ -1870,6 +1874,145 @@ function TodoPage({user,addToast}){
   );
 }
 
+// ─── PILOTAGE (réservé à Charles) ────────────────────────────────────────
+function PilotagePage({user, leads}){
+  const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
+  const mkOf=(iso)=>iso?String(iso).slice(0,7):"";
+  const objOf=(mk)=>OBJECTIFS_MENSUELS[mk.slice(5,7)]||0;
+  const mLabel=(mk)=>{ if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
+  const eur=(n)=>Math.round(n).toLocaleString("fr-FR")+" €";
+
+  const valides=leads.filter(l=>l.column==="valide");
+  const signesMois=(mk)=>valides.filter(l=>mkOf(l.validatedAt||l.lastActivity)===mk).length;
+  const recusMois=(mk)=>leads.filter(l=>mkOf(l.createdAt)===mk).length;
+
+  const totalLeads=leads.length;
+  const signesTotal=valides.length;
+  const tauxConv=totalLeads>0?(signesTotal/totalLeads):0;
+  const enCours=leads.filter(l=>l.column!=="valide"&&l.column!=="sans_suite").length;
+
+  const sigCur=signesMois(selMonth);
+  const objCur=objOf(selMonth);
+  const recusCur=recusMois(selMonth);
+  const prevMk=(()=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); })();
+  const recusPrev=recusMois(prevMk);
+  const leadsNeeded=tauxConv>0?Math.round(objCur/tauxConv):null;
+  const gapLeads=leadsNeeded!=null?(leadsNeeded-recusCur):null;
+
+  const caReal=sigCur*PANIER_MOYEN_TTC;
+  const caObj=objCur*PANIER_MOYEN_TTC;
+
+  const funnel=PIPELINE_COLS.map(c=>({...c,n:leads.filter(l=>l.column===c.id).length}));
+  const maxF=Math.max(1,...funnel.map(f=>f.n));
+
+  const months12=(()=>{ const arr=[]; const base=new Date(); base.setDate(1); for(let i=11;i>=0;i--){ const d=new Date(base); d.setMonth(base.getMonth()-i); arr.push(d.toISOString().slice(0,7)); } return arr; })();
+  const sigByMonth=months12.map(mk=>({mk,n:signesMois(mk),obj:objOf(mk)}));
+  const maxSig=Math.max(1,...sigByMonth.map(s=>Math.max(s.n,s.obj)));
+
+  const perf=(role)=>({sig:valides.filter(l=>l.assignedTo===role).length, tot:leads.filter(l=>l.assignedTo===role).length});
+  const emmyP=perf("emmy"), ayaP=perf("aya");
+  const maxTeam=Math.max(1,emmyP.tot,ayaP.tot);
+  const durations=valides.map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
+  const avgDays=durations.length?Math.round(durations.reduce((s,x)=>s+x,0)/durations.length):null;
+
+  const prevMonth=()=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()-1); setSelMonth(d.toISOString().slice(0,7)); };
+  const nextMonth=()=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()+1); setSelMonth(d.toISOString().slice(0,7)); };
+
+  const card={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  const klab={fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"};
+  const kval={fontSize:24,fontWeight:800,marginTop:3};
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Pilotage</div>
+          <div className="ps">Objectifs internes · panier moyen {PANIER_MOYEN_TTC} € TTC</div>
+        </div>
+        <div className="tb-right">
+          <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={prevMonth}><Ic n="chevL" s={15}/></button>
+          <span style={{fontSize:13,fontWeight:700,minWidth:120,textAlign:"center"}}>{mLabel(selMonth)}</span>
+          <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={nextMonth}><Ic n="chevR" s={15}/></button>
+          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
+        </div>
+      </div>
+      <div className="main">
+        {/* KPIs */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
+          <div style={{...card,background:"var(--ardoise)",borderColor:"var(--ardoise)"}}>
+            <div style={{...klab,color:"rgba(255,255,255,.55)"}}>Signés ce mois</div>
+            <div className="brand-font" style={{...kval,color:"#fff"}}>{sigCur}<span style={{fontSize:15,color:"rgba(255,255,255,.5)"}}>/{objCur}</span></div>
+            <div style={{height:5,background:"rgba(255,255,255,.15)",borderRadius:20,marginTop:6,overflow:"hidden"}}><div style={{width:Math.min(100,objCur?sigCur/objCur*100:0)+"%",height:"100%",background:"var(--green)"}}/></div>
+          </div>
+          <div style={card}><div style={klab}>Taux de conversion</div><div className="brand-font" style={{...kval,color:"var(--accent)"}}>{Math.round(tauxConv*100)}%</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>signés ÷ total leads</div></div>
+          <div style={card}><div style={klab}>Leads reçus (mois)</div><div className="brand-font" style={kval}>{recusCur}</div><div style={{fontSize:10,color:recusCur>=recusPrev?"var(--green)":"var(--red)",marginTop:2}}>{recusCur>=recusPrev?"+":""}{recusCur-recusPrev} vs {mLabel(prevMk).split(" ")[0]}</div></div>
+          <div style={card}><div style={klab}>En cours (pipeline)</div><div className="brand-font" style={kval}>{enCours}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>leads actifs</div></div>
+        </div>
+
+        {/* INSIGHT leads nécessaires */}
+        <div style={{background:"var(--accent-l)",border:"1.5px solid var(--accent-l2)",borderRadius:12,padding:"14px 16px",marginTop:14,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{fontSize:26}}>🎯</div>
+          <div style={{fontSize:13,color:"var(--accent-d)",lineHeight:1.5}}>
+            {tauxConv>0
+              ? <>À <b>{Math.round(tauxConv*100)}% de conversion</b>, pour atteindre <b>{objCur} signé{objCur>1?"s":""}</b> en {mLabel(selMonth).split(" ")[0]} il te faut <b>~{leadsNeeded} leads</b>. Tu en as reçu <b>{recusCur}</b> → {gapLeads>0?<span style={{fontWeight:700}}>il t'en manque ~{gapLeads}.</span>:<span style={{fontWeight:700,color:"var(--green)"}}>objectif de volume atteint ✓</span>}</>
+              : <>Pas encore assez de données pour calculer le taux de conversion. Il se précisera à mesure que des dossiers se signent.</>}
+          </div>
+        </div>
+
+        {/* CA */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:14}}>
+          <div style={card}><div style={klab}>CA réalisé (mois)</div><div className="brand-font" style={{...kval,fontSize:20,color:"var(--green)"}}>{eur(caReal)}</div></div>
+          <div style={card}><div style={klab}>CA objectif (mois)</div><div className="brand-font" style={{...kval,fontSize:20}}>{eur(caObj)}</div></div>
+          <div style={card}><div style={klab}>Objectif annuel</div><div className="brand-font" style={{...kval,fontSize:20,color:"var(--accent)"}}>{eur(60*PANIER_MOYEN_TTC)}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>60 dossiers TTC</div></div>
+        </div>
+
+        {/* ENTONNOIR */}
+        <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase",margin:"18px 0 10px"}}>Entonnoir — où sont les leads</div>
+        <div style={card}>
+          {funnel.map(f=>(
+            <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
+              <div style={{width:110,fontSize:11,color:"var(--text2)",fontWeight:600,textAlign:"right",flexShrink:0}}>{f.label}</div>
+              <div style={{flex:1,background:"var(--surface2)",borderRadius:6,height:22,overflow:"hidden"}}><div style={{width:(f.n/maxF*100)+"%",height:"100%",background:f.color,borderRadius:6}}/></div>
+              <div style={{width:24,fontSize:12,fontWeight:800}}>{f.n}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 2 colonnes : signatures/mois + équipe */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:14}}>
+          <div style={card}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:12}}>Signatures par mois (obj. en clair)</div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:6,height:90,overflowX:"auto"}}>
+              {sigByMonth.map(s=>(
+                <div key={s.mk} style={{flex:"1 0 auto",minWidth:26,textAlign:"center"}}>
+                  <div style={{fontSize:11,fontWeight:800,color:s.mk===selMonth?"var(--accent)":"var(--text2)"}}>{s.n}</div>
+                  <div style={{position:"relative",height:60,display:"flex",alignItems:"flex-end",justifyContent:"center",marginTop:3}}>
+                    <div style={{position:"absolute",bottom:0,width:20,height:Math.max(3,s.obj/maxSig*60),background:"var(--accent-l)",borderRadius:"4px 4px 0 0"}}/>
+                    <div style={{position:"relative",width:20,height:Math.max(3,s.n/maxSig*60),background:s.mk===selMonth?"var(--accent)":"var(--accent-l2)",borderRadius:"4px 4px 0 0"}}/>
+                  </div>
+                  <div style={{fontSize:8,color:"var(--text3)",marginTop:3}}>{MOIS_FR[(+s.mk.split("-")[1])-1].slice(0,3)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={card}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:12}}>Performance équipe</div>
+            <div style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.emmy.color}}>Emmy</span><span style={{color:"var(--text2)"}}>{emmyP.sig} signés · {emmyP.tot} leads</span></div>
+              <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(emmyP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.emmy.color}}/></div>
+            </div>
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.aya.color}}>Aya</span><span style={{color:"var(--text2)"}}>{ayaP.sig} signés · {ayaP.tot} leads</span></div>
+              <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(ayaP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.aya.color}}/></div>
+            </div>
+            <div style={{fontSize:10,color:"var(--text3)",marginTop:12}}>Temps moyen contact → signé : <b style={{color:"var(--text)"}}>{avgDays!=null?avgDays+" jours":"—"}</b></div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── FINANCE PAGE (réservée à Charles) ───────────────────────────────────
 function FinancePage({user, leads, addToast, isMobile}){
   const [finance,setFinance]=useState([]);
@@ -2494,6 +2637,7 @@ function App(){
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={16}/>To-do</div>
+            {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
           </div>
           <div className="sb-footer">
@@ -2503,7 +2647,9 @@ function App(){
         </aside>
 
         <div className="content">
-          {(tab==="finance"&&user.email===FINANCE_EMAIL)
+          {(tab==="pilotage"&&user.email===FINANCE_EMAIL)
+            ? <PilotagePage user={user} leads={leads}/>
+            : (tab==="finance"&&user.email===FINANCE_EMAIL)
             ? <FinancePage user={user} leads={leads} addToast={addToast} isMobile={isMobile}/>
             : tab==="partenaires"
             ? <PartenairesPage user={user} addToast={addToast}/>
@@ -2540,6 +2686,7 @@ function App(){
           <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
           <button className={"bn-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={21}/>To-do</button>
+          {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
         </nav>
       </div>
