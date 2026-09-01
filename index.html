@@ -1905,14 +1905,16 @@ function PilotagePage({user, leads}){
   const funnel=PIPELINE_COLS.map(c=>({...c,n:leads.filter(l=>l.column===c.id).length}));
   const maxF=Math.max(1,...funnel.map(f=>f.n));
 
-  const months12=(()=>{ const arr=[]; const base=new Date(); base.setDate(1); for(let i=11;i>=0;i--){ const d=new Date(base); d.setMonth(base.getMonth()-i); arr.push(d.toISOString().slice(0,7)); } return arr; })();
+  const CYCLE_START = "2026-09-01T00:00:00";
+  const afterStart=(iso)=>iso && new Date(iso)>=new Date(CYCLE_START);
+  const months12=["2026-09","2026-10","2026-11","2026-12","2027-01","2027-02","2027-03","2027-04","2027-05","2027-06","2027-07","2027-08"];
   const sigByMonth=months12.map(mk=>({mk,n:signesMois(mk),obj:objOf(mk)}));
   const maxSig=Math.max(1,...sigByMonth.map(s=>Math.max(s.n,s.obj)));
 
-  const perf=(role)=>({sig:valides.filter(l=>l.assignedTo===role).length, tot:leads.filter(l=>l.assignedTo===role).length});
+  const perf=(role)=>({sig:valides.filter(l=>l.assignedTo===role && afterStart(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>l.assignedTo===role && afterStart(l.createdAt)).length});
   const emmyP=perf("emmy"), ayaP=perf("aya");
   const maxTeam=Math.max(1,emmyP.tot,ayaP.tot);
-  const durations=valides.map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
+  const durations=valides.filter(l=>afterStart(l.validatedAt)).map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
   const avgDays=durations.length?Math.round(durations.reduce((s,x)=>s+x,0)/durations.length):null;
 
   const prevMonth=()=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()-1); setSelMonth(d.toISOString().slice(0,7)); };
@@ -1957,13 +1959,6 @@ function PilotagePage({user, leads}){
               ? <>À <b>{Math.round(tauxConv*100)}% de conversion</b>, pour atteindre <b>{objCur} signé{objCur>1?"s":""}</b> en {mLabel(selMonth).split(" ")[0]} il te faut <b>~{leadsNeeded} leads</b>. Tu en as reçu <b>{recusCur}</b> → {gapLeads>0?<span style={{fontWeight:700}}>il t'en manque ~{gapLeads}.</span>:<span style={{fontWeight:700,color:"var(--green)"}}>objectif de volume atteint ✓</span>}</>
               : <>Pas encore assez de données pour calculer le taux de conversion. Il se précisera à mesure que des dossiers se signent.</>}
           </div>
-        </div>
-
-        {/* CA */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:14}}>
-          <div style={card}><div style={klab}>CA réalisé (mois)</div><div className="brand-font" style={{...kval,fontSize:20,color:"var(--green)"}}>{eur(caReal)}</div></div>
-          <div style={card}><div style={klab}>CA objectif (mois)</div><div className="brand-font" style={{...kval,fontSize:20}}>{eur(caObj)}</div></div>
-          <div style={card}><div style={klab}>Objectif annuel</div><div className="brand-font" style={{...kval,fontSize:20,color:"var(--accent)"}}>{eur(60*PANIER_MOYEN_TTC)}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>60 dossiers TTC</div></div>
         </div>
 
         {/* ENTONNOIR */}
