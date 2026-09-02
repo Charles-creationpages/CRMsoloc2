@@ -94,7 +94,6 @@ const PIPELINE_COLS = [
   {id:"premier_contact",label:"Premier contact",color:"#3B82F6"},
   {id:"relance",       label:"Relance",         color:"#D97706"},
   {id:"envoye",        label:"Envoyé",          color:"#8B5CF6"},
-  {id:"en_traitement", label:"En traitement",   color:"#C1614F"},
   {id:"en_recherche",  label:"En recherche",    color:"#0D9488"},
   {id:"en_commission", label:"En commission",   color:"#CA8A04"},
   {id:"valide",        label:"Validé",          color:"#16A34A"},
@@ -382,7 +381,7 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .bien-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;}
 .bien-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
 .bien-card-photo{width:100%;aspect-ratio:4/3;background:#1e2b38;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);font-size:13px;overflow:hidden;}
-.bien-card-photo img{width:100%;height:100%;object-fit:contain;background:#1e2b38;}
+.bien-card-photo img{width:100%;height:100%;object-fit:cover;background:#1e2b38;}
 .bien-card-body{padding:12px 14px;}
 .bien-card-type{display:inline-block;background:var(--accent-l);color:var(--accent-d);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;margin-bottom:6px;}
 .bien-card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;}
@@ -581,21 +580,24 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
   if(lead.column==="valide"&&lead.paid) cls.push("paid");
   const typoArr = asArray(lead.criteria && lead.criteria.typologie);
   const critSummary = typoArr.length ? (typoArr.join("/")+" · "+(lead.criteria.secteur||"—")+" · "+(lead.criteria.loyer?lead.criteria.loyer+"€":"—")) : null;
+  const chip=(bg,fg)=>({fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:bg,color:fg,whiteSpace:"nowrap"});
 
   return(
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
-      <div className="kb-card-name">{lead.name}</div>
-      <div className="kb-meta">
-        {lead.phone&&<span>📞 {lead.phone}</span>}
-        {lead.email&&<span>✉️ {lead.email}</span>}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:critSummary?4:5}}>
+        <div className="kb-card-name" style={{margin:0}}>{lead.name}</div>
+        {lead.assignedTo&&ASSIGNEES[lead.assignedTo]
+          ? <span className="badge" style={{background:ASSIGNEES[lead.assignedTo].color,color:"#fff",flexShrink:0}}>{ASSIGNEES[lead.assignedTo].label}</span>
+          : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
       </div>
-      {critSummary&&<div className="kb-crit">{critSummary}</div>}
-      <div className="kb-badges">
-        {lead.assignedTo&&ASSIGNEES[lead.assignedTo]&&<span className="badge" style={{background:ASSIGNEES[lead.assignedTo].color,color:"#fff"}}>{ASSIGNEES[lead.assignedTo].label}</span>}
-        {!lead.assignedTo&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)"}}>Non assigné</span>}
-        {isDupe&&<span className="badge orange">⚠ Doublon possible</span>}
+      {critSummary&&<div style={{fontSize:11,color:"var(--text2)",fontWeight:600,marginBottom:5}}>{critSummary}</div>}
+      {lead.phone&&<div style={{fontSize:10.5,color:"var(--text3)"}}>📞 {lead.phone}</div>}
+      <div className="kb-badges" style={{marginTop:5}}>
+        {lead.calendlyRdv&&<span style={chip("#EFF6FF","#1d4ed8")}>🗓 {lead.calendlyRdv.dateLabel}</span>}
+        {lead.whatsappContact&&<span style={chip("#DCFCE7","#15803d")}>💬 {lead.whatsappContact.dateLabel||"WhatsApp"}</span>}
+        {stale&&<span style={chip("#FEF3C7","#92400e")}>⚠ {Math.floor(daysSince(lead.lastActivity))}j</span>}
+        {isDupe&&<span style={chip("#FEF3C7","#92400e")}>⚠ Doublon</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
-        {stale&&<span className="badge orange">⚠ {Math.floor(daysSince(lead.lastActivity))}j sans suivi</span>}
         {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
       </div>
       {lead.column==="relance"&&(
@@ -604,24 +606,6 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
       {lead.column==="valide"&&(
         <div className="paid-row" onClick={e=>{e.stopPropagation();onTogglePaid(lead);}}>
           <input type="checkbox" checked={!!lead.paid} onChange={()=>{}} readOnly/> Marquer payé
-        </div>
-      )}
-      {lead.calendlyRdv&&(
-        <div className="rdv-bubble">
-          <div className="rdv-bubble-dot"></div>
-          <div>
-            <div className="rdv-bubble-date">📅 {lead.calendlyRdv.dateLabel}</div>
-            <div className="rdv-bubble-sub">RDV Calendly · {lead.calendlyRdv.eventName||"Appel"}</div>
-          </div>
-        </div>
-      )}
-      {lead.whatsappContact&&(
-        <div className="wa-bubble">
-          <div className="wa-bubble-dot"></div>
-          <div>
-            <div className="wa-bubble-date">💬 {lead.whatsappContact.dateLabel}</div>
-            <div className="wa-bubble-sub">Envoyé sur WhatsApp</div>
-          </div>
         </div>
       )}
     </div>
@@ -2519,7 +2503,6 @@ function App(){
     premier_contact:"↩️ Remis en Premier contact",
     relance:"📞 Passé en Relance",
     envoye:"✉️ Dossier envoyé",
-    en_traitement:"🔍 Passé en traitement",
     en_recherche:"🏠 Critères validés — recherche démarrée",
     en_commission:"📑 Passé en commission",
     valide:"✅ Bail validé",
