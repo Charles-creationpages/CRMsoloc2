@@ -168,6 +168,9 @@ const EMMY_MAIL_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx-xKRRC20
 // URL du script Apps Script d'envoi d'un bien par mail (à coller après déploiement)
 const SEND_BIEN_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyJFKXJuCmIpcL0Zw6b0M1p_KLNYu4KjHaX2HG89ZDHApro6vymqSO6LCcDG8gOjgbs4g/exec";
 
+// URL du script Apps Script d'envoi du mail de validation (Papernest + pack) — à coller après déploiement
+const VALIDATION_WEBAPP_URL = "https://script.google.com/a/macros/solocimmo.fr/s/AKfycby2zepnvalwxJ5a9rLr3ztVuR72ZKsWq6gc8WYbQg_BWJZKYSpOCUUvRavqE2vokE0jmw/exec";
+
 // Partenaires du réseau de Charles rendus visibles à toute l'équipe (identifiés par email)
 const PARTENAIRES_PARTAGES = [
   "gestionnaire.ng4@leneufgestion.com",
@@ -727,7 +730,7 @@ function AddLeadModal({onSave,onClose}){
 }
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
-function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin, onAddNewsletter}){
+function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin, onAddNewsletter, onPapernest}){
   const [form,setForm]=useState(()=>{
     const c={...blankCriteria,...(lead.criteria||{})};
     c.typologie=asArray(c.typologie);
@@ -791,6 +794,9 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         )}
 
         <div className="modal-section">Coordonnées</div>
+        {lead.column==="valide"&&(lead.papernestEnvoye
+          ? <div style={{fontSize:12,color:"var(--green)",fontWeight:700,marginBottom:10}}>✓ Mail de validation envoyé{lead.papernestRdv&&lead.papernestRdv.label?(" · RDV Papernest "+lead.papernestRdv.label):""}</div>
+          : <button className="btn btn-p" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onPapernest(lead)}><Ic n="mail" s={13}/>Envoyer le mail de validation</button>)}
         <button className="btn btn-g" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onAddNewsletter(lead)}><Ic n="mail" s={13}/>Ajouter à la newsletter</button>
         <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
         <div className="fr">
@@ -1858,6 +1864,59 @@ function TodoPage({user,addToast}){
   );
 }
 
+// ─── POPUP VALIDATION / PAPERNEST ────────────────────────────────────────
+function PapernestModal({lead, user, onClose, addToast}){
+  const [called,setCalled]=useState(false);
+  const [rdv,setRdv]=useState("");
+  const [sending,setSending]=useState(false);
+  const hasEmail=!!(lead.email||"").trim();
+  const prenom=(lead.firstName||String(lead.name||"").trim().split(/\s+/)[0]||"");
+
+  const fmtRdv=(dtl)=>{
+    if(!dtl) return "";
+    const d=new Date(dtl);
+    const jours=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+    const mois=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+    const mn=d.getMinutes();
+    return jours[d.getDay()]+" "+d.getDate()+" "+mois[d.getMonth()]+" à "+d.getHours()+"h"+(mn<10?"0"+mn:mn);
+  };
+
+  const confirm=()=>{
+    if(!called){ addToast("Confirme d'abord l'appel pour l'annonce","error"); return; }
+    if(!rdv){ addToast("Saisis la date et l'heure du RDV Papernest","error"); return; }
+    const rdvLabel=fmtRdv(rdv);
+    setSending(true);
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ papernestRdv:{iso:rdv,label:rdvLabel}, papernestEnvoye:true, papernestSender:roleOfEmail(user.email) }).catch(()=>{});
+    if(VALIDATION_WEBAPP_URL && hasEmail){
+      fetch(VALIDATION_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email, prenom:prenom, rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })}).catch(()=>{});
+    }
+    setTimeout(()=>{ setSending(false); addToast(hasEmail?"✓ Dossier validé, mail envoyé au client":"Dossier validé (pas d'email, mail non envoyé)"); onClose(); },900);
+  };
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Dossier validé 🎉</div>
+        <div className="modal-sub">{lead.name} passe en Validé. Dernière étape avant le mail de félicitations au client.</div>
+        <label style={{display:"flex",alignItems:"flex-start",gap:9,padding:"11px 13px",border:"1.5px solid",borderColor:called?"var(--green)":"var(--border2)",borderRadius:10,margin:"12px 0",cursor:"pointer",background:called?"var(--green-bg)":"var(--surface)"}}>
+          <input type="checkbox" checked={called} onChange={e=>setCalled(e.target.checked)} style={{marginTop:2}}/>
+          <span style={{fontSize:13,fontWeight:600,color:"var(--text2)"}}>J'ai bien appelé le client pour l'annonce.</span>
+        </label>
+        <div className="fg">
+          <label className="fl">Date et heure du RDV Papernest *</label>
+          <input className="fi" type="datetime-local" value={rdv} onChange={e=>setRdv(e.target.value)}/>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Le mail rappellera ce RDV au client (souscription énergie et internet en 30 min).</div>
+        </div>
+        {!hasEmail&&<div style={{fontSize:12,color:"var(--red)",fontWeight:700,marginTop:8}}>⚠ Pas d'email sur la fiche : le mail ne pourra pas partir. Ajoute-le d'abord si tu veux l'envoyer.</div>}
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Plus tard</button>
+          <button className="btn btn-p" onClick={confirm} disabled={sending}><Ic n="check" s={13}/>{sending?"Envoi…":"Valider & envoyer"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PILOTAGE (réservé à Charles) ────────────────────────────────────────
 function PilotagePage({user, leads}){
   const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
@@ -2533,7 +2592,7 @@ function App(){
     fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
-    }).then(()=>addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name));
+    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
   };
 
   const relanceAction=(lead)=>{
@@ -2570,7 +2629,11 @@ function App(){
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
       criteria:form.criteria, column:targetCol, assignedTo:form.assignedTo||"", assignTouched:true, ...valExtra, ...ssExtra, ...evExtra,
       lastActivity:nowISO(), history:hist
-    }).then(()=>{addToast("✓ "+lead.name+" mis à jour");setModal(null);});
+    }).then(()=>{
+      addToast("✓ "+lead.name+" mis à jour");
+      if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}});
+      else setModal(null);
+    });
   };
 
   const deleteLead=(lead)=>{
@@ -2690,9 +2753,11 @@ function App(){
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
       {(modal?.type==="detail"||modal?.type==="gate")&&
         <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}
-          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})} isAdmin={isAdmin} onAddNewsletter={addToNewsletter}/>}
+          dupePartners={partnersOf(modal.lead)} onMerge={(p)=>setModal({type:"merge",a:modal.lead,b:p})} isAdmin={isAdmin} onAddNewsletter={addToNewsletter} onPapernest={(l)=>setModal({type:"papernest",lead:l})}/>}
       {modal?.type==="merge"&&
         <MergeModal leadA={modal.a} leadB={modal.b} onClose={()=>setModal(null)} onConfirm={mergeLeads}/>}
+      {modal?.type==="papernest"&&
+        <PapernestModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast}/>}
 
       <div className="toast-wrap">
         {toasts.map(t=><div key={t.id} className={"toast"+(t.type==="error"?" error":"")}>{t.text}</div>)}
