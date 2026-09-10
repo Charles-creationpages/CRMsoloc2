@@ -94,13 +94,13 @@ const PIPELINE_COLS = [
   {id:"premier_contact",label:"Premier contact",color:"#3B82F6"},
   {id:"relance",       label:"Relance",         color:"#D97706"},
   {id:"envoye",        label:"Envoyé",          color:"#8B5CF6"},
+  {id:"en_attente",    label:"En attente",      color:"#64748B"},
   {id:"en_recherche",  label:"En recherche",    color:"#0D9488"},
   {id:"en_commission", label:"En commission",   color:"#CA8A04"},
   {id:"valide",        label:"Validé",          color:"#16A34A"},
 ];
 const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].includes(c.id)).map(c=>c.id);
 const SANS_SUITE_TTL_DAYS = 15;
-const ENVOYE_TTL_DAYS = 20;
 const STATUTS = ["Étudiant","CDI","CDD","Indépendant","Colocation"];
 const TYPOLOGIES = ["Studio / T1","T2","T3","T4","T5+"];
 
@@ -603,6 +603,9 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
       </div>
+      {lead.column==="en_attente"&&lead.notes&&(
+        <div style={{fontSize:10.5,color:"#475569",background:"#F1F5F9",border:"1px solid #E2E8F0",borderRadius:7,padding:"5px 8px",marginTop:6,lineHeight:1.4}}>⏸ {lead.notes}</div>
+      )}
       {lead.column==="relance"&&(
         <button className="relance-act" onClick={e=>{e.stopPropagation();onRelanceAction(lead);}}>Pas de réponse</button>
       )}
@@ -2489,13 +2492,12 @@ function App(){
   const cleanupRef=useRef(new Set());
   useEffect(()=>{
     if(!user) return;
-    const toDelete=leads.filter(l=>!cleanupRef.current.has(l.id) && (
-      (l.column==="sans_suite" && daysSince(l.sansSuiteAt||l.lastActivity)>SANS_SUITE_TTL_DAYS) ||
-      (l.column==="envoye" && daysSince(l.envoyeAt||l.lastActivity)>ENVOYE_TTL_DAYS)
-    ));
+    const toDelete=leads.filter(l=>!cleanupRef.current.has(l.id) &&
+      l.column==="sans_suite" && daysSince(l.sansSuiteAt||l.lastActivity)>SANS_SUITE_TTL_DAYS
+    );
     if(toDelete.length===0) return;
     toDelete.forEach(l=>{ cleanupRef.current.add(l.id); fsDeleteDoc(fsDocRef(db,"leads",l.id)).catch(()=>cleanupRef.current.delete(l.id)); });
-    addToast(toDelete.length+" fiche"+(toDelete.length>1?"s":"")+" supprimée"+(toDelete.length>1?"s":"")+" automatiquement (délai dépassé)");
+    addToast(toDelete.length+" fiche"+(toDelete.length>1?"s":"")+" en sans suite supprimée"+(toDelete.length>1?"s":"")+" (+15j)");
   },[leads,user]);
 
   // Auto-répartition des leads non assignés (Calendly = jour du RDV, WhatsApp = jour de réception).
@@ -2541,6 +2543,28 @@ function App(){
     });
   },[leads,newsletter,user]);
 
+  // Auto-copie en Newsletter quand un lead passe en "Envoyé" (pour lui diffuser des biens).
+  // Il en ressort tout seul quand il signe (passe En recherche → dédoublonnage ci-dessus).
+  const nlAddRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user) return;
+    leads.filter(l=>l.column==="envoye").forEach(l=>{
+      if(nlAddRef.current.has(l.id)) return;
+      const np=normPhone(l.phone), ne=normEmail(l.email);
+      const exists=newsletter.some(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne));
+      nlAddRef.current.add(l.id);
+      if(exists) return;
+      const c=l.criteria||{};
+      fsAddDoc(fsCollection(db,"newsletter"),{
+        firstName:l.firstName||"", lastName:l.lastName||"", name:l.name,
+        email:l.email||"", phone:l.phone||"",
+        typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
+        statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
+        createdAt:nowISO(), fromLead:true, fromEnvoye:true
+      }).catch(()=>nlAddRef.current.delete(l.id));
+    });
+  },[leads,newsletter,user]);
+
   const addToNewsletter=(lead)=>{
     const np=normPhone(lead.phone), ne=normEmail(lead.email);
     if(newsletter.some(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne))){ addToast("Déjà dans la newsletter","error"); return; }
@@ -2562,6 +2586,7 @@ function App(){
     premier_contact:"↩️ Remis en Premier contact",
     relance:"📞 Passé en Relance",
     envoye:"✉️ Dossier envoyé",
+    en_attente:"⏸️ Mis en attente",
     en_recherche:"🏠 Critères validés — recherche démarrée",
     en_commission:"📑 Passé en commission",
     valide:"✅ Bail validé",
