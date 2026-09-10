@@ -89,6 +89,12 @@ const criteriaComplete = (c) => {
   return true;
 };
 
+// Minimum requis pour passer en "Envoyé" : statut, typologie, téléphone, email
+const envoyeReady = (o) => {
+  const c = (o && o.criteria) || {};
+  return !!(c.statutClient && asArray(c.typologie).length > 0 && (o.phone||"").trim() && (o.email||"").trim());
+};
+
 const PIPELINE_COLS = [
   {id:"sans_suite",    label:"Sans suite",     color:"#9CA3AF"},
   {id:"premier_contact",label:"Premier contact",color:"#3B82F6"},
@@ -108,7 +114,7 @@ const TYPOLOGIES = ["Studio / T1","T2","T3","T4","T5+"];
 const FINANCE_EMAIL = "charlesblyopro@gmail.com";
 
 // ─── PILOTAGE : objectifs mensuels internes (cycle sept→août, 60 dossiers/an) ─
-const OBJECTIFS_MENSUELS = { "09":4, "10":4, "11":4, "12":3, "01":3, "02":4, "03":5, "04":5, "05":5, "06":6, "07":9, "08":9 };
+const OBJECTIFS_MENSUELS = { "09":5, "10":5, "11":5, "12":5, "01":5, "02":5, "03":5, "04":5, "05":5, "06":5, "07":5, "08":5 };
 const PANIER_MOYEN_TTC = 920;
 
 // ─── ASSIGNATION DES LEADS (Emmy / Aya) ──────────────────────────────────
@@ -754,6 +760,10 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     const targetCol = forceColumn||form.column;
     if(targetCol==="en_recherche"&&!criteriaComplete(form.criteria)){
       setErr("Complète tous les critères obligatoires avant de passer en recherche.");
+      return;
+    }
+    if(targetCol==="envoye"&&!envoyeReady(form)){
+      setErr("Pour passer en Envoyé : statut, typologie, téléphone et email sont requis.");
       return;
     }
     setErr("");
@@ -2609,6 +2619,11 @@ function App(){
   const moveLead=(id,col)=>{
     const lead=leads.find(l=>l.id===id);
     if(!lead||lead.column===col) return;
+    if(col==="envoye"&&!envoyeReady(lead)){
+      addToast("Pour passer en Envoyé : statut, typologie, téléphone et email requis","error");
+      setModal({type:"detail",lead});
+      return;
+    }
     if(col==="en_recherche"&&!criteriaComplete(lead.criteria)){
       setModal({type:"gate",lead});
       return;
