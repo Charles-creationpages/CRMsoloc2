@@ -1971,6 +1971,9 @@ function PilotagePage({user, leads}){
 
   const perf=(role)=>({sig:valides.filter(l=>l.assignedTo===role && afterStart(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>l.assignedTo===role && afterStart(l.createdAt)).length});
   const emmyP=perf("emmy"), ayaP=perf("aya");
+  const envoyesOf=(role)=>leads.filter(l=>l.assignedTo===role && l.envoyeAt && afterStart(l.envoyeAt)).length;
+  const emmyEnv=envoyesOf("emmy"), ayaEnv=envoyesOf("aya");
+  const totalEnv=leads.filter(l=>l.envoyeAt && afterStart(l.envoyeAt)).length;
   const maxTeam=Math.max(1,emmyP.tot,ayaP.tot);
   const durations=valides.filter(l=>afterStart(l.validatedAt)).map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
   const avgDays=durations.length?Math.round(durations.reduce((s,x)=>s+x,0)/durations.length):null;
@@ -2057,14 +2060,18 @@ function PilotagePage({user, leads}){
           <div style={card}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:12}}>Performance équipe</div>
             <div style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.emmy.color}}>Emmy</span><span style={{color:"var(--text2)"}}>{emmyP.sig} signés · {emmyP.tot} leads</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.emmy.color}}>Emmy</span><span style={{color:"var(--text2)"}}>{emmyP.sig} signés · {emmyEnv} envoyés · {emmyP.tot} leads</span></div>
               <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(emmyP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.emmy.color}}/></div>
             </div>
             <div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.aya.color}}>Aya</span><span style={{color:"var(--text2)"}}>{ayaP.sig} signés · {ayaP.tot} leads</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.aya.color}}>Aya</span><span style={{color:"var(--text2)"}}>{ayaP.sig} signés · {ayaEnv} envoyés · {ayaP.tot} leads</span></div>
               <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(ayaP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.aya.color}}/></div>
             </div>
-            <div style={{fontSize:10,color:"var(--text3)",marginTop:12}}>Temps moyen contact → signé : <b style={{color:"var(--text)"}}>{avgDays!=null?avgDays+" jours":"—"}</b></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)"}}>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Dossiers envoyés (total)</span>
+              <span className="brand-font" style={{fontSize:16,fontWeight:800,color:"var(--accent)"}}>{totalEnv}</span>
+            </div>
+            <div style={{fontSize:10,color:"var(--text3)",marginTop:8}}>Temps moyen contact → signé : <b style={{color:"var(--text)"}}>{avgDays!=null?avgDays+" jours":"—"}</b></div>
           </div>
         </div>
       </div>
