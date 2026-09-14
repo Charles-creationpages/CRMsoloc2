@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vos critères de recherche — SOLOC'</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap");
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:#EEECE7;color:#2C3E50;padding:24px 12px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:620px;margin:0 auto;background:#FBF7F0;border:1px solid #E5D9C6;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(44,62,80,.12);}
+  .head{background:#2C3E50;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;}
+  .head-t{font-family:'Sora',sans-serif;color:#fff;font-size:18px;font-weight:800;}
+  .head-s{color:rgba(255,255,255,.55);font-size:12px;margin-top:2px;}
+  .logo{width:40px;height:40px;background:#C1614F;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;font-family:'Sora',sans-serif;}
+  .body{padding:8px 24px 24px;}
+  .sec{background:#C1614F;color:#fff;font-family:'Sora',sans-serif;font-size:14px;font-weight:800;letter-spacing:.05em;padding:9px 16px;border-radius:8px;margin:22px 0 14px;}
+  .sub{font-size:11px;font-weight:800;color:#A14E3F;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 8px;}
+  .lab{display:block;font-size:12px;font-weight:700;color:#5A6B7B;margin-bottom:5px;}
+  .req{color:#C1614F;}
+  .fi{width:100%;background:#fff;border:1.5px solid #D8C7AE;border-radius:9px;padding:10px 12px;font-size:13px;color:#2C3E50;font-family:inherit;outline:none;}
+  .fi:focus{border-color:#C1614F;}
+  .row{display:flex;gap:10px;}
+  .row>div{flex:1;}
+  .grp{margin-bottom:14px;}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{padding:8px 14px;border-radius:20px;border:1.5px solid #D8C7AE;background:#F2E8DA;color:#5A6B7B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .chip.on{background:#C1614F;border-color:#C1614F;color:#fff;}
+  .chk{padding:8px 12px;border-radius:9px;border:1.5px solid #D8C7AE;background:#fff;color:#5A6B7B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .chk.on{background:#EAF3EA;border-color:#16A34A;color:#166534;}
+  .submit{width:100%;margin-top:12px;background:#C1614F;color:#fff;border:none;padding:14px;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer;font-family:'Sora',sans-serif;}
+  .submit:disabled{opacity:.5;cursor:not-allowed;}
+  .foot{text-align:center;font-size:11px;color:#9AA7B2;margin-top:10px;}
+  .err{background:#FEE2E2;color:#991B1B;border:1.5px solid #F5B5B5;border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:14px;display:none;}
+  .state{padding:50px 30px;text-align:center;}
+  .state-ic{font-size:44px;margin-bottom:14px;}
+  .state-t{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;}
+  .state-s{font-size:14px;color:#5A6B7B;line-height:1.6;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <div class="head-t">Vos critères de recherche</div>
+        <div class="head-s">Remplissez ce formulaire, on s'occupe du reste.</div>
+      </div>
+      <div class="logo">S</div>
+    </div>
+
+    <div id="loading" class="state">
+      <div class="state-s">Chargement…</div>
+    </div>
+
+    <div id="form" class="body" style="display:none;">
+      <div id="err" class="err"></div>
+
+      <div class="sec">VOS INFORMATIONS</div>
+      <div class="sub">Locataire</div>
+      <div class="grp"><label class="lab">Prénom &amp; Nom <span class="req">*</span></label><input class="fi" id="loc_nom"/></div>
+      <div class="row grp">
+        <div><label class="lab">Téléphone</label><input class="fi" id="loc_tel" placeholder="06…"/></div>
+        <div><label class="lab">Mail</label><input class="fi" id="loc_mail" type="email" placeholder="vous@mail.com"/></div>
+      </div>
+      <div style="font-size:11px;color:#9AA7B2;margin:-6px 0 14px;">Au moins un téléphone ou un mail est requis <span class="req">*</span></div>
+
+      <div class="sub">Garant (optionnel)</div>
+      <div class="grp"><label class="lab">Prénom &amp; Nom</label><input class="fi" id="gar_nom"/></div>
+      <div class="row grp">
+        <div><label class="lab">Téléphone</label><input class="fi" id="gar_tel"/></div>
+        <div><label class="lab">Mail</label><input class="fi" id="gar_mail"/></div>
+      </div>
+      <div class="grp"><label class="lab">Lien avec le locataire</label><input class="fi" id="gar_lien" placeholder="parent, ami…"/></div>
+
+      <div class="sec">VOS CRITÈRES DE RECHERCHE</div>
+
+      <div class="grp"><label class="lab">Type de logement <span class="req">*</span> <span style="font-weight:400;color:#9AA7B2;">(plusieurs possibles)</span></label>
+        <div class="chips" data-multi id="typo">
+          <button type="button" class="chip">Studio / T1</button><button type="button" class="chip">T2</button><button type="button" class="chip">T3</button><button type="button" class="chip">T4</button><button type="button" class="chip">T5+</button>
+        </div>
+      </div>
+      <div class="row grp">
+        <div><label class="lab">Budget maximum (€) <span class="req">*</span></label><input class="fi" id="budget" type="number" placeholder="700"/></div>
+        <div><label class="lab">Surface minimum (m²)</label><input class="fi" id="surface" type="number" placeholder="20"/></div>
+      </div>
+
+      <div class="grp"><label class="lab">État du logement <span style="font-weight:400;color:#9AA7B2;">(plusieurs possibles)</span></label>
+        <div class="chks" data-multi id="etat" style="display:flex;flex-wrap:wrap;gap:7px;">
+          <button type="button" class="chk">Ancien</button><button type="button" class="chk">Rénové</button><button type="button" class="chk">Récent</button><button type="button" class="chk">Neuf</button>
+        </div>
+      </div>
+
+      <div class="grp"><label class="lab">Meublé ou nu ?</label>
+        <div class="chips" data-single id="meuble">
+          <button type="button" class="chip">Nu</button><button type="button" class="chip">Meublé</button>
+        </div>
+      </div>
+
+      <div class="grp"><label class="lab">Localisation <span class="req">*</span> <span style="font-weight:400;color:#9AA7B2;">(villes, arrondissements, quartiers)</span></label><input class="fi" id="loca" placeholder="Lyon 7, Guillotière…"/></div>
+      <div class="grp"><label class="lab">Proximité transports souhaitée <span style="font-weight:400;color:#9AA7B2;">(type + temps en min)</span></label><input class="fi" id="transports" placeholder="Métro B à 10 min"/></div>
+
+      <div class="row grp">
+        <div><label class="lab">Rez-de-chaussée accepté ?</label>
+          <div class="chips" data-single id="rdc"><button type="button" class="chip">Oui</button><button type="button" class="chip">Non</button></div>
+        </div>
+        <div><label class="lab">Ascenseur obligatoire ?</label>
+          <div class="chips" data-single id="asc"><button type="button" class="chip">Oui</button><button type="button" class="chip">Non</button></div>
+        </div>
+      </div>
+
+      <div class="grp"><label class="lab">Prestations supplémentaires <span style="font-weight:400;color:#9AA7B2;">(chaque prestation peut augmenter le loyer)</span></label>
+        <div class="chks" data-multi id="presta" style="display:flex;flex-wrap:wrap;gap:7px;">
+          <button type="button" class="chk">Balcon</button><button type="button" class="chk">Garage / parking</button><button type="button" class="chk">Cave</button><button type="button" class="chk">Cuisine équipée</button><button type="button" class="chk">Autre</button>
+        </div>
+      </div>
+
+      <div class="grp"><label class="lab">Ces prestations sont-elles indispensables ? <span style="font-weight:400;color:#9AA7B2;">(prolonge la recherche)</span></label>
+        <div class="chips" data-single id="presta_indisp"><button type="button" class="chip">Oui</button><button type="button" class="chip">Non</button></div>
+      </div>
+
+      <div class="grp"><label class="lab">Date d'entrée souhaitée</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" class="chk" id="asap">⚡ Dès que possible</button>
+          <input class="fi" type="date" id="datentree" style="flex:1;"/>
+        </div>
+      </div>
+
+      <button class="submit" id="send">Envoyer mes critères</button>
+      <div class="foot">Vos informations sont confidentielles et utilisées uniquement pour votre recherche.</div>
+    </div>
+
+    <div id="done" class="state" style="display:none;">
+      <div class="state-ic">✅</div>
+      <div class="state-t">Merci, c'est bien reçu !</div>
+      <div class="state-s">Vos critères nous sont parvenus. Votre conseiller SOLOC' revient vers vous très vite.</div>
+    </div>
+
+    <div id="already" class="state" style="display:none;">
+      <div class="state-ic">📋</div>
+      <div class="state-t">Formulaire déjà rempli</div>
+      <div class="state-s">Ce formulaire a déjà été complété. Si vous devez modifier vos critères, contactez votre conseiller SOLOC'.</div>
+    </div>
+
+    <div id="invalid" class="state" style="display:none;">
+      <div class="state-ic">🔗</div>
+      <div class="state-t">Lien invalide</div>
+      <div class="state-s">Ce lien ne semble pas valide. Vérifiez le lien reçu, ou contactez votre conseiller SOLOC'.</div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
+    authDomain: "soloc-crm.firebaseapp.com",
+    projectId: "soloc-crm",
+    storageBucket: "soloc-crm.firebasestorage.app",
+    messagingSenderId: "247355554921",
+    appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
+  };
+  const db = getFirestore(initializeApp(firebaseConfig));
+
+  const params = new URLSearchParams(location.search);
+  const leadId = params.get("id");
+  const preNom = params.get("n");
+
+  const $ = (id)=>document.getElementById(id);
+  const show = (id)=>{ ["loading","form","done","already","invalid"].forEach(x=>$(x).style.display="none"); $(id).style.display = id==="form"?"block":(id==="loading"?"block":"block"); };
+
+  function initChoices(){
+    document.querySelectorAll("[data-single]").forEach(function(g){
+      g.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ g.querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); }; });
+    });
+    document.querySelectorAll("[data-multi]").forEach(function(g){
+      g.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ b.classList.toggle("on"); }; });
+    });
+    const asap=$("asap"), dd=$("datentree");
+    asap.onclick=function(){ asap.classList.toggle("on"); dd.disabled=asap.classList.contains("on"); dd.style.opacity=asap.classList.contains("on")?".4":"1"; };
+  }
+  const pickedMulti=(id)=>Array.from($(id).querySelectorAll("button.on")).map(b=>b.textContent.trim());
+  const pickedSingle=(id)=>{ const b=$(id).querySelector("button.on"); return b?b.textContent.trim():""; };
+
+  async function boot(){
+    if(!leadId){ show("invalid"); return; }
+    try {
+      const snap = await getDoc(doc(db,"soumissions",leadId));
+      if(snap.exists()){ show("already"); return; }
+    } catch(e){}
+    if(preNom) $("loc_nom").value = preNom;
+    initChoices();
+    show("form");
+    $("send").onclick = submit;
+  }
+
+  async function submit(){
+    const err=$("err");
+    const nom=$("loc_nom").value.trim();
+    const tel=$("loc_tel").value.trim();
+    const mail=$("loc_mail").value.trim();
+    const typo=pickedMulti("typo");
+    const budget=$("budget").value.trim();
+    const loca=$("loca").value.trim();
+
+    const manque=[];
+    if(!nom) manque.push("votre prénom et nom");
+    if(!tel && !mail) manque.push("un téléphone ou un mail");
+    if(typo.length===0) manque.push("le type de logement");
+    if(!budget) manque.push("le budget maximum");
+    if(!loca) manque.push("la localisation");
+    if(manque.length){ err.textContent="Merci de renseigner : "+manque.join(", ")+"."; err.style.display="block"; window.scrollTo(0,0); return; }
+    err.style.display="none";
+
+    const data={
+      leadId: leadId,
+      locataireNom: nom, phone: tel, email: mail,
+      garantNom: $("gar_nom").value.trim(), garantTel: $("gar_tel").value.trim(), garantMail: $("gar_mail").value.trim(), garantLien: $("gar_lien").value.trim(),
+      typologie: typo,
+      budgetMax: budget,
+      surfaceMin: $("surface").value.trim(),
+      etatBien: pickedMulti("etat"),
+      meuble: pickedSingle("meuble"),
+      localisation: loca,
+      transports: $("transports").value.trim(),
+      rdc: pickedSingle("rdc"),
+      ascenseur: pickedSingle("asc"),
+      prestations: pickedMulti("presta"),
+      prestationsIndispensables: pickedSingle("presta_indisp"),
+      dateAsap: $("asap").classList.contains("on"),
+      dateEntree: $("datentree").value || "",
+      submittedAt: new Date().toISOString(),
+      traite: false
+    };
+
+    $("send").disabled=true; $("send").textContent="Envoi…";
+    try {
+      await setDoc(doc(db,"soumissions",leadId), data);
+      show("done");
+    } catch(e){
+      // create refusé = doc déjà existant (déjà rempli) OU erreur réseau
+      if(String(e.code||"").indexOf("permission")!==-1){ show("already"); }
+      else { $("send").disabled=false; $("send").textContent="Envoyer mes critères"; err.textContent="Une erreur est survenue, réessayez dans un instant."; err.style.display="block"; }
+    }
+  }
+
+  boot();
+</script>
+</body>
+</html>
