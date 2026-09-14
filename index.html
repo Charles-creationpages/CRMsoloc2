@@ -2587,27 +2587,21 @@ function App(){
     });
   },[leads,newsletter,user]);
 
-  // Auto-copie en Newsletter quand un lead passe en "Envoyé" (pour lui diffuser des biens).
-  // Il en ressort tout seul quand il signe (passe En recherche → dédoublonnage ci-dessus).
-  const nlAddRef=useRef(new Set());
-  useEffect(()=>{
-    if(!user) return;
-    leads.filter(l=>l.column==="envoye").forEach(l=>{
-      if(nlAddRef.current.has(l.id)) return;
-      const np=normPhone(l.phone), ne=normEmail(l.email);
-      const exists=newsletter.some(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne));
-      nlAddRef.current.add(l.id);
-      if(exists) return;
-      const c=l.criteria||{};
-      fsAddDoc(fsCollection(db,"newsletter"),{
-        firstName:l.firstName||"", lastName:l.lastName||"", name:l.name,
-        email:l.email||"", phone:l.phone||"",
-        typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
-        statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
-        createdAt:nowISO(), fromLead:true, fromEnvoye:true
-      }).catch(()=>nlAddRef.current.delete(l.id));
-    });
-  },[leads,newsletter,user]);
+  // Copie un lead vers la Newsletter, une seule fois, au moment où il passe en "Envoyé".
+  // Silencieux, et ne recrée jamais une entrée supprimée à la main (plus d'effet en boucle).
+  const copyLeadToNewsletter=(lead)=>{
+    if(!lead) return;
+    const np=normPhone(lead.phone), ne=normEmail(lead.email);
+    if(newsletter.some(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne))) return;
+    const c=lead.criteria||{};
+    fsAddDoc(fsCollection(db,"newsletter"),{
+      firstName:lead.firstName||"", lastName:lead.lastName||"", name:lead.name,
+      email:lead.email||"", phone:lead.phone||"",
+      typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
+      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
+      createdAt:nowISO(), fromLead:true, fromEnvoye:true
+    }).catch(()=>{});
+  };
 
   const addToNewsletter=(lead)=>{
     const np=normPhone(lead.phone), ne=normEmail(lead.email);
@@ -2666,7 +2660,7 @@ function App(){
     fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
-    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
+    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="envoye") copyLeadToNewsletter(lead); if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
   };
 
   const relanceAction=(lead)=>{
@@ -2705,6 +2699,7 @@ function App(){
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
+      if(targetCol==="envoye" && lead.column!=="envoye") copyLeadToNewsletter({...lead,phone:form.phone,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria});
       if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}});
       else setModal(null);
     });
