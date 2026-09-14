@@ -184,6 +184,19 @@ const PARTENAIRES_PARTAGES = [
   "agathe@maison-conte.com"
 ];
 
+// ─── PROPRIÉTAIRE D'UN PARTENAIRE (étiquette) ────────────────────────────
+const OWNERS = {
+  emmy:    { label:"Emmy",    color:"#C1614F" },
+  aya:     { label:"Aya",     color:"#2563EB" },
+  charles: { label:"Charles", color:"#2C3E50" }
+};
+const emailToRole = (email) => {
+  const e = normEmail(email);
+  for (var k in ASSIGNEES) { if (ASSIGNEES[k].email && normEmail(ASSIGNEES[k].email)===e) return k; }
+  return "charles"; // Charles ou compte inconnu
+};
+const partnerOwner = (p) => p.owner || emailToRole(p.createdBy);
+
 // ─── ICONS ───────────────────────────────────────────────────────────────
 const ICONS = (s) => ({
   plus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -1552,7 +1565,7 @@ function BiensPage({user, newsletter, leads, addToast}){
 }
 
 // ─── PARTENAIRE MODAL ────────────────────────────────────────────────────
-function PartenaireModal({partenaire, onSave, onClose}){
+function PartenaireModal({partenaire, isAdmin, defaultOwner, onSave, onClose}){
   const editing = !!partenaire;
   const [form,setForm]=useState({
     agence: partenaire?.agence||"",
@@ -1560,6 +1573,7 @@ function PartenaireModal({partenaire, onSave, onClose}){
     nom:    partenaire?.nom||"",
     phone:  partenaire?.phone||"",
     email:  partenaire?.email||"",
+    owner:  defaultOwner||"charles",
   });
   const [err,setErr]=useState("");
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -1575,7 +1589,6 @@ function PartenaireModal({partenaire, onSave, onClose}){
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-title">{editing?"Modifier le partenaire":"Ajouter un partenaire"}</div>
-        <div className="modal-sub">Les informations seront visibles de Charles et Emmy.</div>
         {err&&<div className="ferr">{err}</div>}
         <div className="fg"><label className="fl">Agence *</label><input className="fi" autoFocus value={form.agence} onChange={e=>set("agence",e.target.value)} placeholder="Ex: Foncia Part-Dieu"/></div>
         <div className="fr">
@@ -1584,6 +1597,16 @@ function PartenaireModal({partenaire, onSave, onClose}){
         </div>
         <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>set("phone",e.target.value)}/></div>
         <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
+        {isAdmin&&(
+          <div className="fg">
+            <label className="fl">Propriétaire</label>
+            <div className="seg">
+              {Object.keys(OWNERS).map(k=>(
+                <button key={k} type="button" className={"seg-btn"+(form.owner===k?" active":"")} style={form.owner===k?{background:OWNERS[k].color,borderColor:OWNERS[k].color,color:"#fff"}:{}} onClick={()=>set("owner",k)}>{OWNERS[k].label}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="fa">
           <button className="btn btn-g" onClick={onClose}>Annuler</button>
           <button className="btn btn-p" onClick={submit}><Ic n="check" s={13}/>{editing?"Enregistrer":"Ajouter"}</button>
@@ -1610,13 +1633,19 @@ function PartenairesPage({user, addToast}){
     return unsub;
   },[]);
 
+  const isAdmin = user.email===FINANCE_EMAIL;
+  const myRole = emailToRole(user.email);
+
   const savePartenaire=(form)=>{
     if(modal?.type==="edit"){
-      fsUpdateDoc(fsDocRef(db,"partenaires",modal.p.id),form)
+      const upd={agence:form.agence, prenom:form.prenom, nom:form.nom, phone:form.phone, email:form.email};
+      if(isAdmin) upd.owner = form.owner||partnerOwner(modal.p); // seul l'admin change le propriétaire
+      fsUpdateDoc(fsDocRef(db,"partenaires",modal.p.id),upd)
         .then(()=>{addToast("✓ Partenaire mis à jour");setModal(null);})
         .catch(()=>addToast("Erreur de mise à jour","error"));
     } else {
-      fsAddDoc(fsCollection(db,"partenaires"),{...form, createdBy:user.email, createdAt:nowISO()})
+      const owner = isAdmin ? (form.owner||myRole) : myRole;
+      fsAddDoc(fsCollection(db,"partenaires"),{agence:form.agence, prenom:form.prenom, nom:form.nom, phone:form.phone, email:form.email, owner, createdBy:user.email, createdAt:nowISO()})
         .then(()=>{addToast("✓ "+form.prenom+" "+form.nom+" ajouté");setModal(null);})
         .catch(()=>addToast("Erreur d'ajout","error"));
     }
@@ -1631,9 +1660,8 @@ function PartenairesPage({user, addToast}){
   };
 
   // Charles voit tout le réseau ; les autres voient leurs agents + ceux partagés par Charles
-  const isAdmin = user.email===FINANCE_EMAIL;
   const visibles = isAdmin ? partenaires : partenaires.filter(p=>
-    p.createdBy===user.email || PARTENAIRES_PARTAGES.indexOf(normEmail(p.email))!==-1
+    partnerOwner(p)===myRole || PARTENAIRES_PARTAGES.indexOf(normEmail(p.email))!==-1
   );
 
   const q=search.toLowerCase();
@@ -1671,12 +1699,13 @@ function PartenairesPage({user, addToast}){
           <div style={{overflowX:"auto"}}>
           <table className="list-table">
             <thead><tr>
-              <th>Agence</th><th>Prénom</th><th>NOM</th><th>Téléphone</th><th>Email</th><th style={{width:80}}></th>
+              <th>Agence</th><th>Propriétaire</th><th>Prénom</th><th>NOM</th><th>Téléphone</th><th>Email</th><th style={{width:80}}></th>
             </tr></thead>
             <tbody>
               {rows.map(p=>(
                 <tr key={p.id}>
                   <td><span className="agency-badge">{p.agence||"—"}</span></td>
+                  <td>{(function(){var o=partnerOwner(p);var cfg=OWNERS[o]||OWNERS.charles;return <span className="badge" style={{background:cfg.color,color:"#fff"}}>{cfg.label}</span>;})()}</td>
                   <td>{p.prenom||"—"}</td>
                   <td className="td-name">{p.nom||"—"}</td>
                   <td>{p.phone?<a href={"tel:"+p.phone} style={{color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>{p.phone}</a>:"—"}</td>
@@ -1694,7 +1723,7 @@ function PartenairesPage({user, addToast}){
           </div>
         )}
       </div>
-      {modal&&<PartenaireModal partenaire={modal.type==="edit"?modal.p:null} onSave={savePartenaire} onClose={()=>setModal(null)}/>}
+      {modal&&<PartenaireModal partenaire={modal.type==="edit"?modal.p:null} isAdmin={isAdmin} defaultOwner={modal.type==="edit"?partnerOwner(modal.p):myRole} onSave={savePartenaire} onClose={()=>setModal(null)}/>}
     </>
   );
 }
