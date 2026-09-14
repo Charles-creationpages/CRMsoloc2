@@ -1659,10 +1659,8 @@ function PartenairesPage({user, addToast}){
       .catch(()=>addToast("Erreur de suppression","error"));
   };
 
-  // Charles voit tout le réseau ; les autres voient leurs agents + ceux partagés par Charles
-  const visibles = isAdmin ? partenaires : partenaires.filter(p=>
-    partnerOwner(p)===myRole || PARTENAIRES_PARTAGES.indexOf(normEmail(p.email))!==-1
-  );
+  // Charles voit tout le réseau ; Emmy et Aya ne voient QUE leurs propres partenaires
+  const visibles = isAdmin ? partenaires : partenaires.filter(p=>partnerOwner(p)===myRole);
 
   const q=search.toLowerCase();
   const rows=visibles.filter(p=>!q||
