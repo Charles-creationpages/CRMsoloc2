@@ -2616,6 +2616,7 @@ function App(){
   const [user,setUser]=useState(undefined);
   const [leads,setLeads]=useState([]);
   const [newsletter,setNewsletter]=useState([]);
+  const [soumissions,setSoumissions]=useState([]);
   const [tab,setTab]=useState("pipeline");
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
@@ -2671,6 +2672,58 @@ function App(){
     },()=>{});
     return unsub;
   },[user]);
+
+  // Soumissions du formulaire client (collection publique alimentée par formulaire.html)
+  useEffect(()=>{
+    if(!user) return;
+    const unsub=fsOnSnapshot(fsCollection(db,"soumissions"),snap=>{
+      setSoumissions(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },()=>{});
+    return unsub;
+  },[user]);
+
+  // Import auto : une soumission écrase la fiche du lead correspondant (le client donne les bonnes infos).
+  const importRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user||soumissions.length===0) return;
+    soumissions.forEach(sub=>{
+      if(sub.traite===true || importRef.current.has(sub.id)) return;
+      const lead=leads.find(l=>l.id===(sub.leadId||sub.id));
+      if(!lead) return;
+      importRef.current.add(sub.id);
+      const c=lead.criteria||{};
+      const newCrit={
+        ...c,
+        typologie: asArray(sub.typologie),
+        loyer: sub.budgetMax||"",
+        surface: sub.surfaceMin||"",
+        secteur: sub.localisation||"",
+        etatLogement: sub.meuble ? [sub.meuble] : [],
+        etatBien: asArray(sub.etatBien),
+        dateAsap: !!sub.dateAsap,
+        dateEntreeSouhaitee: sub.dateEntree||"",
+        prestationsSupp: asArray(sub.prestations).join(", ")
+      };
+      const extra=[];
+      if(sub.garantNom||sub.garantTel||sub.garantMail) extra.push("Garant : "+[sub.garantNom,sub.garantLien].filter(Boolean).join(" ")+(sub.garantTel?" · "+sub.garantTel:"")+(sub.garantMail?" · "+sub.garantMail:""));
+      if(sub.transports) extra.push("Transports : "+sub.transports);
+      if(sub.rdc) extra.push("Rez-de-chaussée accepté : "+sub.rdc);
+      if(sub.ascenseur) extra.push("Ascenseur obligatoire : "+sub.ascenseur);
+      if(sub.prestationsIndispensables) extra.push("Prestations indispensables : "+sub.prestationsIndispensables);
+      const block = extra.length ? ("— Formulaire client ("+fmtDate(sub.submittedAt)+") —\n"+extra.join("\n")) : "";
+      const notes = lead.notes ? (lead.notes+(block?"\n\n"+block:"")) : block;
+      const prenom=((sub.locataireNom||"").trim().split(/\s+/)[0])||lead.firstName||"";
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
+        name: sub.locataireNom||lead.name, firstName: prenom,
+        phone: sub.phone||lead.phone||"", email: sub.email||lead.email||"",
+        criteria: newCrit, notes: notes,
+        formulaireRempli: sub.submittedAt||nowISO(), lastActivity: nowISO()
+      }).then(()=>{
+        fsUpdateDoc(fsDocRef(db,"soumissions",sub.id),{traite:true}).catch(()=>{});
+        addToast("✓ Formulaire de "+(sub.locataireNom||lead.name)+" importé");
+      }).catch(()=>importRef.current.delete(sub.id));
+    });
+  },[soumissions,leads,user]);
 
   // Dédoublonnage auto : si un contact newsletter est aussi En recherche (même tél/email),
   // il a signé la lettre de mission → on retire son entrée newsletter.
