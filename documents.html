@@ -151,9 +151,20 @@
   if(state.garant) showGarant();
 
   function refresh(){
-    var visible=Array.prototype.slice.call(document.querySelectorAll(".doc")).filter(function(d){return d.offsetParent!==null;});
-    var done=visible.filter(function(d){return d.classList.contains("on");}).length;
-    var tot=visible.length;
+    // Documents "classiques" (hors section situation du garant)
+    var docs=Array.prototype.slice.call(document.querySelectorAll(".doc")).filter(function(d){return d.offsetParent!==null;});
+    var situ=document.getElementById("garSitu");
+    var situVisible=situ && situ.offsetParent!==null;
+    var situDocs=situVisible?Array.prototype.slice.call(situ.querySelectorAll(".doc")):[];
+    var classic=docs.filter(function(d){return situDocs.indexOf(d)===-1;});
+
+    var done=classic.filter(function(d){return d.classList.contains("on");}).length;
+    var tot=classic.length;
+    // La situation du garant = 1 seule ligne, validée si au moins une case cochée
+    if(situVisible){
+      tot+=1;
+      if(situDocs.some(function(d){return d.classList.contains("on");})) done+=1;
+    }
     document.getElementById("cnt").textContent=done+" / "+tot+" documents prêts";
     var p=tot?Math.round(done/tot*100):0;
     document.getElementById("pct").textContent=p+"%";
