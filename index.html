@@ -1947,7 +1947,7 @@ function TodoPage({user,addToast}){
 }
 
 // ─── POPUP ENVOYÉ : mail des 3 liens (formulaire + lettre + documents) ───
-function EnvoiModal({lead, user, onClose, addToast}){
+function EnvoiModal({lead, user, onClose, addToast, onSent}){
   const c0 = lead.criteria||{};
   const [email,setEmail]=useState(lead.email||"");
   const [statut,setStatut]=useState(c0.statutClient||"");
@@ -1970,9 +1970,9 @@ function EnvoiModal({lead, user, onClose, addToast}){
     if(!statut){ addToast("Choisis un statut (il fixe la lettre et le montant)","error"); return; }
     if(!ENVOI_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
     setSending(true);
-    // 1) MàJ fiche si email/statut modifiés
+    // 1) Déplacement en Envoyé + MàJ fiche (le passage en Envoyé n'a lieu qu'ici, à l'envoi du mail)
     const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:(statut==="CDI"?essai:c0.periodeEssaiValidee), nbColoc:nbColoc};
-    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO() }).catch(()=>{});
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:email.trim(),criteria:critMaj}); }).catch(()=>{});
     // 2) Créer/rafraîchir la config de la lettre (montant fixé côté base = non modifiable par le client)
     fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:email.trim(), createdAt:nowISO() }).catch(()=>{});
     // 3) Envoyer le mail des 3 liens
@@ -2941,6 +2941,10 @@ function App(){
       setModal({type:"detail",lead});
       return;
     }
+    if(col==="envoye"&&!lead.envoiEnvoye){
+      setModal({type:"envoi",lead}); // le déplacement se fera à l'envoi du mail
+      return;
+    }
     if(col==="en_recherche"&&!criteriaComplete(lead.criteria)){
       setModal({type:"gate",lead});
       return;
@@ -2949,7 +2953,7 @@ function App(){
     fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
-    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="envoye"){ copyLeadToNewsletter(lead); if(!lead.envoiEnvoye) setModal({type:"envoi",lead}); } if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
+    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="envoye") copyLeadToNewsletter(lead); if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
   };
 
   const relanceAction=(lead)=>{
@@ -2976,19 +2980,22 @@ function App(){
   };
 
   const saveDetail=(lead,form,targetCol)=>{
-    const colChanged = targetCol!==lead.column;
+    // Barrière Envoyé : on sauve les éditions mais on ne déplace en Envoyé qu'à l'envoi du mail (via le popup).
+    const gateEnvoi = targetCol==="envoye" && lead.column!=="envoye" && !lead.envoiEnvoye;
+    const effTarget = gateEnvoi ? lead.column : targetCol;
+    const colChanged = effTarget!==lead.column;
     const hist=[...(lead.history||[])];
-    if(colChanged) hist.push(mkEvent("",eventLabel(targetCol)));
-    const valExtra = (targetCol==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
-    const ssExtra = (targetCol==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
-    const evExtra = (targetCol==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
+    if(colChanged) hist.push(mkEvent("",eventLabel(effTarget)));
+    const valExtra = (effTarget==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
+    const ssExtra = (effTarget==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
+    const evExtra = (effTarget==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:targetCol, assignedTo:form.assignedTo||"", assignTouched:true, ...valExtra, ...ssExtra, ...evExtra,
+      criteria:form.criteria, column:effTarget, assignedTo:form.assignedTo||"", assignTouched:true, ...valExtra, ...ssExtra, ...evExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
-      if(targetCol==="envoye" && lead.column!=="envoye"){ copyLeadToNewsletter({...lead,phone:form.phone,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria}); if(!lead.envoiEnvoye){ setModal({type:"envoi",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria}}); return; } }
+      if(gateEnvoi){ setModal({type:"envoi",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria}}); return; }
       if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}});
       else setModal(null);
     });
@@ -3121,7 +3128,7 @@ function App(){
       {modal?.type==="papernest"&&
         <PapernestModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast}/>}
       {modal?.type==="envoi"&&
-        <EnvoiModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast}/>}
+        <EnvoiModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast} onSent={copyLeadToNewsletter}/>}
 
       <div className="toast-wrap">
         {toasts.map(t=><div key={t.id} className={"toast"+(t.type==="error"?" error":"")}>{t.text}</div>)}
