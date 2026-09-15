@@ -153,11 +153,13 @@ const honoForProfile = (statut, o) => {
   return 890;
 };
 // Titre de la lettre de mission selon le profil
-const letterTitre = (statut) => {
+const letterTitre = (statut, periodeEssaiValidee) => {
   if(statut==="Étudiant") return "Étudiant avec garant(s) physique(s)";
   if(statut==="Indépendant") return "Indépendant(es)";
   if(statut==="Colocation") return "Colocation";
-  return "Salarié avec garant(s) physique(s)"; // CDI, CDD, défaut
+  if(statut==="CDD") return "Salarié en CDD";
+  if(statut==="CDI" && periodeEssaiValidee===false) return "Salarié en période d'essai";
+  return "Salarié avec garant(s) physique(s)"; // CDI validé, défaut
 };
 // Version de la liste de documents selon le profil (?p=)
 const docProfil = (statut) => {
@@ -1950,15 +1952,32 @@ function TodoPage({user,addToast}){
 function EnvoiModal({lead, user, onClose, addToast, onSent}){
   const c0 = lead.criteria||{};
   const [email,setEmail]=useState(lead.email||"");
-  const [statut,setStatut]=useState(c0.statutClient||"");
-  const [essai,setEssai]=useState(c0.periodeEssaiValidee);
+  const PROFILS = [
+    {key:"etudiant", label:"Étudiant",    statut:"Étudiant",    essai:null},
+    {key:"cdi",      label:"CDI",         statut:"CDI",         essai:true},
+    {key:"cdi_essai",label:"CDI essai",   statut:"CDI",         essai:false},
+    {key:"cdd",      label:"CDD",         statut:"CDD",         essai:null},
+    {key:"indep",    label:"Indépendant", statut:"Indépendant", essai:null},
+    {key:"coloc",    label:"Colocation",  statut:"Colocation",  essai:null}
+  ];
+  const initKey=(function(){ var s=c0.statutClient, e=c0.periodeEssaiValidee;
+    if(s==="Étudiant") return "etudiant";
+    if(s==="CDI") return e===false ? "cdi_essai" : "cdi";
+    if(s==="CDD") return "cdd";
+    if(s==="Indépendant") return "indep";
+    if(s==="Colocation") return "coloc";
+    return ""; })();
+  const [profilKey,setProfilKey]=useState(initKey);
   const [nbColoc,setNbColoc]=useState(c0.nbColoc||2);
   const [sending,setSending]=useState(false);
   const prenom=(lead.firstName||String(lead.name||"").trim().split(/\s+/)[0]||"");
   const sender=(function(){ const r=roleOfEmail(user.email); return (r==="emmy"||r==="aya")?r:"equipe"; })();
 
+  const cur = PROFILS.find(p=>p.key===profilKey);
+  const statut = cur?cur.statut:"";
+  const essai = cur?cur.essai:null;
   const montant = statut ? honoForProfile(statut,{periodeEssaiValidee:essai,nbColoc:nbColoc}) : null;
-  const titre = statut ? letterTitre(statut) : "";
+  const titre = statut ? letterTitre(statut, essai) : "";
   const profil = docProfil(statut);
   const B = CLIENT_BASE_URL;
   const linkForm = B+"formulaire.html?id="+lead.id+"&n="+encodeURIComponent(lead.name||"");
@@ -1971,7 +1990,7 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     if(!ENVOI_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
     setSending(true);
     // 1) Déplacement en Envoyé + MàJ fiche (le passage en Envoyé n'a lieu qu'ici, à l'envoi du mail)
-    const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:(statut==="CDI"?essai:c0.periodeEssaiValidee), nbColoc:nbColoc};
+    const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, nbColoc:nbColoc};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:email.trim(),criteria:critMaj}); }).catch(()=>{});
     // 2) Créer/rafraîchir la config de la lettre (montant fixé côté base = non modifiable par le client)
     fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:email.trim(), createdAt:nowISO() }).catch(()=>{});
@@ -1993,20 +2012,11 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
         <div className="fg">
           <label className="fl">Statut / profil * <span style={{fontWeight:400,color:"var(--text3)"}}>(fixe la lettre et le montant)</span></label>
           <div className="seg" style={{flexWrap:"wrap"}}>
-            {STATUTS.map(s=>(
-              <button key={s} type="button" className={"seg-btn"+(statut===s?" active":"")} onClick={()=>setStatut(s)}>{s}</button>
+            {PROFILS.map(p=>(
+              <button key={p.key} type="button" className={"seg-btn"+(profilKey===p.key?" active":"")} onClick={()=>setProfilKey(p.key)}>{p.label}</button>
             ))}
           </div>
         </div>
-        {statut==="CDI"&&(
-          <div className="fg">
-            <label className="fl">Période d'essai</label>
-            <div className="seg">
-              <button type="button" className={"seg-btn"+(essai===true?" active":"")} onClick={()=>setEssai(true)}>Validée (990€)</button>
-              <button type="button" className={"seg-btn"+(essai===false?" active":"")} onClick={()=>setEssai(false)}>En cours (1090€)</button>
-            </div>
-          </div>
-        )}
         {statut==="Colocation"&&(
           <div className="fg">
             <label className="fl">Nombre de colocataires</label>
