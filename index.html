@@ -77,8 +77,8 @@ const asArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 const normPhone = (p) => { if(!p) return ""; let s=String(p).replace(/[^0-9+]/g,""); if(s.indexOf("+33")===0) s="0"+s.slice(3); else if(s.indexOf("0033")===0) s="0"+s.slice(4); return s.replace(/\+/g,""); };
 const normEmail = (e) => e ? String(e).trim().toLowerCase() : "";
 const unionArr = (a,b) => Array.from(new Set([...asArray(a),...asArray(b)]));
-const mergeCriteria = (k,d) => { k=k||{}; d=d||{}; return { statutClient:k.statutClient||d.statutClient||"", periodeEssaiValidee:(k.periodeEssaiValidee!=null)?k.periodeEssaiValidee:((d.periodeEssaiValidee!=null)?d.periodeEssaiValidee:null), typologie:unionArr(k.typologie,d.typologie), surface:k.surface||d.surface||"", loyer:k.loyer||d.loyer||"", secteur:k.secteur||d.secteur||"", prestationsSupp:k.prestationsSupp||d.prestationsSupp||"", dateEntreeSouhaitee:k.dateEntreeSouhaitee||d.dateEntreeSouhaitee||"", dateAsap:k.dateAsap||d.dateAsap||false, etatLogement:unionArr(k.etatLogement,d.etatLogement) }; };
-const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[] };
+const mergeCriteria = (k,d) => { k=k||{}; d=d||{}; return { statutClient:k.statutClient||d.statutClient||"", periodeEssaiValidee:(k.periodeEssaiValidee!=null)?k.periodeEssaiValidee:((d.periodeEssaiValidee!=null)?d.periodeEssaiValidee:null), typologie:unionArr(k.typologie,d.typologie), surface:k.surface||d.surface||"", loyer:k.loyer||d.loyer||"", secteur:k.secteur||d.secteur||"", prestationsSupp:k.prestationsSupp||d.prestationsSupp||"", dateEntreeSouhaitee:k.dateEntreeSouhaitee||d.dateEntreeSouhaitee||"", dateAsap:k.dateAsap||d.dateAsap||false, etatLogement:unionArr(k.etatLogement,d.etatLogement), etatBien:unionArr(k.etatBien,d.etatBien) }; };
+const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[], etatBien:[] };
 const criteriaComplete = (c) => {
   if(!c) return false;
   const hasTypo = asArray(c.typologie).length > 0;
@@ -639,6 +639,8 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {isDupe&&<span style={chip("#FEF3C7","#92400e")}>⚠ Doublon</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
+        {lead.formulaireRempli&&<span style={chip("#DBEAFE","#1d4ed8")}>📋 Formulaire</span>}
+        {lead.lettreSignee&&<span style={chip("#DCFCE7","#15803d")}>📄 Signée</span>}
       </div>
       {lead.column==="en_attente"&&lead.notes&&(
         <div style={{fontSize:10.5,color:"#475569",background:"#F1F5F9",border:"1px solid #E2E8F0",borderRadius:7,padding:"5px 8px",marginTop:6,lineHeight:1.4}}>⏸ {lead.notes}</div>
@@ -775,6 +777,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     const c={...blankCriteria,...(lead.criteria||{})};
     c.typologie=asArray(c.typologie);
     c.etatLogement=asArray(c.etatLogement);
+    c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
       notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:lead.assignedTo||"", criteria:c };
@@ -806,6 +809,17 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-title">{lead.name}</div>
         <div className="modal-sub">Créé le {fmtDate(lead.createdAt)} — dernier mouvement {fmtDate(lead.lastActivity)}</div>
+        {(lead.envoiEnvoye||lead.formulaireRempli||lead.lettreSignee)&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"10px 0"}}>
+            {lead.envoiEnvoye&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}>✉️ Dossier envoyé</span>}
+            {lead.formulaireRempli
+              ? <span className="badge" style={{background:"#DBEAFE",color:"#1d4ed8"}}>📋 Formulaire reçu le {fmtDate(lead.formulaireRempli)}</span>
+              : (lead.envoiEnvoye&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)"}}>📋 Formulaire en attente</span>)}
+            {lead.lettreSignee
+              ? <span className="badge" style={{background:"#DCFCE7",color:"#15803d"}}>📄 Lettre signée{lead.lettreNumero?(" · "+lead.lettreNumero):""}</span>
+              : (lead.envoiEnvoye&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)"}}>📄 Lettre en attente</span>)}
+          </div>
+        )}
 
         {dupePartners&&dupePartners.length>0&&(
           <div style={{background:"var(--orange-bg)",border:"1.5px solid #F3C775",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
@@ -941,6 +955,15 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
             })}
           </div>
         </div>
+        <div className="fg">
+          <label className="fl">État du logement — non obligatoire</label>
+          <div className="seg" style={{flexWrap:"wrap"}}>
+            {["Ancien","Rénové","Récent","Neuf"].map(t=>{
+              const active=(form.criteria.etatBien||[]).includes(t);
+              return <button key={t} type="button" className="seg-btn" style={{background:active?"var(--accent-l)":"var(--surface2)",borderColor:active?"var(--accent)":"var(--border2)",color:active?"var(--accent-d)":"var(--text2)"}} onClick={()=>toggleInArray("etatBien",t)}>{t}</button>;
+            })}
+          </div>
+        </div>
         <div className="fg"><label className="fl">Prestations supplémentaires</label><textarea className="fi" rows="2" value={form.criteria.prestationsSupp} onChange={e=>setCrit("prestationsSupp",e.target.value)}/></div>
 
         <div className="modal-section">Remarques</div>
@@ -1036,7 +1059,7 @@ function RechercheTable({leads,search}){
     <div style={{overflowX:"auto"}}>
     <table className="list-table">
       <thead><tr>
-        <th>Client</th><th>Suivi par</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
+        <th>Client</th><th>Suivi par</th><th>Statut</th><th>Typologie</th><th>Surface</th><th>Loyer max</th><th>Secteur</th><th>Logement</th><th>État</th><th>Entrée souhaitée</th><th>Prestations supp.</th>
       </tr></thead>
       <tbody>
         {rows.map(l=>(
@@ -1049,6 +1072,7 @@ function RechercheTable({leads,search}){
             <td>{l.criteria.loyer} €</td>
             <td>{l.criteria.secteur}</td>
             <td>{asArray(l.criteria.etatLogement).join(" / ")||"Indifférent"}</td>
+            <td>{asArray(l.criteria.etatBien).join(" / ")||"—"}</td>
             <td>{l.criteria.dateAsap?"⚡ Dès que possible":fmtDate(l.criteria.dateEntreeSouhaitee)}</td>
             <td>{l.criteria.prestationsSupp||"—"}</td>
           </tr>
@@ -2060,6 +2084,77 @@ function PapernestModal({lead, user, onClose, addToast}){
   );
 }
 
+// ─── REGISTRE DES LETTRES DE MISSION ─────────────────────────────────────
+function generateLettrePDF(lt){
+  try {
+    var A="#C1614F", D="#2C3E50", CR="#FBF7F0", BD="#E5D9C6", G="#9AA7B2", T2="#5A6B7B";
+    var montant=(lt.montant||"—")+" € TTC";
+    var titre=(lt.titre||"").toUpperCase();
+    var art=function(h,txt){ return '<div style="font-size:12px;font-weight:800;color:'+D+';text-decoration:underline;margin:14px 0 5px;">'+h+'</div><div style="font-size:11.5px;color:#3C4A5A;line-height:1.55;margin-bottom:8px;">'+txt+'</div>'; };
+    var css="@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Sora:wght@700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter',Arial,sans-serif;background:#fff;color:"+D+";font-size:13px;}.page{max-width:800px;margin:0 auto;}.header{background:"+D+";padding:20px 30px;display:flex;align-items:center;justify-content:space-between;}.htitle{font-family:'Sora',sans-serif;color:#fff;font-size:18px;font-weight:800;letter-spacing:.08em;}.hsub{color:"+A+";font-size:12px;font-weight:700;letter-spacing:.05em;margin-top:3px;}.logo{width:42px;height:42px;background:"+A+";border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:21px;font-family:'Sora',sans-serif;}.body{padding:22px 30px;}.montant{background:#F5E2DD;color:#A14E3F;padding:1px 6px;border-radius:4px;font-weight:800;}.sign{border-top:2px solid "+A+";margin-top:20px;padding-top:16px;}.footer{background:"+D+";padding:12px 30px;text-align:center;color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}";
+    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Lettre '+(lt.numero||"")+'</title><style>'+css+'</style></head><body><div class="page">';
+    html+='<div class="header"><div><div class="htitle">LETTRE DE MISSION</div><div class="hsub">'+titre+'</div></div><div class="logo">S</div></div>';
+    html+='<div class="body">';
+    html+='<div style="text-align:right;font-size:11px;color:'+G+';margin-bottom:6px;">Réf. <b style="color:'+A+';">'+(lt.numero||"—")+'</b></div>';
+    html+=art("Préambule – Identification des parties","La présente lettre de mission est conclue entre le Prestataire : <b>soloc'</b>, entreprise immatriculée sous le SIREN 920049541, ci-après dénommé « le Prestataire », et le Client : la personne physique signataire de la présente lettre de mission, ci-après dénommée « le Client ».");
+    html+=art("1 – Détails de la prestation","Dans le cadre de la présente mission, le Prestataire s'engage à réaliser pour le Client : élaboration, vérification et optimisation du dossier locatif ; attribution d'un interlocuteur dédié avec un premier contact sous 24 heures ouvrées ; recherche et sélection ciblée de logements correspondant aux critères définis ; organisation des visites en présentiel et/ou virtuel ; accompagnement personnalisé et conseil continu jusqu'à la signature d'un bail de location.");
+    html+=art("2 – Montant de la prestation et conditions de règlement","Le montant de la prestation est fixé à <span class=\"montant\">"+montant+"</span>. Le règlement est exigible uniquement en cas de réussite de la mission, c'est-à-dire à la signature par le Client d'un bail de location portant sur un logement présenté et validé par l'intermédiaire du Prestataire. Le paiement devra intervenir dans un délai maximal de 7 jours suivant ladite signature. La présente prestation n'inclut pas les éventuels honoraires d'agence immobilière, ni les frais liés à la conclusion du bail.");
+    html+=art("3 – Durée et résiliation","La présente mission prend effet à compter de la signature de la présente lettre de mission. Elle se poursuit jusqu'à la signature par le Client d'un bail portant sur un logement présenté par le Prestataire, ou la résiliation de la mission par l'une ou l'autre des parties. La résiliation peut intervenir à tout moment, sous réserve des dispositions de l'article 4.");
+    html+=art("4 – Flexibilité et engagement","Le Client reste libre de rechercher et de trouver un logement par ses propres moyens ; dans ce cas il peut mettre fin à l'accompagnement sans frais, tant qu'il n'a pas donné son accord pour louer un appartement proposé par le Prestataire. À compter du moment où le Client donne son accord sur un logement et que son dossier est déposé auprès de l'agence : en cas d'acceptation, le Client s'engage à signer le bail conformément à l'accord donné ; en cas de refus, le Prestataire poursuit les recherches et le Client conserve la faculté de mettre fin à la mission sans frais. Toute rétractation du Client durant l'étude du dossier, ou après son acceptation, entraînera automatiquement l'exigibilité et le règlement intégral des honoraires prévus à l'article 2.");
+    html+=art("5 – Responsabilité du Prestataire","Le Prestataire s'engage à mettre en œuvre toutes les démarches nécessaires pour identifier et présenter au Client des logements correspondant aux critères définis conjointement, et à l'accompagner jusqu'à la signature du bail. Il ne peut être tenu responsable d'un refus émanant d'une agence, d'un propriétaire ou de tout autre tiers, ni de la non-disponibilité d'un bien.");
+    html+=art("6 – Confidentialité et données personnelles","Les informations et documents communiqués par le Client sont strictement confidentiels et utilisés uniquement dans le cadre de la présente mission. Le Prestataire respecte la réglementation en vigueur en matière de protection des données personnelles et ne transmet ces informations qu'aux interlocuteurs nécessaires à la réalisation de la mission.");
+    html+='<div class="sign"><div style="font-size:13px;font-weight:800;margin-bottom:8px;">Signature du client</div>';
+    html+='<div style="font-size:12px;color:'+T2+';">Signée électroniquement par <b style="color:'+D+';">'+(lt.signedNom||lt.nom||"—")+'</b> le '+(lt.signedDate||fmtDate(lt.signedAt))+'.</div>';
+    if(lt.signatureImg) html+='<img src="'+lt.signatureImg+'" alt="signature" style="max-height:110px;margin-top:8px;border:1px solid '+BD+';border-radius:8px;background:#fff;padding:6px;"/>';
+    html+='</div></div>';
+    html+='<div class="footer">soloc\' - SIREN : 920049541 · Lettre '+(lt.numero||"")+' · Document signé électroniquement</div>';
+    html+='</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>';
+    var w=window.open("","_blank");
+    if(w){ w.document.write(html); w.document.close(); }
+  } catch(err){ alert("Erreur : "+err.message); }
+}
+
+function RegistrePage({lettres, isAdmin, addToast}){
+  const signed=lettres.filter(l=>l.status==="signe").slice().sort((a,b)=>{
+    if((a.numeroYear||"")!==(b.numeroYear||"")) return (b.numeroYear||"").localeCompare(a.numeroYear||"");
+    return (b.numeroSeq||0)-(a.numeroSeq||0);
+  });
+  const del=(lt)=>{
+    if(!confirm("Supprimer cette lettre du registre ? Le numéro "+(lt.numero||"")+" pourra être réattribué.")) return;
+    fsDeleteDoc(fsDocRef(db,"lettres",lt.id)).then(()=>addToast("Lettre retirée du registre")).catch(()=>addToast("Erreur","error"));
+  };
+  return(
+    <>
+      <div className="topbar">
+        <div><div className="pt">Registre des lettres de mission</div><div className="ps">{signed.length} lettre{signed.length!==1?"s":""} signée{signed.length!==1?"s":""}</div></div>
+        <div className="tb-right"><button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button></div>
+      </div>
+      <div className="main">
+        {signed.length===0
+          ? <div className="empty-state"><div className="es-ic">📄</div><div className="es-t">Aucune lettre signée</div><div>Les lettres de mission signées par les clients apparaîtront ici.</div></div>
+          : <div style={{overflowX:"auto"}}><table className="list-table">
+              <thead><tr><th>N°</th><th>Client</th><th>Profil</th><th>Montant</th><th>Signée le</th><th style={{width:150}}></th></tr></thead>
+              <tbody>
+                {signed.map(lt=>(
+                  <tr key={lt.id}>
+                    <td style={{fontWeight:800,color:"var(--accent)",whiteSpace:"nowrap"}}>{lt.numero||"—"}</td>
+                    <td className="td-name">{lt.signedNom||lt.nom||"—"}</td>
+                    <td style={{fontSize:12}}>{lt.titre||"—"}</td>
+                    <td style={{whiteSpace:"nowrap"}}>{lt.montant?lt.montant+" €":"—"}</td>
+                    <td style={{whiteSpace:"nowrap"}}>{lt.signedDate||fmtDate(lt.signedAt)}</td>
+                    <td style={{whiteSpace:"nowrap"}}>
+                      <button className="btn btn-g btn-sm" onClick={()=>generateLettrePDF(lt)}><Ic n="upload" s={12}/>Télécharger</button>
+                      {isAdmin&&<button className="ib" style={{color:"var(--red)",marginLeft:6}} onClick={()=>del(lt)} title="Supprimer"><Ic n="trash" s={14}/></button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>}
+      </div>
+    </>
+  );
+}
+
 // ─── PILOTAGE (réservé à Charles) ────────────────────────────────────────
 function PilotagePage({user, leads}){
   const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
@@ -2617,6 +2712,7 @@ function App(){
   const [leads,setLeads]=useState([]);
   const [newsletter,setNewsletter]=useState([]);
   const [soumissions,setSoumissions]=useState([]);
+  const [lettres,setLettres]=useState([]);
   const [tab,setTab]=useState("pipeline");
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
@@ -2681,6 +2777,43 @@ function App(){
     },()=>{});
     return unsub;
   },[user]);
+
+  // Lettres de mission (config + signatures) — alimente le Registre et les pastilles
+  useEffect(()=>{
+    if(!user) return;
+    const unsub=fsOnSnapshot(fsCollection(db,"lettres"),snap=>{
+      setLettres(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },()=>{});
+    return unsub;
+  },[user]);
+
+  // Numérotation des lettres signées (LM-AAAA-XXX, réutilise les trous) + marquage du lead
+  const numRef=useRef(new Set());
+  const leadMarkRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user) return;
+    const signed=lettres.filter(l=>l.status==="signe");
+    // 1) attribuer un numéro à la première lettre signée sans numéro (une à la fois pour éviter les collisions)
+    const toNumber=signed.find(l=>!l.numero && !numRef.current.has(l.id));
+    if(toNumber){
+      const year=(toNumber.signedAt||nowISO()).slice(0,4);
+      const used=new Set(lettres.filter(x=>x.numeroYear===year&&x.numeroSeq).map(x=>x.numeroSeq));
+      let seq=1; while(used.has(seq)) seq++;
+      const numero="LM-"+year+"-"+String(seq).padStart(3,"0");
+      numRef.current.add(toNumber.id);
+      fsUpdateDoc(fsDocRef(db,"lettres",toNumber.id),{numero:numero,numeroYear:year,numeroSeq:seq}).catch(()=>numRef.current.delete(toNumber.id));
+    }
+    // 2) marquer le lead correspondant (pastille "lettre signée" + numéro)
+    signed.forEach(lt=>{
+      const lead=leads.find(l=>l.id===lt.id);
+      if(!lead) return;
+      if(lead.lettreSignee && lead.lettreNumero===(lt.numero||"")) return;
+      const key=lt.id+"|"+(lt.numero||"");
+      if(leadMarkRef.current.has(key)) return;
+      leadMarkRef.current.add(key);
+      fsUpdateDoc(fsDocRef(db,"leads",lt.id),{lettreSignee:lt.signedAt||nowISO(), lettreNumero:lt.numero||""}).catch(()=>leadMarkRef.current.delete(key));
+    });
+  },[lettres,leads,user]);
 
   // Import auto : une soumission écrase la fiche du lead correspondant (le client donne les bonnes infos).
   const importRef=useRef(new Set());
@@ -2914,6 +3047,7 @@ function App(){
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={16}/>To-do</div>
+            <div className={"nav-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={16}/>Registre</div>
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
           </div>
@@ -2924,7 +3058,9 @@ function App(){
         </aside>
 
         <div className="content">
-          {(tab==="pilotage"&&user.email===FINANCE_EMAIL)
+          {tab==="registre"
+            ? <RegistrePage lettres={lettres} isAdmin={isAdmin} addToast={addToast}/>
+            : (tab==="pilotage"&&user.email===FINANCE_EMAIL)
             ? <PilotagePage user={user} leads={leads}/>
             : (tab==="finance"&&user.email===FINANCE_EMAIL)
             ? <FinancePage user={user} leads={leads} addToast={addToast} isMobile={isMobile}/>
@@ -2970,6 +3106,7 @@ function App(){
           <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
           <button className={"bn-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={21}/>To-do</button>
+          <button className={"bn-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={21}/>Registre</button>
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
         </nav>
