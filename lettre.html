@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lettre de mission — SOLOC'</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap");
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:#EEECE7;color:#2C3E50;padding:24px 12px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:640px;margin:0 auto;background:#fff;border:1px solid #E5D9C6;border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(44,62,80,.12);}
+  .head{background:#2C3E50;padding:22px 26px;display:flex;align-items:center;justify-content:space-between;}
+  .head-t{font-family:'Sora',sans-serif;color:#fff;font-size:18px;font-weight:800;letter-spacing:.08em;}
+  .head-s{color:#C1614F;font-size:12px;font-weight:700;letter-spacing:.05em;margin-top:3px;}
+  .logo{width:42px;height:42px;background:#C1614F;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:21px;font-family:'Sora',sans-serif;flex-shrink:0;}
+  .body{padding:22px 26px;}
+  .h{font-size:13px;font-weight:800;color:#2C3E50;text-decoration:underline;margin:16px 0 5px;}
+  .art{font-size:12.5px;color:#3C4A5A;line-height:1.55;margin-bottom:8px;}
+  .art b{color:#2C3E50;}
+  .art ul{margin:4px 0 4px 18px;}
+  .art li{margin-bottom:2px;}
+  .montant{background:#F5E2DD;color:#A14E3F;padding:1px 6px;border-radius:4px;font-weight:800;}
+  .lab{display:block;font-size:12px;font-weight:700;color:#5A6B7B;margin-bottom:5px;}
+  .fi{width:100%;background:#fff;border:1.5px solid #D8C7AE;border-radius:9px;padding:10px 12px;font-size:13px;color:#2C3E50;font-family:inherit;outline:none;}
+  .sign-sec{border-top:2px solid #C1614F;padding-top:18px;margin-top:16px;}
+  #sig{width:100%;height:140px;border:2px dashed #D8C7AE;border-radius:11px;background:#FBF7F0;touch-action:none;display:block;}
+  .submit{width:100%;background:#C1614F;color:#fff;border:none;padding:15px;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer;font-family:'Sora',sans-serif;margin-top:4px;}
+  .submit:disabled{opacity:.5;cursor:not-allowed;}
+  .err{background:#FEE2E2;color:#991B1B;border:1.5px solid #F5B5B5;border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:14px;display:none;}
+  .state{padding:50px 30px;text-align:center;}
+  .state-ic{font-size:44px;margin-bottom:14px;}
+  .state-t{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;}
+  .state-s{font-size:14px;color:#5A6B7B;line-height:1.6;}
+  .foot{text-align:center;font-size:10px;color:#9AA7B2;padding:16px;border-top:1px solid #EFE7DA;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <div class="head-t">LETTRE DE MISSION</div>
+        <div class="head-s" id="profil">…</div>
+      </div>
+      <div class="logo">S</div>
+    </div>
+
+    <div id="loading" class="state"><div class="state-s">Chargement…</div></div>
+
+    <div id="doc" class="body" style="display:none;">
+      <div class="h">Préambule – Identification des parties</div>
+      <div class="art">La présente lettre de mission est conclue entre le Prestataire : <b>soloc'</b>, entreprise immatriculée sous le SIREN 920049541, ci-après dénommé « le Prestataire », et le Client : la personne physique signataire de la présente lettre de mission, ci-après dénommée « le Client ».</div>
+
+      <div class="h">1 – Détails de la prestation</div>
+      <div class="art">Dans le cadre de la présente mission, le Prestataire s'engage à réaliser pour le Client les prestations suivantes :
+        <ul>
+          <li>Élaboration, vérification et optimisation du dossier locatif du Client,</li>
+          <li>Attribution d'un interlocuteur dédié, avec un premier contact assuré dans un délai maximum de 24 heures ouvrées,</li>
+          <li>Recherche et sélection ciblée de logements correspondant aux critères définis avec le Client,</li>
+          <li>Organisation des visites, réalisées en présentiel et/ou en virtuel selon les disponibilités du Client,</li>
+          <li>Accompagnement personnalisé et conseil continu jusqu'à la signature d'un bail de location par le Client.</li>
+        </ul>
+      </div>
+
+      <div class="h">2 – Montant de la prestation et conditions de règlement</div>
+      <div class="art">Le montant de la prestation est fixé à <span class="montant" id="montant">…</span>.
+        Le règlement est exigible uniquement en cas de réussite de la mission, c'est-à-dire à la signature par le Client d'un bail de location portant sur un logement présenté et validé par l'intermédiaire du Prestataire.
+        Le paiement devra intervenir dans un délai maximal de 7 jours suivant ladite signature.
+        Il est expressément précisé que la présente prestation n'inclut pas les éventuels honoraires d'agence immobilière, ni les frais liés à la conclusion du bail.</div>
+
+      <div class="h">3 – Durée et résiliation</div>
+      <div class="art">La présente mission prend effet à compter de la signature de la présente lettre de mission. Elle se poursuit jusqu'à la survenance du premier des événements suivants :
+        <ul>
+          <li>la signature par le Client d'un bail de location portant sur un logement présenté par le Prestataire, ou</li>
+          <li>la résiliation de la mission par l'une ou l'autre des parties.</li>
+        </ul>
+        La résiliation peut intervenir à tout moment, sous réserve des dispositions de l'article 4 de la présente lettre de mission.</div>
+
+      <div class="h">4 – Flexibilité et engagement</div>
+      <div class="art">Le Client reste libre de rechercher et de trouver un logement par ses propres moyens. Dans ce cas, il peut mettre fin à l'accompagnement sans frais, tant qu'il n'a pas donné son accord pour louer un appartement proposé par le Prestataire.
+        À compter du moment où le Client donne son accord sur un logement et que son dossier est déposé par le Prestataire auprès de l'agence immobilière :
+        <ul>
+          <li>En cas d'acceptation du dossier par l'agence immobilière, le Client s'engage à signer le bail de location conformément à l'accord donné,</li>
+          <li>En cas de refus du dossier par l'agence immobilière, le Prestataire poursuit les recherches et le Client conserve la faculté de mettre fin à la mission sans frais.</li>
+        </ul>
+        Toute rétractation du Client durant l'étude du dossier par l'agence immobilière, ou après son acceptation, entraînera automatiquement l'exigibilité et le règlement intégral des honoraires prévus à l'article 2 de la présente lettre de mission. Cette disposition vise à garantir le respect du travail effectué par le Prestataire et à préserver des relations équilibrées et transparentes avec les agences immobilières partenaires.</div>
+
+      <div class="h">5 – Responsabilité du Prestataire</div>
+      <div class="art">Le Prestataire s'engage à mettre en œuvre toutes les démarches nécessaires pour identifier et présenter au Client des logements correspondant aux critères définis conjointement, et à l'accompagner jusqu'à la signature du bail. Il ne peut être tenu responsable d'un refus émanant d'une agence immobilière, d'un propriétaire ou de tout autre tiers, ni de la non-disponibilité d'un bien.</div>
+
+      <div class="h">6 – Confidentialité et données personnelles</div>
+      <div class="art">Les informations et documents communiqués par le Client sont strictement confidentiels et utilisés uniquement dans le cadre de la présente mission. Le Prestataire s'engage à respecter la réglementation en vigueur en matière de protection des données personnelles et à ne transmettre ces informations qu'aux interlocuteurs nécessaires à la réalisation de la mission (agences immobilières, propriétaires).</div>
+
+      <div class="sign-sec">
+        <div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;margin-bottom:14px;">Signature du client</div>
+        <div id="err" class="err"></div>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <div style="flex:2;"><label class="lab">Nom &amp; prénom</label><input class="fi" id="nom"/></div>
+          <div style="flex:1;"><label class="lab">Date</label><input class="fi" id="date" readonly style="background:#F7F1E8;"/></div>
+        </div>
+        <label class="lab">Signez ci-dessous (doigt ou souris)</label>
+        <canvas id="sig"></canvas>
+        <div style="text-align:right;margin:6px 0 14px;"><span id="clear" style="font-size:11px;color:#C1614F;font-weight:700;cursor:pointer;">Effacer</span></div>
+        <label style="display:flex;align-items:flex-start;gap:9px;font-size:12px;color:#5A6B7B;line-height:1.5;margin-bottom:16px;cursor:pointer;">
+          <input type="checkbox" id="consent" style="margin-top:2px;"/>
+          <span>Je reconnais avoir lu et j'accepte les termes de la présente lettre de mission, et je la signe électroniquement.</span>
+        </label>
+        <button class="submit" id="send">Signer la lettre de mission</button>
+        <div style="text-align:center;font-size:10.5px;color:#9AA7B2;margin-top:10px;">Signature horodatée et enregistrée. Une copie vous sera transmise.</div>
+      </div>
+    </div>
+
+    <div id="done" class="state" style="display:none;">
+      <div class="state-ic">✅</div>
+      <div class="state-t">Lettre signée, merci !</div>
+      <div class="state-s">Votre lettre de mission est bien signée et enregistrée. Votre conseiller SOLOC' revient vers vous très vite.</div>
+    </div>
+    <div id="already" class="state" style="display:none;">
+      <div class="state-ic">📄</div>
+      <div class="state-t">Lettre déjà signée</div>
+      <div class="state-s">Cette lettre de mission a déjà été signée. Contactez votre conseiller SOLOC' si besoin.</div>
+    </div>
+    <div id="invalid" class="state" style="display:none;">
+      <div class="state-ic">🔗</div>
+      <div class="state-t">Lien invalide</div>
+      <div class="state-s">Ce lien ne semble pas valide ou la lettre n'est pas disponible. Contactez votre conseiller SOLOC'.</div>
+    </div>
+
+    <div class="foot">soloc' - SIREN : 920049541 · Toute reproduction non autorisée est interdite.</div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
+    authDomain: "soloc-crm.firebaseapp.com",
+    projectId: "soloc-crm",
+    storageBucket: "soloc-crm.firebasestorage.app",
+    messagingSenderId: "247355554921",
+    appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
+  };
+  const db = getFirestore(initializeApp(firebaseConfig));
+  const $ = (id)=>document.getElementById(id);
+  const show = (id)=>{ ["loading","doc","done","already","invalid"].forEach(x=>$(x).style.display="none"); $(id).style.display = (id==="doc")?"block":"block"; };
+  const leadId = new URLSearchParams(location.search).get("id");
+
+  // ── Signature tracée ──
+  let hasSig=false, ctx=null, drawing=false;
+  function initCanvas(){
+    const c=$("sig"); const r=c.getBoundingClientRect();
+    c.width=r.width; c.height=140;
+    ctx=c.getContext("2d"); ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#2C3E50";
+    const P=(e)=>{ const b=c.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-b.left,y:t.clientY-b.top}; };
+    const start=(e)=>{ drawing=true; hasSig=true; const p=P(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
+    const move=(e)=>{ if(!drawing)return; const p=P(e); ctx.lineTo(p.x,p.y); ctx.stroke(); e.preventDefault(); };
+    const end=()=>{ drawing=false; };
+    c.addEventListener("mousedown",start); c.addEventListener("mousemove",move); window.addEventListener("mouseup",end);
+    c.addEventListener("touchstart",start,{passive:false}); c.addEventListener("touchmove",move,{passive:false}); c.addEventListener("touchend",end);
+    $("clear").onclick=()=>{ ctx.clearRect(0,0,c.width,c.height); hasSig=false; };
+  }
+
+  async function boot(){
+    if(!leadId){ show("invalid"); return; }
+    let cfg;
+    try { const snap=await getDoc(doc(db,"lettres",leadId)); if(!snap.exists()){ show("invalid"); return; } cfg=snap.data(); }
+    catch(e){ show("invalid"); return; }
+    if(cfg.status==="signe"){ show("already"); return; }
+    $("profil").textContent = (cfg.titre||"").toUpperCase();
+    $("montant").textContent = (cfg.montant||"—")+" € TTC";
+    $("nom").value = cfg.nom||"";
+    var d=new Date(); $("date").value = String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();
+    show("doc"); initCanvas();
+    $("send").onclick = ()=>signer(cfg);
+  }
+
+  async function signer(cfg){
+    const err=$("err");
+    const nom=$("nom").value.trim();
+    if(!nom){ err.textContent="Merci d'indiquer votre nom et prénom."; err.style.display="block"; return; }
+    if(!hasSig){ err.textContent="Merci de tracer votre signature."; err.style.display="block"; return; }
+    if(!$("consent").checked){ err.textContent="Merci de cocher la case d'acceptation."; err.style.display="block"; return; }
+    err.style.display="none";
+    $("send").disabled=true; $("send").textContent="Signature…";
+    const img=$("sig").toDataURL("image/png");
+    try {
+      await updateDoc(doc(db,"lettres",leadId), {
+        status:"signe", signedNom:nom, signatureImg:img,
+        signedAt:new Date().toISOString(), signedDate:$("date").value,
+        montant:cfg.montant, titre:cfg.titre
+      });
+      show("done");
+    } catch(e){
+      if(String(e.code||"").indexOf("permission")!==-1){ show("already"); }
+      else { $("send").disabled=false; $("send").textContent="Signer la lettre de mission"; err.textContent="Une erreur est survenue, réessayez."; err.style.display="block"; }
+    }
+  }
+  boot();
+</script>
+</body>
+</html>
