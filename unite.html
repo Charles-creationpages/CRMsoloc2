@@ -46,7 +46,7 @@
   <div class="head">
     <a href="pack.html" class="back">← RETOUR AUX PACKS</a>
     <h1>À L'UNITÉ, PRIX CHOC</h1>
-    <p>Cliquez sur les articles voulus, ils s'ajoutent à votre sélection. Livraison 150 € · Montage 250 € (débarras des cartons inclus).</p>
+    <p>Cliquez sur les articles voulus, ils s'ajoutent à votre sélection. Livraison 150 € incluse d'office · Montage 250 € en option (débarras des cartons inclus).</p>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -55,7 +55,7 @@
 
   <div class="cart">
     <div class="cart-in">
-      <label class="opt" id="optLiv"><input type="checkbox" id="cbLiv"/> Livraison 150 €</label>
+      <span class="opt on" style="cursor:default;">Livraison 150 € · incluse</span>
       <label class="opt" id="optMon"><input type="checkbox" id="cbMon"/> Montage 250 €</label>
       <div class="cart-total"><div class="n" id="cnt">0 article</div><div class="t" id="tot">0,00 €</div></div>
       <button class="confirm" id="confirm" disabled>Confirmer ma sélection</button>
@@ -108,16 +108,15 @@
     else { cart[it.id]=it; c.classList.add("on"); c.querySelector(".add").textContent="✓ Ajouté"; }
     refresh();
   }
-  var cbLiv=document.getElementById("cbLiv"), cbMon=document.getElementById("cbMon");
-  document.getElementById("optLiv").onclick=function(e){ if(e.target.tagName!=="INPUT")cbLiv.checked=!cbLiv.checked; sync(); };
+  var cbMon=document.getElementById("cbMon");
   document.getElementById("optMon").onclick=function(e){ if(e.target.tagName!=="INPUT")cbMon.checked=!cbMon.checked; sync(); };
-  cbLiv.onclick=sync; cbMon.onclick=sync;
-  function sync(){ document.getElementById("optLiv").classList.toggle("on",cbLiv.checked); document.getElementById("optMon").classList.toggle("on",cbMon.checked); refresh(); }
+  cbMon.onclick=sync;
+  function sync(){ document.getElementById("optMon").classList.toggle("on",cbMon.checked); refresh(); }
 
   function refresh(){
     var ids=Object.keys(cart), n=ids.length;
     var tot=0; ids.forEach(function(k){ tot+=cart[k].ttc; });
-    if(cbLiv.checked) tot+=LIV; if(cbMon.checked) tot+=MON;
+    if(n>0) tot+=LIV; if(cbMon.checked) tot+=MON;
     document.getElementById("cnt").textContent=n+" article"+(n>1?"s":"");
     document.getElementById("tot").textContent=eur(tot);
     document.getElementById("confirm").disabled=(n===0);
@@ -128,7 +127,7 @@
     var lignes=ids.map(function(k){ return "- "+cart[k].name+" : "+eur(cart[k].ttc); });
     var tot=0; ids.forEach(function(k){ tot+=cart[k].ttc; });
     var opts=[];
-    if(cbLiv.checked){ opts.push("- Livraison : "+eur(LIV)); tot+=LIV; }
+    opts.push("- Livraison : "+eur(LIV)); tot+=LIV;
     if(cbMon.checked){ opts.push("- Montage (débarras des cartons inclus) : "+eur(MON)); tot+=MON; }
     var body="Bonjour,\n\nJe souhaite commander les articles électroménager suivants (à l'unité) et être recontacté(e) pour finaliser :\n\n"+
       lignes.join("\n")+
