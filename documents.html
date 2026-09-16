@@ -45,6 +45,10 @@
     </div>
 
     <div class="prog-wrap">
+      <div style="background:#F5E2DD;border:2px solid #C1614F;border-radius:12px;padding:16px 18px;margin-bottom:16px;">
+        <div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:#A14E3F;margin-bottom:6px;">📎 N'oubliez pas de nous envoyer votre dossier !</div>
+        <div style="font-size:13px;color:#5A2E24;line-height:1.55;">Référez-vous à cette liste. Dès que <b>tous vos documents sont prêts</b>, cliquez sur le bouton <b>« Envoyer mon dossier »</b> en bas de page et <b>joignez vos documents</b> au mail pour nous les faire parvenir. Sans dossier, nous ne pouvons pas vous proposer d'offres de logement.</div>
+      </div>
       <div class="prog-top"><span class="prog-cnt" id="cnt">0 / 0 documents prêts</span><span class="prog-pct" id="pct">0%</span></div>
       <div class="prog-bar"><div class="prog-fill" id="bar"></div></div>
     </div>
@@ -67,7 +71,12 @@
         <div id="garSitu"></div>
       </div>
 
-      <div class="note">💡 Cette liste est votre outil de suivi personnel. Cochez ce que vous avez déjà réuni, puis transmettez vos documents à votre conseiller SOLOC'. Votre avancement est conservé sur cet appareil.</div>
+      <div style="background:#EAF3EA;border:1px solid #BBE0BB;border-radius:12px;padding:18px;margin-top:18px;text-align:center;">
+        <div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#15803d;margin-bottom:4px;">Votre dossier est prêt ?</div>
+        <div style="font-size:12.5px;color:#5A6B7B;line-height:1.5;margin-bottom:14px;">Cliquez ci-dessous : on prépare votre mail avec la liste de vos documents cochés. <b>Pensez à y joindre vos fichiers</b> avant de l'envoyer.</div>
+        <button id="envoyer" style="width:100%;background:#16A34A;color:#fff;border:none;padding:15px;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer;font-family:'Sora',sans-serif;">📤 Envoyer mon dossier</button>
+      </div>
+      <div class="note" style="margin-top:12px;">💡 Cette liste est votre outil de suivi personnel. Votre avancement est conservé sur cet appareil.</div>
     </div>
   </div>
 
@@ -149,6 +158,19 @@
   }
   document.getElementById("gbtn").onclick=showGarant;
   if(state.garant) showGarant();
+
+  // Envoi du dossier : mail pré-rempli avec la liste des documents cochés
+  document.getElementById("envoyer").onclick=function(){
+    var coches=[];
+    var visibles=Array.prototype.slice.call(document.querySelectorAll(".doc")).filter(function(d){return d.offsetParent!==null && d.classList.contains("on");});
+    visibles.forEach(function(d){ var t=d.querySelector(".doc-t"); if(t) coches.push(t.textContent.trim()); });
+    if(coches.length===0){ alert("Cochez d'abord les documents que vous avez réunis, puis renvoyez votre dossier."); return; }
+    var lignes=coches.map(function(t){ return "- "+t; }).join("\n");
+    var body="Bonjour,\n\nVous trouverez ci-joint mon dossier avec les éléments suivants :\n\n"+lignes+
+      "\n\n(Merci de bien vérifier que tous ces documents sont joints à ce mail avant l'envoi.)\n\nCordialement,";
+    var url="mailto:hello@solocimmo.fr?subject="+encodeURIComponent("Envoi de mon dossier locatif")+"&body="+encodeURIComponent(body);
+    window.location.href=url;
+  };
 
   function refresh(){
     // Documents "classiques" (hors section situation du garant)
