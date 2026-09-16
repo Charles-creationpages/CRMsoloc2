@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pack électroménager livré & installé — SOLOC'</title>
+<meta name="description" content="Pack électroménager complet, livré, installé et cartons débarrassés. Trottinette offerte aux étudiants. À partir de 1 919,53 € TTC."/>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap");
+  :root{--terra:#C1614F;--terra-d:#A14E3F;--ardoise:#2C3E50;--creme:#FBF7F0;--creme2:#F2E8DA;--bord:#E5D9C6;--txt2:#5A6B7B;--vert:#16A34A;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--creme);color:var(--ardoise);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  .sora{font-family:'Sora',sans-serif;}
+  /* Bandeau défilant */
+  .marquee{background:var(--terra);color:#fff;overflow:hidden;white-space:nowrap;padding:9px 0;font-size:13px;font-weight:800;letter-spacing:.04em;}
+  .marquee-track{display:inline-block;animation:scroll 22s linear infinite;}
+  .marquee-track span{margin:0 26px;}
+  @keyframes scroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  /* Hero */
+  .hero{background:var(--ardoise);color:#fff;padding:38px 20px 0;text-align:center;position:relative;overflow:hidden;}
+  .hero h1{font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(38px,9vw,88px);line-height:.95;letter-spacing:-.02em;color:var(--creme);}
+  .hero-badge{display:inline-block;background:var(--terra);color:#fff;font-weight:800;font-size:clamp(11px,2.4vw,15px);letter-spacing:.03em;padding:8px 16px;border-radius:8px;margin-top:16px;}
+  .hero-imgs{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-end;gap:10px;margin:26px auto 0;max-width:760px;}
+  .hero-imgs img{height:clamp(70px,16vw,130px);width:auto;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35));}
+  .hero-price{background:var(--creme);color:var(--ardoise);margin-top:30px;padding:22px 20px;}
+  .hero-price .lab{font-weight:800;font-size:clamp(12px,2.6vw,15px);letter-spacing:.05em;color:var(--txt2);}
+  .hero-price .big{font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(40px,11vw,80px);line-height:1;color:var(--terra);margin:4px 0;word-break:keep-all;}
+  .cta{display:inline-block;background:var(--ardoise);color:#fff;text-decoration:none;font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(14px,3vw,18px);padding:15px 30px;border-radius:12px;margin-top:8px;box-shadow:0 6px 0 rgba(44,62,80,.25);transition:transform .1s;}
+  .cta:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(44,62,80,.25);}
+  .cta.terra{background:var(--terra);box-shadow:0 6px 0 var(--terra-d);}
+  .ribbon{display:inline-block;background:var(--terra);color:#fff;font-weight:800;font-size:12px;letter-spacing:.03em;padding:7px 14px;border-radius:7px;transform:rotate(-3deg);margin-top:14px;}
+  /* Sections */
+  .wrap{max-width:820px;margin:0 auto;padding:0 18px;}
+  .sec{padding:44px 0;}
+  .sec-title{font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(26px,6vw,44px);text-align:center;letter-spacing:-.02em;}
+  .sec-sub{text-align:center;color:var(--terra-d);font-weight:800;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;}
+  /* Carte pack */
+  .card{background:var(--ardoise);border-radius:18px;overflow:hidden;position:relative;margin-top:22px;box-shadow:0 20px 50px rgba(44,62,80,.18);}
+  .promo{position:absolute;top:16px;right:16px;background:var(--terra);color:#fff;font-family:'Sora',sans-serif;font-weight:800;font-size:18px;padding:6px 12px;border-radius:8px;transform:rotate(6deg);z-index:2;}
+  .card-head{padding:22px 24px 16px;}
+  .card-head h3{font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:var(--creme);}
+  .card-head .art{color:#fff;opacity:.85;font-weight:700;font-size:13px;letter-spacing:.03em;margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 16px;}
+  .grid .cell{background:#fff;border-radius:10px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;padding:8px;}
+  .grid .cell img{max-width:100%;max-height:100%;object-fit:contain;}
+  .list{background:var(--creme);padding:20px 22px;}
+  .li{font-size:14px;color:var(--ardoise);padding:5px 0;line-height:1.5;}
+  .li.choice{border-left:3px solid var(--terra);padding-left:12px;margin:6px 0;}
+  .li b{font-weight:700;}
+  .opt{color:var(--terra-d);font-weight:800;}
+  .inclus{color:var(--txt2);font-weight:600;font-size:12px;}
+  .trotti{border:2px dashed var(--terra);background:var(--creme2);border-radius:12px;padding:14px 16px;font-weight:800;font-size:14px;color:var(--ardoise);margin:16px 0;text-align:center;}
+  .price-block{padding:8px 22px 24px;background:var(--creme);}
+  .old{color:var(--txt2);text-decoration:line-through;font-size:15px;font-weight:600;}
+  .price-big{font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(44px,12vw,72px);line-height:1;color:var(--terra);margin:2px 0;}
+  .ht{color:var(--txt2);font-size:13px;font-weight:600;}
+  .save{display:inline-block;background:#DCFCE7;color:#15803d;font-weight:800;font-size:13px;padding:5px 12px;border-radius:20px;margin-top:8px;}
+  .incl-note{font-size:13px;color:var(--txt2);margin-top:12px;line-height:1.5;}
+  .center{text-align:center;}
+  /* Unité */
+  .unite{background:var(--ardoise);color:#fff;}
+  .unite .sec-title{color:var(--creme);}
+  .unite-card{background:var(--creme);color:var(--ardoise);border-radius:14px;padding:20px 22px;margin-top:20px;}
+  .unite-card h4{font-family:'Sora',sans-serif;font-weight:800;font-size:20px;}
+  .unite-card .art{font-weight:700;font-size:12px;letter-spacing:.04em;color:var(--txt2);text-transform:uppercase;margin:2px 0 14px;}
+  .foot{background:var(--terra);color:#fff;text-align:center;font-weight:800;font-size:13px;letter-spacing:.05em;padding:14px;}
+  .legal{text-align:center;font-size:11px;color:var(--txt2);padding:18px;}
+</style>
+</head>
+<body>
+
+  <div class="marquee">
+    <div class="marquee-track">
+      <span>★ LIVRÉ + INSTALLÉ + CARTONS DÉBARRASSÉS</span><span>★ PACK ÉTUDIANT : TROTTINETTE OFFERTE</span><span>★ STOCK LIMITÉ</span>
+      <span>★ LIVRÉ + INSTALLÉ + CARTONS DÉBARRASSÉS</span><span>★ PACK ÉTUDIANT : TROTTINETTE OFFERTE</span><span>★ STOCK LIMITÉ</span>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>PACK<br>ÉLECTROMÉNAGER</h1>
+    <div class="hero-badge">COMPLET · LIVRÉ, INSTALLÉ, CARTONS DÉBARRASSÉS</div>
+    <div class="ribbon">🛴 TROTTINETTE OFFERTE AUX ÉTUDIANTS</div>
+    <div class="hero-imgs">
+      <img src="https://packelectrosolocimmo.lovable.app/assets/frigo-compact-BqxOhMzh.jpg" alt="Réfrigérateur"/>
+      <img src="https://packelectrosolocimmo.lovable.app/assets/lave-linge-hublot-B3eiwe0m.jpg" alt="Lave-linge"/>
+      <img src="https://packelectrosolocimmo.lovable.app/assets/micro-ondes-Cq6VkbTD.jpg" alt="Micro-ondes"/>
+      <img src="https://packelectrosolocimmo.lovable.app/assets/tv-BPvTn62u.jpg" alt="TV"/>
+      <img src="https://packelectrosolocimmo.lovable.app/assets/multicuiseur-B5m5ZZnR.jpg" alt="Multicuiseur"/>
+      <img src="https://packelectrosolocimmo.lovable.app/assets/four-Bt-SGReU.jpg" alt="Four"/>
+    </div>
+    <div class="hero-price">
+      <div class="lab">PACK COMPLET À PARTIR DE</div>
+      <div class="big">1 919,53 €</div>
+      <a href="#pack" class="cta terra">Voir le pack ↓</a>
+    </div>
+  </div>
+
+  <!-- PACK COMPLET -->
+  <div class="sec" id="pack">
+    <div class="wrap">
+      <div class="sec-sub">Livré · installé · cartons débarrassés</div>
+      <div class="sec-title">Le pack complet</div>
+
+      <div class="card">
+        <div class="promo">-14%</div>
+        <div class="card-head">
+          <h3>Pack Électroménager</h3>
+          <div class="art">16 ARTICLES — LIVRÉ, INSTALLÉ, CARTONS DÉBARRASSÉS</div>
+        </div>
+        <div class="grid">
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/frigo-compact-BqxOhMzh.jpg" alt="Réfrigérateur"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/lave-linge-hublot-B3eiwe0m.jpg" alt="Lave-linge"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/multicuiseur-B5m5ZZnR.jpg" alt="Multicuiseur"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/four-Bt-SGReU.jpg" alt="Four"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/micro-ondes-Cq6VkbTD.jpg" alt="Micro-ondes"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/tv-BPvTn62u.jpg" alt="TV"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/cafetiere-XQKJSld9.jpg" alt="Cafetière"/></div>
+          <div class="cell"><img src="https://packelectrosolocimmo.lovable.app/assets/bouilloire-DVrkxaDZ.jpg" alt="Bouilloire"/></div>
+        </div>
+        <div class="list">
+          <div class="li choice">• Réfrigérateur au choix :<br><b>Réfrigérateur top 102 L avec partie congélation</b> — H 85 × L 47 × P 52 cm <span class="inclus">(inclus)</span><br><b>Réfrigérateur 2 portes 206 L</b> — H 170 × L 60 × P 60 cm <span class="opt">+ 126,83 €</span></div>
+          <div class="li choice">• Lave-linge au choix :<br><b>Lave-linge hublot 5 kg</b> — H 85 × L 60 × P 49 cm <span class="inclus">(inclus)</span><br><b>Lave-linge top (capot) 6 kg</b> — H 89 × L 40 × P 60 cm <span class="opt">+ 180,00 €</span></div>
+          <div class="li">• Multicuiseur 80 recettes + spatule</div>
+          <div class="li choice">• Four au choix :<br><b>Four posable 46 L</b> <span class="inclus">(inclus)</span><br><b>Four encastrable</b> <span class="opt">+ 112,59 €</span></div>
+          <div class="li">• Micro-ondes 20 L</div>
+          <div class="li">• TV Full HD 40"</div>
+          <div class="li">• Cafetière à capsules</div>
+          <div class="li">• Bouilloire inox 1,7 L</div>
+          <div class="li">• Grille pain inox 2 fentes</div>
+          <div class="li">• Appareil à raclette 2 personnes</div>
+          <div class="li">• Aspirateur balai</div>
+          <div class="li">• Lot de 3 ampoules LED E27</div>
+          <div class="li">• Balais</div>
+          <div class="li">• Balayette + pelle</div>
+          <div class="li">• Détecteur de fumée</div>
+          <div class="li">• Multiprise 3 prises avec interrupteur</div>
+          <div class="trotti">🛴 + Trottinette électrique — OFFERTE SI ÉTUDIANT <span style="font-weight:600;">(sur présentation de la carte étudiante)</span></div>
+        </div>
+        <div class="price-block">
+          <div class="old">2 239,37 € à l'unité</div>
+          <div class="price-big">1 919,53 €</div>
+          <div class="ht">À partir de — soit 1 599,61 € HT (TVA 20 %)</div>
+          <div class="save">VOUS ÉCONOMISEZ 319,84 €</div>
+          <div class="incl-note">Livraison, installation dans l'appartement et débarras des cartons <b>inclus</b>.</div>
+          <div class="center" style="margin-top:18px;"><a href="mailto:hello@solocimmo.fr?subject=R%C3%A9servation%20Pack%20%C3%A9lectrom%C3%A9nager%20complet&body=Bonjour%2C%0A%0AJe%20souhaite%20acheter%20le%20Pack%20%C3%89lectrom%C3%A9nager%20complet%20%28%C3%A0%20partir%20de%201%20919%2C53%20%E2%82%AC%20TTC%2C%20livr%C3%A9%2C%20install%C3%A9%2C%20cartons%20d%C3%A9barrass%C3%A9s%29.%0A%0AJ%27aimerais%20%C3%AAtre%20recontact%C3%A9%28e%29%20pour%20finaliser%20ma%20commande.%0A%0AMerci%20%21" class="cta terra">Réserver mon pack</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACHAT À L'UNITÉ -->
+  <div class="sec unite">
+    <div class="wrap">
+      <div class="sec-title">Achat à l'unité</div>
+      <div class="unite-card">
+        <h4>Chaque article, séparément</h4>
+        <div class="art">Vous ne voulez qu'une partie ? C'est possible.</div>
+        <div class="li">• <b>Livraison</b> : 150 € <span class="inclus">(option)</span></div>
+        <div class="li">• <b>Montage</b> : 250 € <span class="inclus">(option)</span> — débarras des cartons inclus</div>
+        <div class="center" style="margin-top:16px;"><a href="unite.html" class="cta">Voir les 21 articles à l'unité →</a></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">★ STOCK LIMITÉ — PREMIER ARRIVÉ, PREMIER SERVI ★</div>
+  <div class="legal">Pack proposé dans le cadre de votre accompagnement SOLOC'. Prix TTC, TVA 20 %. Visuels non contractuels.</div>
+
+</body>
+</html>

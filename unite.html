@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>À l'unité, prix choc — SOLOC'</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap");
+  :root{--terra:#C1614F;--terra-d:#A14E3F;--ardoise:#2C3E50;--creme:#FBF7F0;--creme2:#F2E8DA;--bord:#E5D9C6;--txt2:#5A6B7B;--vert:#16A34A;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--creme);color:var(--ardoise);-webkit-font-smoothing:antialiased;padding-bottom:110px;}
+  .head{background:var(--ardoise);color:#fff;text-align:center;padding:26px 20px 34px;}
+  .back{display:inline-block;color:rgba(255,255,255,.75);text-decoration:none;font-weight:800;font-size:12px;letter-spacing:.06em;margin-bottom:14px;}
+  .back:hover{color:#fff;}
+  .head h1{font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(30px,7vw,56px);line-height:1;color:var(--creme);letter-spacing:-.02em;}
+  .head p{color:rgba(255,255,255,.7);font-size:13px;font-weight:600;margin-top:12px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.5;}
+  .grid{max-width:1000px;margin:0 auto;padding:26px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+  .card{background:#fff;border:2px solid var(--bord);border-radius:14px;padding:16px;display:flex;flex-direction:column;transition:all .12s;}
+  .card.on{border-color:var(--vert);background:#F4FBF4;}
+  .cat{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:var(--terra-d);letter-spacing:.06em;text-transform:uppercase;}
+  .emoji{font-size:26px;}
+  .thumb{width:100%;height:150px;background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;overflow:hidden;}
+  .thumb img{max-width:100%;max-height:100%;object-fit:contain;}
+  .top{display:flex;align-items:center;gap:12px;}
+  .name{font-family:'Sora',sans-serif;font-weight:800;font-size:16px;color:var(--ardoise);margin-top:10px;line-height:1.2;flex:1;}
+  .price{font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:var(--terra);margin-top:8px;}
+  .ht{font-size:11px;color:var(--txt2);font-weight:600;margin-top:2px;}
+  .add{margin-top:12px;background:var(--ardoise);color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Sora',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:all .12s;}
+  .card.on .add{background:var(--vert);}
+  /* Panier fixe */
+  .cart{position:fixed;bottom:0;left:0;right:0;background:var(--ardoise);color:#fff;padding:12px 16px;box-shadow:0 -8px 30px rgba(0,0,0,.2);z-index:50;}
+  .cart-in{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .opt{display:inline-flex;align-items:center;gap:7px;border:1.5px solid rgba(255,255,255,.3);border-radius:9px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;user-select:none;white-space:nowrap;}
+  .opt.on{background:var(--terra);border-color:var(--terra);}
+  .opt input{pointer-events:none;}
+  .cart-total{margin-left:auto;text-align:right;}
+  .cart-total .n{font-size:11px;color:rgba(255,255,255,.6);font-weight:700;}
+  .cart-total .t{font-family:'Sora',sans-serif;font-weight:800;font-size:24px;line-height:1;}
+  .confirm{background:var(--terra);color:#fff;border:none;border-radius:11px;padding:13px 22px;font-family:'Sora',sans-serif;font-weight:800;font-size:15px;cursor:pointer;box-shadow:0 5px 0 var(--terra-d);}
+  .confirm:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+  .foot{background:var(--terra);color:#fff;text-align:center;font-weight:800;font-size:12px;letter-spacing:.05em;padding:13px;}
+  @media(max-width:600px){.cart-in{gap:8px;}.opt{font-size:11px;padding:7px 9px;}.cart-total .t{font-size:20px;}.confirm{padding:11px 16px;font-size:13px;width:100%;order:5;}}
+</style>
+</head>
+<body>
+  <div class="head">
+    <a href="pack.html" class="back">← RETOUR AUX PACKS</a>
+    <h1>À L'UNITÉ, PRIX CHOC</h1>
+    <p>Cliquez sur les articles voulus, ils s'ajoutent à votre sélection. Livraison 150 € · Montage 250 € (débarras des cartons inclus).</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="foot">★ STOCK LIMITÉ — PREMIER ARRIVÉ, PREMIER SERVI ★</div>
+
+  <div class="cart">
+    <div class="cart-in">
+      <label class="opt" id="optLiv"><input type="checkbox" id="cbLiv"/> Livraison 150 €</label>
+      <label class="opt" id="optMon"><input type="checkbox" id="cbMon"/> Montage 250 €</label>
+      <div class="cart-total"><div class="n" id="cnt">0 article</div><div class="t" id="tot">0,00 €</div></div>
+      <button class="confirm" id="confirm" disabled>Confirmer ma sélection</button>
+    </div>
+  </div>
+
+<script>
+(function(){
+  var ITEMS=[
+    {id:1,cat:"Froid",emoji:"🧊",name:"Réfrigérateur 2 portes 206 L",ttc:503.90,ht:419.92,img:"https://packelectrosolocimmo.lovable.app/assets/frigo-xl-CV1qNNHS.jpg"},
+    {id:2,cat:"Froid",emoji:"🧊",name:"Réfrigérateur top 102 L (partie congélation)",ttc:334.80,ht:279.00,img:"https://packelectrosolocimmo.lovable.app/assets/frigo-compact-BqxOhMzh.jpg"},
+    {id:3,cat:"Lavage",emoji:"🌀",name:"Lave-linge hublot 5 kg",ttc:455.59,ht:379.66,img:"https://packelectrosolocimmo.lovable.app/assets/lave-linge-hublot-B3eiwe0m.jpg"},
+    {id:4,cat:"Lavage",emoji:"🌀",name:"Lave-linge top (capot) 6 kg",ttc:695.59,ht:579.66,img:"https://packelectrosolocimmo.lovable.app/assets/lave-linge-top-BkXVAHMp.jpg"},
+    {id:5,cat:"Cuisine",emoji:"🍲",name:"Multicuiseur 80 recettes + spatule",ttc:358.80,ht:299.00,img:"https://packelectrosolocimmo.lovable.app/assets/multicuiseur-B5m5ZZnR.jpg"},
+    {id:6,cat:"Cuisine",emoji:"🔥",name:"Four posable 46 L",ttc:167.88,ht:139.90,img:"https://packelectrosolocimmo.lovable.app/assets/four-Bt-SGReU.jpg"},
+    {id:7,cat:"Cuisine",emoji:"🔥",name:"Four encastrable",ttc:318.00,ht:265.00,img:"https://packelectrosolocimmo.lovable.app/assets/four-encastrable-BRX6CxRe.jpg"},
+    {id:8,cat:"Cuisine",emoji:"📡",name:"Micro-ondes 20 L",ttc:83.95,ht:69.96,img:"https://packelectrosolocimmo.lovable.app/assets/micro-ondes-Cq6VkbTD.jpg"},
+    {id:9,cat:"Image & son",emoji:"📺",name:"TV Full HD 40\"",ttc:428.40,ht:357.00,img:"https://packelectrosolocimmo.lovable.app/assets/tv-BPvTn62u.jpg"},
+    {id:10,cat:"Cuisine",emoji:"☕",name:"Cafetière à capsules",ttc:189.60,ht:158.00,img:"https://packelectrosolocimmo.lovable.app/assets/cafetiere-XQKJSld9.jpg"},
+    {id:11,cat:"Cuisine",emoji:"🫖",name:"Bouilloire inox 1,7 L",ttc:38.35,ht:31.96,img:"https://packelectrosolocimmo.lovable.app/assets/bouilloire-DVrkxaDZ.jpg"},
+    {id:12,cat:"Cuisine",emoji:"🍞",name:"Grille-pain inox 2 fentes",ttc:31.15,ht:25.96,img:"https://packelectrosolocimmo.lovable.app/assets/grille-pain-C38iqcGN.jpg"},
+    {id:13,cat:"Cuisine",emoji:"🧀",name:"Appareil à raclette 2 personnes",ttc:23.95,ht:19.96,img:"https://packelectrosolocimmo.lovable.app/assets/raclette-YxVGB1MP.jpg"},
+    {id:14,cat:"Image & son",emoji:"🔊",name:"Enceinte bluetooth LED",ttc:47.76,ht:39.80,img:"https://packelectrosolocimmo.lovable.app/assets/enceinte-sA7mkUHR.jpg"},
+    {id:15,cat:"Entretien",emoji:"🧹",name:"Aspirateur balai",ttc:69.60,ht:58.00,img:"https://packelectrosolocimmo.lovable.app/assets/aspirateur-Bm9U26sD.jpg"},
+    {id:16,cat:"Éclairage",emoji:"💡",name:"Lot de 3 ampoules LED E27",ttc:14.30,ht:11.92,img:"https://packelectrosolocimmo.lovable.app/assets/ampoules-DgSiXtXB.jpg"},
+    {id:17,cat:"Entretien",emoji:"🧹",name:"Balais",ttc:7.18,ht:5.98,img:"https://packelectrosolocimmo.lovable.app/assets/balai-ySNeJMWW.jpg"},
+    {id:18,cat:"Entretien",emoji:"🧴",name:"Balayette + pelle",ttc:5.88,ht:4.90,img:"https://packelectrosolocimmo.lovable.app/assets/balayette-CkxXSeLu.jpg"},
+    {id:19,cat:"Sécurité",emoji:"🔔",name:"Détecteur de fumée",ttc:21.55,ht:17.96,img:"https://packelectrosolocimmo.lovable.app/assets/detecteur-DeORnKu8.jpg"},
+    {id:20,cat:"Électricité",emoji:"🔌",name:"Multiprise 3 prises avec interrupteur",ttc:8.38,ht:6.98,img:"https://packelectrosolocimmo.lovable.app/assets/multiprise-B_TcoB5h.jpg"},
+    {id:21,cat:"Mobilité",emoji:"🛴",name:"Trottinette électrique",ttc:450.62,ht:375.52,img:"https://packelectrosolocimmo.lovable.app/assets/trottinette-gP68MjRm.jpg"}
+  ];
+  var LIV=150, MON=250;
+  var cart={};
+  var eur=function(n){ return n.toFixed(2).replace(".",",")+" €"; };
+
+  var grid=document.getElementById("grid");
+  ITEMS.forEach(function(it){
+    var c=document.createElement("div"); c.className="card"; c.dataset.id=it.id;
+    c.innerHTML='<div class="thumb"><img src="'+it.img+'" alt="'+it.name+'" loading="lazy"/></div><div class="top"><span class="emoji">'+it.emoji+'</span><span class="cat">'+it.cat+'</span></div>'+
+      '<div class="name">'+it.name+'</div>'+
+      '<div class="price">'+eur(it.ttc)+'</div>'+
+      '<div class="ht">TTC · '+eur(it.ht)+' HT</div>'+
+      '<button class="add">+ Ajouter</button>';
+    c.querySelector(".add").onclick=function(){ toggle(it,c); };
+    grid.appendChild(c);
+  });
+
+  function toggle(it,c){
+    if(cart[it.id]){ delete cart[it.id]; c.classList.remove("on"); c.querySelector(".add").textContent="+ Ajouter"; }
+    else { cart[it.id]=it; c.classList.add("on"); c.querySelector(".add").textContent="✓ Ajouté"; }
+    refresh();
+  }
+  var cbLiv=document.getElementById("cbLiv"), cbMon=document.getElementById("cbMon");
+  document.getElementById("optLiv").onclick=function(e){ if(e.target.tagName!=="INPUT")cbLiv.checked=!cbLiv.checked; sync(); };
+  document.getElementById("optMon").onclick=function(e){ if(e.target.tagName!=="INPUT")cbMon.checked=!cbMon.checked; sync(); };
+  cbLiv.onclick=sync; cbMon.onclick=sync;
+  function sync(){ document.getElementById("optLiv").classList.toggle("on",cbLiv.checked); document.getElementById("optMon").classList.toggle("on",cbMon.checked); refresh(); }
+
+  function refresh(){
+    var ids=Object.keys(cart), n=ids.length;
+    var tot=0; ids.forEach(function(k){ tot+=cart[k].ttc; });
+    if(cbLiv.checked) tot+=LIV; if(cbMon.checked) tot+=MON;
+    document.getElementById("cnt").textContent=n+" article"+(n>1?"s":"");
+    document.getElementById("tot").textContent=eur(tot);
+    document.getElementById("confirm").disabled=(n===0);
+  }
+
+  document.getElementById("confirm").onclick=function(){
+    var ids=Object.keys(cart); if(ids.length===0) return;
+    var lignes=ids.map(function(k){ return "- "+cart[k].name+" : "+eur(cart[k].ttc); });
+    var tot=0; ids.forEach(function(k){ tot+=cart[k].ttc; });
+    var opts=[];
+    if(cbLiv.checked){ opts.push("- Livraison : "+eur(LIV)); tot+=LIV; }
+    if(cbMon.checked){ opts.push("- Montage (débarras des cartons inclus) : "+eur(MON)); tot+=MON; }
+    var body="Bonjour,\n\nJe souhaite commander les articles électroménager suivants (à l'unité) et être recontacté(e) pour finaliser :\n\n"+
+      lignes.join("\n")+
+      (opts.length?("\n\nOptions :\n"+opts.join("\n")):"")+
+      "\n\nTotal estimé : "+eur(tot)+"\n\nMerci !";
+    var url="mailto:hello@solocimmo.fr?subject="+encodeURIComponent("Commande électroménager à l'unité")+"&body="+encodeURIComponent(body);
+    window.location.href=url;
+  };
+})();
+</script>
+</body>
+</html>
