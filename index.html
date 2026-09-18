@@ -639,6 +639,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
       <div className="kb-badges" style={{marginTop:5}}>
         {lead.calendlyRdv&&<span style={chip("#EFF6FF","#1d4ed8")}>🗓 {lead.calendlyRdv.dateLabel}</span>}
         {lead.whatsappContact&&<span style={chip("#DCFCE7","#15803d")}>💬 {lead.whatsappContact.dateLabel||"WhatsApp"}</span>}
+        {lead.source==="tiktok"&&<span style={chip("#F1F1F2","#111")}><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{verticalAlign:"-1px",marginRight:3}}><path d="M16.6 5.82a4.28 4.28 0 0 1-1.05-2.82h-3.11v12.16a2.43 2.43 0 0 1-2.42 2.32 2.43 2.43 0 0 1 0-4.86c.25 0 .5.04.72.11V9.6a5.6 5.6 0 0 0-.72-.05 5.54 5.54 0 1 0 5.54 5.54V8.9a7.14 7.14 0 0 0 4.17 1.33V7.12a4.28 4.28 0 0 1-3.13-1.3z"/></svg>TikTok</span>}
         {stale&&<span style={chip("#FEF3C7","#92400e")}>⚠ {Math.floor(daysSince(lead.lastActivity))}j</span>}
         {isDupe&&<span style={chip("#FEF3C7","#92400e")}>⚠ Doublon</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
