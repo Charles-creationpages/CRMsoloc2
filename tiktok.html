@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Trouvez votre appart à Lyon — SOLOC'</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap");
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:#EEECE7;color:#2C3E50;padding:24px 12px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:480px;margin:0 auto;background:#FBF7F0;border:1px solid #E5D9C6;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(44,62,80,.12);}
+  .head{background:#2C3E50;padding:22px 24px;display:flex;align-items:center;justify-content:space-between;}
+  .head-t{font-family:'Sora',sans-serif;color:#fff;font-size:18px;font-weight:800;}
+  .head-s{color:rgba(255,255,255,.55);font-size:12px;margin-top:2px;}
+  .logo{width:40px;height:40px;background:#C1614F;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;font-family:'Sora',sans-serif;}
+  .bandeau{background:#F5E2DD;color:#5A2E24;font-size:12.5px;line-height:1.55;padding:13px 16px;text-align:center;border-bottom:1px solid #E5D9C6;}
+  .bandeau a{color:#C1614F;font-weight:800;text-decoration:none;}
+  .body{padding:20px 24px 24px;}
+  .lab{display:block;font-size:12px;font-weight:700;color:#5A6B7B;margin-bottom:5px;}
+  .req{color:#C1614F;}
+  .fi{width:100%;background:#fff;border:1.5px solid #D8C7AE;border-radius:9px;padding:11px 12px;font-size:14px;color:#2C3E50;font-family:inherit;outline:none;}
+  .fi:focus{border-color:#C1614F;}
+  .row{display:flex;gap:10px;}
+  .row>div{flex:1;}
+  .grp{margin-bottom:14px;}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{padding:9px 14px;border-radius:20px;border:1.5px solid #D8C7AE;background:#F2E8DA;color:#5A6B7B;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .chip.on{background:#C1614F;border-color:#C1614F;color:#fff;}
+  .submit{width:100%;margin-top:6px;background:#C1614F;color:#fff;border:none;padding:15px;border-radius:11px;font-size:16px;font-weight:800;cursor:pointer;font-family:'Sora',sans-serif;}
+  .submit:disabled{opacity:.55;cursor:not-allowed;}
+  .foot{text-align:center;font-size:11px;color:#9AA7B2;margin-top:12px;line-height:1.5;}
+  .err{background:#FEE2E2;color:#991B1B;border:1.5px solid #F5B5B5;border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:14px;display:none;}
+  .state{padding:50px 30px;text-align:center;}
+  .state-ic{font-size:44px;margin-bottom:14px;}
+  .state-t{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;}
+  .state-s{font-size:14px;color:#5A6B7B;line-height:1.6;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <div class="head-t">On trouve votre appart 🔑</div>
+        <div class="head-s">Laissez vos infos, on vous rappelle vite.</div>
+      </div>
+      <div class="logo">S</div>
+    </div>
+    <div class="bandeau">
+      Pour rappel, nous cherchons et trouvons des logements dans vos critères. Plus d'infos sur notre site : <a href="https://solocimmo.fr" target="_blank">Soloc'</a>
+    </div>
+
+    <div id="form" class="body">
+      <div id="err" class="err"></div>
+      <div class="row grp">
+        <div><label class="lab">Prénom <span class="req">*</span></label><input class="fi" id="prenom"/></div>
+        <div><label class="lab">Nom <span class="req">*</span></label><input class="fi" id="nom"/></div>
+      </div>
+      <div class="grp"><label class="lab">Téléphone <span class="req">*</span></label><input class="fi" id="phone" type="tel" placeholder="06…"/></div>
+      <div class="grp"><label class="lab">Email <span class="req">*</span></label><input class="fi" id="email" type="email" placeholder="vous@mail.com"/></div>
+      <div class="grp"><label class="lab">Votre statut <span class="req">*</span></label>
+        <div class="chips" data-single id="statut">
+          <button type="button" class="chip">Étudiant</button>
+          <button type="button" class="chip">Salarié CDI</button>
+          <button type="button" class="chip">CDD</button>
+          <button type="button" class="chip">Indépendant</button>
+          <button type="button" class="chip">Autre</button>
+        </div>
+      </div>
+      <div class="grp"><label class="lab">Vos disponibilités pour être rappelé(e) <span style="font-weight:400;color:#9AA7B2;">(optionnel)</span></label><input class="fi" id="dispos" placeholder="Ex : en journée, après 18h, le week-end…"/></div>
+      <button class="submit" id="send">Être rappelé(e) →</button>
+      <div class="foot">Vos informations sont confidentielles et utilisées uniquement pour votre recherche de logement.</div>
+    </div>
+
+    <div id="done" class="state" style="display:none;">
+      <div class="state-ic">🎉</div>
+      <div class="state-t">C'est bien reçu !</div>
+      <div class="state-s">Un chasseur SOLOC' vous recontacte très rapidement. À très vite !</div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
+    authDomain: "soloc-crm.firebaseapp.com",
+    projectId: "soloc-crm",
+    storageBucket: "soloc-crm.firebasestorage.app",
+    messagingSenderId: "247355554921",
+    appId: "1:247355554921:web:b7644b4d35d37bf0dc36f8"
+  };
+  const db = getFirestore(initializeApp(firebaseConfig));
+  const $=(id)=>document.getElementById(id);
+
+  document.querySelectorAll("[data-single]").forEach(function(g){
+    g.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ g.querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); }; });
+  });
+  const pickedStatut=()=>{ const b=$("statut").querySelector("button.on"); return b?b.textContent.trim():""; };
+
+  $("send").onclick=async function(){
+    const err=$("err");
+    const prenom=$("prenom").value.trim(), nom=$("nom").value.trim();
+    const phone=$("phone").value.trim(), email=$("email").value.trim();
+    const statut=pickedStatut();
+    const manque=[];
+    if(!prenom) manque.push("votre prénom");
+    if(!nom) manque.push("votre nom");
+    if(!phone) manque.push("votre téléphone");
+    if(!email) manque.push("votre email");
+    if(!statut) manque.push("votre statut");
+    if(manque.length){ err.textContent="Merci de renseigner : "+manque.join(", ")+"."; err.style.display="block"; window.scrollTo(0,0); return; }
+    err.style.display="none";
+    $("send").disabled=true; $("send").textContent="Envoi…";
+    try {
+      await addDoc(collection(db,"captures"), {
+        prenom:prenom, nom:nom, phone:phone, email:email, statut:statut,
+        dispos:$("dispos").value.trim(), source:"tiktok",
+        createdAt:new Date().toISOString(), traite:false
+      });
+      $("form").style.display="none"; $("done").style.display="block";
+    } catch(e){
+      $("send").disabled=false; $("send").textContent="Être rappelé(e) →";
+      err.textContent="Une erreur est survenue, réessayez dans un instant."; err.style.display="block";
+    }
+  };
+</script>
+</body>
+</html>

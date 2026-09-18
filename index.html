@@ -137,6 +137,8 @@ const assigneeFromDate = (iso) => {
   if(d===3||d===4||d===5) return "aya";      // mer/jeu/ven
   return "emmy";                             // lun/mar/sam/dim
 };
+const SOURCE_LABEL = { tiktok:"📱 TikTok", whatsapp:"💬 WhatsApp", calendly:"📅 Calendly", manuel:"✍️ Manuel", site:"🌐 Site" };
+const sourceLabel = (s) => SOURCE_LABEL[s] || (s ? s : "");
 const round2 = (x) => Math.round((x||0)*100)/100;
 const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
 const monthKeyFromISO = (iso) => (iso||nowISO()).slice(0,7);
@@ -811,6 +813,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-title">{lead.name}</div>
         <div className="modal-sub">Créé le {fmtDate(lead.createdAt)} — dernier mouvement {fmtDate(lead.lastActivity)}</div>
+        {lead.source&&<div style={{marginTop:6}}><span className="badge" style={{background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}>Source : {sourceLabel(lead.source)}</span></div>}
         {(lead.envoiEnvoye||lead.formulaireRempli||lead.lettreSignee)&&(
           <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"10px 0"}}>
             {lead.envoiEnvoye&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}>✉️ Dossier envoyé</span>}
@@ -2723,6 +2726,7 @@ function App(){
   const [newsletter,setNewsletter]=useState([]);
   const [soumissions,setSoumissions]=useState([]);
   const [lettres,setLettres]=useState([]);
+  const [captures,setCaptures]=useState([]);
   const [tab,setTab]=useState("pipeline");
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null); // {type:'add'} | {type:'detail',lead} | {type:'gate',lead}
@@ -2787,6 +2791,44 @@ function App(){
     },()=>{});
     return unsub;
   },[user]);
+
+  // Captures TikTok (collection publique alimentée par tiktok.html)
+  useEffect(()=>{
+    if(!user) return;
+    const unsub=fsOnSnapshot(fsCollection(db,"captures"),snap=>{
+      setCaptures(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },()=>{});
+    return unsub;
+  },[user]);
+
+  // Import auto : chaque capture TikTok crée un lead en Premier contact, source TikTok, auto-assigné.
+  const captureRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user||captures.length===0) return;
+    const STATUT_MAP={"Étudiant":"Étudiant","Salarié CDI":"CDI","CDD":"CDD","Indépendant":"Indépendant"};
+    captures.forEach(cap=>{
+      if(cap.traite===true || captureRef.current.has(cap.id)) return;
+      captureRef.current.add(cap.id);
+      const statut=STATUT_MAP[cap.statut]||"";
+      const notesArr=[];
+      if(statut==="") notesArr.push("Statut déclaré : "+(cap.statut||"—")+" (à qualifier)");
+      if(cap.dispos) notesArr.push("Disponibilités : "+cap.dispos);
+      const who=assigneeFromDate(cap.createdAt||nowISO());
+      fsAddDoc(fsCollection(db,"leads"),{
+        name:((cap.prenom||"")+" "+(cap.nom||"")).trim(), firstName:cap.prenom||"", lastName:cap.nom||"",
+        phone:cap.phone||"", email:cap.email||"",
+        criteria:{...blankCriteria, statutClient:statut},
+        assignedTo:who, assignTouched:true, source:"tiktok",
+        column:"premier_contact", relanceCount:0, paid:false,
+        notes:notesArr.join("\n"),
+        createdAt:cap.createdAt||nowISO(), lastActivity:nowISO(),
+        history:[mkEvent("🌱","Lead créé — TikTok")]
+      }).then(ref=>{
+        fsUpdateDoc(fsDocRef(db,"captures",cap.id),{traite:true,leadId:ref.id}).catch(()=>{});
+        addToast("✓ Nouveau lead TikTok : "+((cap.prenom||"")+" "+(cap.nom||"")).trim());
+      }).catch(()=>captureRef.current.delete(cap.id));
+    });
+  },[captures,user]);
 
   // Lettres de mission (config + signatures) — alimente le Registre et les pastilles
   useEffect(()=>{
