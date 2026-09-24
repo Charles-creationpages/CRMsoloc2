@@ -785,7 +785,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:lead.assignedTo||"", criteria:c };
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:lead.assignedTo||"", partage:lead.partage||false, criteria:c };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -854,6 +854,10 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
                 <button key={k} type="button" className={"seg-btn"+(form.assignedTo===k?" active":"")} style={form.assignedTo===k?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>setForm(p=>({...p,assignedTo:k}))}>{ASSIGNEES[k].label}</button>
               ))}
             </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,color:"var(--text2)",cursor:(lead.column==="en_recherche"?"default":"pointer"),margin:"2px 0 4px"}}>
+              <input type="checkbox" checked={!!form.partage || lead.column==="en_recherche"} disabled={lead.column==="en_recherche"} onChange={e=>setForm(p=>({...p,partage:e.target.checked}))}/>
+              Visible par toute l'équipe (Emmy + Aya){lead.column==="en_recherche"?" — auto en recherche":""}
+            </label>
           </>
         )}
 
@@ -2046,6 +2050,26 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
 }
 
 // ─── POPUP VALIDATION / PAPERNEST ────────────────────────────────────────
+function NewsletterKeepModal({lead, nlId, onClose, addToast}){
+  const retirer=()=>{
+    fsDeleteDoc(fsDocRef(db,"newsletter",nlId))
+      .then(()=>{addToast("Retiré de la Newsletter");onClose();})
+      .catch(()=>{addToast("Erreur","error");onClose();});
+  };
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Ce client est dans la Newsletter</div>
+        <div className="modal-sub">{lead.name} passe en Sans suite. Le garder dans la Newsletter pour continuer à lui rediffuser des biens ?</div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={retirer}>Non, le retirer</button>
+          <button className="btn btn-p" onClick={onClose}>Oui, le garder</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PapernestModal({lead, user, onClose, addToast}){
   const [called,setCalled]=useState(false);
   const [rdv,setRdv]=useState("");
@@ -2068,8 +2092,8 @@ function PapernestModal({lead, user, onClose, addToast}){
     const rdvLabel=fmtRdv(rdv);
     setSending(true);
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ papernestRdv:{iso:rdv,label:rdvLabel}, papernestEnvoye:true, papernestSender:roleOfEmail(user.email) }).catch(()=>{});
-    if(VALIDATION_WEBAPP_URL && hasEmail){
-      fetch(VALIDATION_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email, prenom:prenom, rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })}).catch(()=>{});
+    if(VALIDATION_WEBAPP_URL){
+      fetch(VALIDATION_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })}).catch(()=>{});
     }
     setTimeout(()=>{ setSending(false); addToast(hasEmail?"✓ Dossier validé, mail envoyé au client":"Dossier validé (pas d'email, mail non envoyé)"); onClose(); },900);
   };
@@ -2986,6 +3010,11 @@ function App(){
     setModal(null);
   };
 
+  const newsletterEntryOf=(lead)=>{
+    const np=normPhone(lead.phone), ne=normEmail(lead.email);
+    return newsletter.find(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne))||null;
+  };
+
   const moveLead=(id,col)=>{
     const lead=leads.find(l=>l.id===id);
     if(!lead||lead.column===col) return;
@@ -3002,11 +3031,16 @@ function App(){
       setModal({type:"gate",lead});
       return;
     }
-    const moveExtra = col==="valide" ? {validatedAt:nowISO()} : (col==="sans_suite" ? {sansSuiteAt:nowISO()} : (col==="envoye" ? {envoyeAt:nowISO()} : {}));
+    const moveExtra = col==="valide" ? {validatedAt:nowISO()} : (col==="sans_suite" ? {sansSuiteAt:nowISO()} : (col==="envoye" ? {envoyeAt:nowISO()} : (col==="en_recherche" ? {partage:true} : {})));
     fsUpdateDoc(fsDocRef(db,"leads",id),{
       column:col, lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
-    }).then(()=>{ addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name); if(col==="envoye") copyLeadToNewsletter(lead); if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead}); });
+    }).then(()=>{
+      addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name);
+      if(col==="envoye") copyLeadToNewsletter(lead);
+      if(col==="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead});
+      if(col==="sans_suite"){ const nl=newsletterEntryOf(lead); if(nl) setModal({type:"nlkeep",lead,nlId:nl.id}); }
+    });
   };
 
   const relanceAction=(lead)=>{
@@ -3042,15 +3076,17 @@ function App(){
     const valExtra = (effTarget==="valide" && lead.column!=="valide") ? {validatedAt:nowISO()} : {};
     const ssExtra = (effTarget==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
     const evExtra = (effTarget==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
+    const partageExtra = (effTarget==="en_recherche") ? {partage:true} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:effTarget, assignedTo:form.assignedTo||"", assignTouched:true, ...valExtra, ...ssExtra, ...evExtra,
+      criteria:form.criteria, column:effTarget, assignedTo:form.assignedTo||"", assignTouched:true, partage:!!form.partage, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
       if(gateEnvoi){ setModal({type:"envoi",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria}}); return; }
-      if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye) setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}});
-      else setModal(null);
+      if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye){ setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}}); return; }
+      if(effTarget==="sans_suite" && lead.column!=="sans_suite"){ const nl=newsletterEntryOf({...lead,phone:form.phone,email:form.email}); if(nl){ setModal({type:"nlkeep",lead:{...lead,name:(form.name||"").trim()||lead.name},nlId:nl.id}); return; } }
+      setModal(null);
     });
   };
 
@@ -3085,7 +3121,7 @@ function App(){
   const isAdmin = myRole==="admin";
   const pipelineLeads = isAdmin
     ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>l.assignedTo===pipeFilter))
-    : filteredLeads.filter(l=>l.assignedTo===myRole);
+    : filteredLeads.filter(l=>l.assignedTo===myRole || l.partage===true || l.column==="en_recherche");
 
   const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
@@ -3182,6 +3218,8 @@ function App(){
         <PapernestModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast}/>}
       {modal?.type==="envoi"&&
         <EnvoiModal lead={modal.lead} user={user} onClose={()=>setModal(null)} addToast={addToast} onSent={copyLeadToNewsletter}/>}
+      {modal?.type==="nlkeep"&&
+        <NewsletterKeepModal lead={modal.lead} nlId={modal.nlId} onClose={()=>setModal(null)} addToast={addToast}/>}
 
       <div className="toast-wrap">
         {toasts.map(t=><div key={t.id} className={"toast"+(t.type==="error"?" error":"")}>{t.text}</div>)}
