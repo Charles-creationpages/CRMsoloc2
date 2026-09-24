@@ -71,7 +71,12 @@ const dateKeyLabel = (key) => {
   return `${jours[date.getDay()]} ${d} ${mois[m-1]}`;
 };
 const mkEvent = (emoji, text) => ({ id: Date.now()+"-"+Math.random().toString(36).slice(2), at: nowISO(), text: emoji?`${emoji} ${text}`:text });
-const displayNameFromEmail = (email) => { if(!email) return ""; const n = email.split("@")[0].replace(/[._]/g," "); return n.charAt(0).toUpperCase()+n.slice(1); };
+const KNOWN_NAMES = {
+  "charlesblyopro@gmail.com": "Charles",
+  "emmymariet8@gmail.com": "Emmy",
+  "ayabelkebir213@gmail.com": "Aya"
+};
+const displayNameFromEmail = (email) => { if(!email) return ""; const known = KNOWN_NAMES[String(email).trim().toLowerCase()]; if(known) return known; const n = email.split("@")[0].replace(/[._]/g," "); return n.charAt(0).toUpperCase()+n.slice(1); };
 
 const asArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 const normPhone = (p) => { if(!p) return ""; let s=String(p).replace(/[^0-9+]/g,""); if(s.indexOf("+33")===0) s="0"+s.slice(3); else if(s.indexOf("0033")===0) s="0"+s.slice(4); return s.replace(/\+/g,""); };
