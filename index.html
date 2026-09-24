@@ -617,11 +617,11 @@ function LoginScreen(){
 }
 
 // ─── LEAD CARD ───────────────────────────────────────────────────────────
-function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isDupe}){
+function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isDupe, isAdmin}){
   const stale = ACTIVE_ALERT_COLS.includes(lead.column) && daysSince(lead.lastActivity)>=3;
   const cls = ["kb-card"];
   if(stale) cls.push("warn");
-  if(lead.column==="valide"&&lead.paid) cls.push("paid");
+  if(isAdmin&&lead.column==="valide"&&lead.paid) cls.push("paid");
   const typoArr = asArray(lead.criteria && lead.criteria.typologie);
   const critSummary = typoArr.length ? (typoArr.join("/")+" · "+(lead.criteria.secteur||"—")+" · "+(lead.criteria.loyer?lead.criteria.loyer+"€":"—")) : null;
   const chip=(bg,fg)=>({fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:bg,color:fg,whiteSpace:"nowrap"});
@@ -643,7 +643,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {stale&&<span style={chip("#FEF3C7","#92400e")}>⚠ {Math.floor(daysSince(lead.lastActivity))}j</span>}
         {isDupe&&<span style={chip("#FEF3C7","#92400e")}>⚠ Doublon</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
-        {lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
+        {isAdmin&&lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
         {lead.formulaireRempli&&<span style={chip("#DBEAFE","#1d4ed8")}>📋 Formulaire</span>}
         {lead.lettreSignee&&<span style={chip("#DCFCE7","#15803d")}>📄 Signée</span>}
       </div>
@@ -653,7 +653,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
       {lead.column==="relance"&&(
         <button className="relance-act" onClick={e=>{e.stopPropagation();onRelanceAction(lead);}}>Pas de réponse</button>
       )}
-      {lead.column==="valide"&&(
+      {isAdmin&&lead.column==="valide"&&(
         <div className="paid-row" onClick={e=>{e.stopPropagation();onTogglePaid(lead);}}>
           <input type="checkbox" checked={!!lead.paid} onChange={()=>{}} readOnly/> Marquer payé
         </div>
@@ -663,7 +663,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
 }
 
 // ─── KANBAN BOARD ────────────────────────────────────────────────────────
-function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile, dupeIds}){
+function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile, dupeIds, isAdmin}){
   const [dragOver,setDragOver]=useState(null);
   const [selStage,setSelStage]=useState("premier_contact");
   const dragId=useRef(null);
@@ -699,7 +699,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
         {colLeads.length===0
           ?<div style={{textAlign:"center",padding:"40px 0",color:"var(--text3)",fontSize:13,fontStyle:"italic"}}>Aucun lead à cette étape</div>
           :colLeads.map(lead=>(
-            <LeadCard key={lead.id} lead={lead} onOpen={onOpen} onDragStart={()=>{}} onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)}/>
+            <LeadCard key={lead.id} lead={lead} onOpen={onOpen} onDragStart={()=>{}} onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)} isAdmin={isAdmin}/>
           ))}
       </div>
     );
@@ -723,7 +723,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
             {colLeads.map(lead=>(
               <LeadCard key={lead.id} lead={lead} onOpen={onOpen}
                 onDragStart={(e,id)=>{dragId.current=id;e.dataTransfer.setData("text",id);}}
-                onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)}/>
+                onRelanceAction={onRelanceAction} onTogglePaid={onTogglePaid} isDupe={dupeIds&&dupeIds.has(lead.id)} isAdmin={isAdmin}/>
             ))}
           </div>
         );
@@ -3153,7 +3153,7 @@ function App(){
               </div>
               <div className="main">
                 {tab==="pipeline"
-                  ? <KanbanBoard leads={pipelineLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds}/>
+                  ? <KanbanBoard leads={pipelineLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds} isAdmin={isAdmin}/>
                   : <RechercheTable leads={filteredLeads} search={search}/>}
               </div>
             </>)}
