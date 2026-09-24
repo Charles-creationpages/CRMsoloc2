@@ -630,8 +630,8 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:critSummary?4:5}}>
         <div className="kb-card-name" style={{margin:0}}>{lead.name}</div>
-        {lead.assignedTo&&ASSIGNEES[lead.assignedTo]
-          ? <span className="badge" style={{background:ASSIGNEES[lead.assignedTo].color,color:"#fff",flexShrink:0}}>{ASSIGNEES[lead.assignedTo].label}</span>
+        {asArray(lead.assignedTo).length>0
+          ? <span style={{display:"flex",gap:3,flexShrink:0}}>{asArray(lead.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>
           : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
       </div>
       {critSummary&&<div style={{fontSize:11,color:"var(--text2)",fontWeight:600,marginBottom:5}}>{critSummary}</div>}
@@ -734,7 +734,7 @@ function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMo
 
 // ─── ADD LEAD MODAL ──────────────────────────────────────────────────────
 function AddLeadModal({onSave,onClose}){
-  const [form,setForm]=useState({firstName:"",lastName:"",phone:"",email:"",assignedTo:""});
+  const [form,setForm]=useState({firstName:"",lastName:"",phone:"",email:"",assignedTo:[]});
   const [err,setErr]=useState("");
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
@@ -743,7 +743,7 @@ function AddLeadModal({onSave,onClose}){
     const hasContact = form.phone.trim()||form.email.trim();
     if(!hasIdentity){setErr("Renseigne au moins un prénom ou un nom.");return;}
     if(!hasContact){setErr("Renseigne au moins un téléphone ou un email.");return;}
-    if(!form.assignedTo){setErr("Choisis qui suit ce lead : Emmy ou Aya.");return;}
+    if(!form.assignedTo||form.assignedTo.length===0){setErr("Choisis qui suit ce lead : Emmy et/ou Aya.");return;}
     onSave(form);
   };
 
@@ -763,7 +763,7 @@ function AddLeadModal({onSave,onClose}){
           <label className="fl">Assigné à *</label>
           <div className="seg">
             {Object.keys(ASSIGNEES).map(k=>(
-              <button key={k} type="button" className={"seg-btn"+(form.assignedTo===k?" active":"")} style={form.assignedTo===k?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>set("assignedTo",k)}>{ASSIGNEES[k].label}</button>
+              <button key={k} type="button" className={"seg-btn"+(asArray(form.assignedTo).includes(k)?" active":"")} style={asArray(form.assignedTo).includes(k)?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>set("assignedTo",asArray(form.assignedTo).includes(k)?form.assignedTo.filter(x=>x!==k):[...asArray(form.assignedTo),k])}>{ASSIGNEES[k].label}</button>
             ))}
           </div>
         </div>
@@ -785,7 +785,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:lead.assignedTo||"", partage:lead.partage||false, criteria:c };
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -848,16 +848,14 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         {isAdmin&&(
           <>
             <div className="modal-section">Assigné à</div>
-            <div className="seg" style={{marginBottom:4}}>
-              <button type="button" className={"seg-btn"+(!form.assignedTo?" active":"")} onClick={()=>setForm(p=>({...p,assignedTo:""}))}>Non assigné</button>
-              {Object.keys(ASSIGNEES).map(k=>(
-                <button key={k} type="button" className={"seg-btn"+(form.assignedTo===k?" active":"")} style={form.assignedTo===k?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>setForm(p=>({...p,assignedTo:k}))}>{ASSIGNEES[k].label}</button>
-              ))}
+            <div className="seg" style={{marginBottom:4,flexWrap:"wrap"}}>
+              <button type="button" className={"seg-btn"+(asArray(form.assignedTo).length===0?" active":"")} onClick={()=>setForm(p=>({...p,assignedTo:[]}))}>Non assigné</button>
+              {Object.keys(ASSIGNEES).map(k=>{
+                const on=asArray(form.assignedTo).includes(k);
+                return <button key={k} type="button" className={"seg-btn"+(on?" active":"")} style={on?{background:ASSIGNEES[k].color,borderColor:ASSIGNEES[k].color,color:"#fff"}:{}} onClick={()=>setForm(p=>({...p,assignedTo:on?asArray(p.assignedTo).filter(x=>x!==k):[...asArray(p.assignedTo),k]}))}>{ASSIGNEES[k].label}</button>;
+              })}
             </div>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,color:"var(--text2)",cursor:(lead.column==="en_recherche"?"default":"pointer"),margin:"2px 0 4px"}}>
-              <input type="checkbox" checked={!!form.partage || lead.column==="en_recherche"} disabled={lead.column==="en_recherche"} onChange={e=>setForm(p=>({...p,partage:e.target.checked}))}/>
-              Visible par toute l'équipe (Emmy + Aya){lead.column==="en_recherche"?" — auto en recherche":""}
-            </label>
+            <div style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Sélectionne Emmy, Aya, ou les deux. Un client passé en recherche reste visible par toute l'équipe.</div>
           </>
         )}
 
@@ -1075,7 +1073,7 @@ function RechercheTable({leads,search}){
         {rows.map(l=>(
           <tr key={l.id}>
             <td className="td-name">{l.name}</td>
-            <td>{l.assignedTo&&ASSIGNEES[l.assignedTo]?<span className="badge" style={{background:ASSIGNEES[l.assignedTo].color,color:"#fff"}}>{ASSIGNEES[l.assignedTo].label}</span>:<span style={{color:"var(--text3)",fontSize:11}}>—</span>}</td>
+            <td>{asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).length?<span style={{display:"inline-flex",gap:3}}>{asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>:<span style={{color:"var(--text3)",fontSize:11}}>—</span>}</td>
             <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}{l.criteria.statutClient==="Colocation"&&(" ("+(parseInt(l.criteria.nbColoc)||2)+" pers.)")}</td>
             <td>{asArray(l.criteria.typologie).join(", ")||"—"}</td>
             <td>{l.criteria.surface} m²</td>
@@ -2232,9 +2230,9 @@ function PilotagePage({user, leads}){
   const sigByMonth=months12.map(mk=>({mk,n:signesMois(mk),obj:objOf(mk)}));
   const maxSig=Math.max(1,...sigByMonth.map(s=>Math.max(s.n,s.obj)));
 
-  const perf=(role)=>({sig:valides.filter(l=>l.assignedTo===role && afterStart(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>l.assignedTo===role && afterStart(l.createdAt)).length});
+  const perf=(role)=>({sig:valides.filter(l=>asArray(l.assignedTo).includes(role) && afterStart(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>asArray(l.assignedTo).includes(role) && afterStart(l.createdAt)).length});
   const emmyP=perf("emmy"), ayaP=perf("aya");
-  const envoyesOf=(role)=>leads.filter(l=>l.assignedTo===role && l.envoyeAt && afterStart(l.envoyeAt)).length;
+  const envoyesOf=(role)=>leads.filter(l=>asArray(l.assignedTo).includes(role) && l.envoyeAt && afterStart(l.envoyeAt)).length;
   const emmyEnv=envoyesOf("emmy"), ayaEnv=envoyesOf("aya");
   const totalEnv=leads.filter(l=>l.envoyeAt && afterStart(l.envoyeAt)).length;
   const maxTeam=Math.max(1,emmyP.tot,ayaP.tot);
@@ -2789,13 +2787,13 @@ function App(){
   useEffect(()=>{
     if(!user) return;
     leads.forEach(l=>{
-      if(l.assignedTo || l.assignTouched) return;
+      if(asArray(l.assignedTo).length>0 || l.assignTouched) return;
       if(assignRef.current.has(l.id)) return;
       const dateRef = (l.calendlyRdv && l.calendlyRdv.startTime) || l.createdAt;
       const who = assigneeFromDate(dateRef);
       if(!who) return;
       assignRef.current.add(l.id);
-      fsUpdateDoc(fsDocRef(db,"leads",l.id),{assignedTo:who, assignTouched:true}).catch(()=>assignRef.current.delete(l.id));
+      fsUpdateDoc(fsDocRef(db,"leads",l.id),{assignedTo:[who], assignTouched:true}).catch(()=>assignRef.current.delete(l.id));
     });
   },[leads,user]);
 
@@ -2843,7 +2841,7 @@ function App(){
         name:((cap.prenom||"")+" "+(cap.nom||"")).trim(), firstName:cap.prenom||"", lastName:cap.nom||"",
         phone:cap.phone||"", email:cap.email||"",
         criteria:{...blankCriteria, statutClient:statut},
-        assignedTo:who, assignTouched:true, source:"tiktok",
+        assignedTo:[who], assignTouched:true, source:"tiktok",
         column:"premier_contact", relanceCount:0, paid:false,
         notes:notesArr.join("\n"),
         createdAt:cap.createdAt||nowISO(), lastActivity:nowISO(),
@@ -3002,7 +3000,7 @@ function App(){
       firstName:form.firstName, lastName:form.lastName, name:fullName,
       phone:form.phone, email:form.email,
       column:"premier_contact", relanceCount:0, paid:false, notes:"",
-      criteria:blankCriteria, assignedTo:form.assignedTo||"", assignTouched:true, source:"manuel",
+      criteria:blankCriteria, assignedTo:asArray(form.assignedTo), assignTouched:true, source:"manuel",
       createdAt:nowISO(), lastActivity:nowISO(),
       history:[mkEvent("🌱","Lead créé")]
     };
@@ -3079,7 +3077,7 @@ function App(){
     const partageExtra = (effTarget==="en_recherche") ? {partage:true} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
-      criteria:form.criteria, column:effTarget, assignedTo:form.assignedTo||"", assignTouched:true, partage:!!form.partage, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
+      criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
@@ -3120,8 +3118,8 @@ function App(){
   const myRole = roleOfEmail(user.email);
   const isAdmin = myRole==="admin";
   const pipelineLeads = isAdmin
-    ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>l.assignedTo===pipeFilter))
-    : filteredLeads.filter(l=>l.assignedTo===myRole || l.partage===true || l.column==="en_recherche");
+    ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>asArray(l.assignedTo).includes(pipeFilter)))
+    : filteredLeads.filter(l=>asArray(l.assignedTo).includes(myRole) || l.partage===true || l.column==="en_recherche");
 
   const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
