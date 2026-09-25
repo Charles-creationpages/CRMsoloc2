@@ -195,7 +195,44 @@ const splitName = (l) => {
   const parts=String(l.name||"").trim().split(/\s+/).filter(Boolean);
   return { prenom:l.firstName||parts[0]||"", nom:l.lastName||parts.slice(1).join(" ") };
 };
-const montantTTCOf = (l, lettre) => (lettre && lettre.montant) ? Number(lettre.montant) : prestationFromLead(l).ttc;
+const montantTTCOf = (l, lettre) => (l.montantArchive!=null && l.montantArchive!=="") ? Number(l.montantArchive) : (lettre && lettre.montant) ? Number(lettre.montant) : prestationFromLead(l).ttc;
+
+function ArchiveEditModal({lead, montant, onClose, addToast}){
+  const n0=splitName(lead);
+  const [f,setF]=useState({prenom:n0.prenom, nom:n0.nom, phone:lead.phone||"", email:lead.email||"", montant:montant!=null?String(montant):"", adresse:lead.adresseBien||""});
+  const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const save=()=>{
+    const prenom=f.prenom.trim(), nom=f.nom.trim();
+    if(!prenom&&!nom){ addToast("Renseigne au moins un nom ou un prénom","error"); return; }
+    const m=String(f.montant).replace(",",".").trim();
+    if(m!==""&&isNaN(parseFloat(m))){ addToast("Montant invalide","error"); return; }
+    const upd={ firstName:prenom, lastName:nom, name:(prenom+" "+nom).trim(), phone:f.phone.trim(), email:f.email.trim(), adresseBien:f.adresse.trim() };
+    const mNum=m===""?null:round2(parseFloat(m));
+    if(mNum!==montant) upd.montantArchive=mNum;
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),upd).then(()=>{ addToast("✓ Dossier mis à jour"); onClose(); }).catch(()=>addToast("Erreur","error"));
+  };
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Modifier le dossier</div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Nom</label><input className="fi" value={f.nom} onChange={e=>set("nom",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Prénom</label><input className="fi" value={f.prenom} onChange={e=>set("prenom",e.target.value)}/></div>
+        </div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
+        </div>
+        <div className="fg"><label className="fl">Montant de la prestation TTC (€)</label><input className="fi" type="number" value={f.montant} onChange={e=>set("montant",e.target.value)}/></div>
+        <div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={f.adresse} onChange={e=>set("adresse",e.target.value)}/></div>
+        <div className="fa">
+          <button className="btn btn-g" onClick={onClose}>Annuler</button>
+          <button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── PRIORITÉS TO-DO ─────────────────────────────────────────────────────
 const PRIORITIES = {
@@ -2228,6 +2265,7 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
   archived.forEach(l=>{ const mk=archiveMonthOf(l); (byMonth[mk]=byMonth[mk]||[]).push(l); });
   const months=Object.keys(byMonth).sort().reverse();
   const [sel,setSel]=useState(null);
+  const [editing,setEditing]=useState(null);
   const selMonth=(sel&&byMonth[sel])?sel:(months[0]||null);
   const idx=months.indexOf(selMonth);
   const rows=(byMonth[selMonth]||[]).slice().sort((a,b)=>new Date(validatedISO(a)||0)-new Date(validatedISO(b)||0));
@@ -2235,11 +2273,6 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
   const caTTC=caOf(rows);
   const attente=leads.filter(l=>l.column==="valide"&&!l.archived&&!l.paid&&archiveMonthOf(l)<localMonthKey()).length;
 
-  const editAdresse=(l)=>{
-    const v=prompt("Adresse du bien loué — "+l.name, l.adresseBien||"");
-    if(v===null) return;
-    fsUpdateDoc(fsDocRef(db,"leads",l.id),{adresseBien:v.trim()}).then(()=>addToast("✓ Adresse enregistrée")).catch(()=>addToast("Erreur","error"));
-  };
   const desarchiver=(l)=>{
     if(!confirm("Remettre "+l.name+" dans la colonne Validé ? La case Payé sera décochée (sinon il repartirait aussitôt en Archives).")) return;
     fsUpdateDoc(fsDocRef(db,"leads",l.id),{archived:false, archiveMonth:null, paid:false, lastActivity:nowISO(),
@@ -2295,7 +2328,7 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
             </div>
 
             <div style={{overflowX:"auto"}}><table className="list-table">
-              <thead><tr><th>Nom</th><th>Prénom</th><th>Téléphone</th><th>Email</th><th>Montant TTC</th><th>Adresse du bien</th><th>Validé le</th><th style={{width:40}}></th></tr></thead>
+              <thead><tr><th>Nom</th><th>Prénom</th><th>Téléphone</th><th>Email</th><th>Montant TTC</th><th>Adresse du bien</th><th>Validé le</th><th style={{width:70}}></th></tr></thead>
               <tbody>
                 {rows.map(l=>{ const n=splitName(l); const m=montantTTCOf(l,lettreById[l.id]); return(
                   <tr key={l.id}>
@@ -2304,9 +2337,12 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
                     <td style={{whiteSpace:"nowrap"}}>{l.phone?<a href={"tel:"+l.phone} style={{color:"inherit"}}>{l.phone}</a>:"—"}</td>
                     <td>{l.email?<a href={"mailto:"+l.email} style={{color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>{l.email}</a>:"—"}</td>
                     <td style={{whiteSpace:"nowrap",fontWeight:700}}>{m!=null?eurFmt(m):"—"}</td>
-                    <td style={{cursor:"pointer",minWidth:160}} onClick={()=>editAdresse(l)} title="Modifier l'adresse">{l.adresseBien||<span style={{color:"var(--red)",fontWeight:700,fontSize:12}}>+ Ajouter l'adresse</span>}</td>
+                    <td style={{cursor:"pointer",minWidth:160}} onClick={()=>setEditing(l)} title="Modifier">{l.adresseBien||<span style={{color:"var(--red)",fontWeight:700,fontSize:12}}>+ Ajouter l'adresse</span>}</td>
                     <td style={{whiteSpace:"nowrap"}}>{fmtDate(validatedISO(l))}</td>
-                    <td><button className="ib" onClick={()=>desarchiver(l)} title="Remettre en Validé"><Ic n="x" s={14}/></button></td>
+                    <td style={{whiteSpace:"nowrap"}}>
+                      <button className="ib" onClick={()=>setEditing(l)} title="Modifier"><Ic n="edit" s={14}/></button>
+                      <button className="ib" onClick={()=>desarchiver(l)} title="Remettre en Validé"><Ic n="x" s={14}/></button>
+                    </td>
                   </tr>);})}
               </tbody>
             </table></div>
@@ -2326,6 +2362,7 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
             </table></div>
           </>}
       </div>
+      {editing&&<ArchiveEditModal lead={editing} montant={montantTTCOf(editing,lettreById[editing.id])} onClose={()=>setEditing(null)} addToast={addToast}/>}
     </>
   );
 }
