@@ -2206,7 +2206,7 @@ function PapernestModal({lead, user, onClose, addToast}){
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),base).catch(()=>{});
     const done=(msg)=>{ fsUpdateDoc(fsDocRef(db,"leads",lead.id),{papernestEnvoye:true}).catch(()=>{}); setSending(false); addToast(msg); onClose(); };
     if(!VALIDATION_WEBAPP_URL||!hasEmail){ done(hasEmail?"Dossier validé (envoi non configuré)":"Dossier validé (pas d'email, mail non envoyé)"); return; }
-    fetch(VALIDATION_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })})
+    fetch(VALIDATION_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, adresse:adresse.trim(), sender:roleOfEmail(user.email) })})
       .then(r=>r.text())
       .then(txt=>{
         const t=String(txt).trim();
