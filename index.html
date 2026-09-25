@@ -611,7 +611,7 @@ function useToasts(){
   const add=useCallback((text,type="info")=>{
     const id=Date.now()+Math.random();
     setToasts(p=>[...p,{id,text,type}]);
-    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),3400);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),type==="error"?10000:3400); // erreurs : 10 s pour avoir le temps de lire
   },[]);
   return [toasts,add];
 }
