@@ -2201,11 +2201,20 @@ function PapernestModal({lead, user, onClose, addToast}){
     if(!adresse.trim()){ addToast("Saisis l'adresse du bien loué","error"); return; }
     const rdvLabel=fmtRdv(rdv);
     setSending(true);
-    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ papernestRdv:{iso:rdv,label:rdvLabel}, papernestEnvoye:true, papernestSender:roleOfEmail(user.email), adresseBien:adresse.trim() }).catch(()=>{});
-    if(VALIDATION_WEBAPP_URL){
-      fetch(VALIDATION_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })}).catch(()=>{});
-    }
-    setTimeout(()=>{ setSending(false); addToast(hasEmail?"✓ Dossier validé, mail envoyé au client":"Dossier validé (pas d'email, mail non envoyé)"); onClose(); },900);
+    // RDV + adresse enregistrés tout de suite ; « mail envoyé » seulement si le script ne renvoie pas d'erreur
+    const base={ papernestRdv:{iso:rdv,label:rdvLabel}, papernestSender:roleOfEmail(user.email), adresseBien:adresse.trim() };
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),base).catch(()=>{});
+    const done=(msg)=>{ fsUpdateDoc(fsDocRef(db,"leads",lead.id),{papernestEnvoye:true}).catch(()=>{}); setSending(false); addToast(msg); onClose(); };
+    if(!VALIDATION_WEBAPP_URL||!hasEmail){ done(hasEmail?"Dossier validé (envoi non configuré)":"Dossier validé (pas d'email, mail non envoyé)"); return; }
+    fetch(VALIDATION_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })})
+      .then(r=>r.text())
+      .then(txt=>{
+        const t=String(txt).trim();
+        if(/^ERREUR/i.test(t)){ setSending(false); addToast("✗ Mail de validation NON envoyé — "+t.replace(/^ERREUR\s*:?\s*/i,""),"error"); return; }
+        if(/<html|accounts\.google/i.test(t)){ setSending(false); addToast("✗ Mail de validation NON envoyé — script Google inaccessible (droits d'accès)","error"); return; }
+        done("✓ Dossier validé, mail envoyé au client");
+      })
+      .catch(()=>done("Dossier validé — mail transmis (confirmation indisponible)"));
   };
 
   return(
