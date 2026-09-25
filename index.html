@@ -2084,19 +2084,22 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
   const linkDocs = B+"documents.html?id="+lead.id+"&p="+profil;
 
   const send=()=>{
-    if(!email.trim()){ addToast("Renseigne un email pour envoyer","error"); return; }
+    const cleanEmail=String(email||"").replace(/[\s\u200B-\u200D\uFEFF]/g,"");
+    if(cleanEmail!==email) setEmail(cleanEmail);
+    if(!cleanEmail){ addToast("Renseigne un email pour envoyer","error"); return; }
+    if(!/^[^@]+@[^@]+\.[a-z]{2,}$/i.test(cleanEmail)){ addToast("Email invalide : "+cleanEmail,"error"); return; }
     if(!statut){ addToast("Choisis un statut (il fixe la lettre et le montant)","error"); return; }
     if(!ENVOI_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
     setSending(true);
     const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, nbColoc:nbColoc};
     // Déplacement en Envoyé + MàJ fiche : seulement une fois le mail confirmé par le script
     const markSent=()=>{
-      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:email.trim(),criteria:critMaj}); }).catch(()=>{});
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:cleanEmail, criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:cleanEmail,criteria:critMaj}); }).catch(()=>{});
       // Config de la lettre (montant fixé côté base = non modifiable par le client)
-      fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:email.trim(), createdAt:nowISO() }).catch(()=>{});
+      fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:cleanEmail, createdAt:nowISO() }).catch(()=>{});
     };
     // Envoi du mail des 3 liens : on lit la réponse du script ("OK …" ou "ERREUR : …")
-    fetch(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:email.trim(), prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })})
+    fetch(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:cleanEmail, prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })})
       .then(r=>r.text())
       .then(txt=>{
         if(/^ERREUR/i.test(String(txt).trim())){
@@ -2104,11 +2107,11 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
           addToast("✗ Mail NON envoyé — "+String(txt).replace(/^ERREUR\s*:?\s*/i,""),"error");
           return;
         }
-        markSent(); setSending(false); addToast("✓ Mail envoyé à "+email.trim()); onClose();
+        markSent(); setSending(false); addToast("✓ Mail envoyé à "+cleanEmail); onClose();
       })
       .catch(()=>{
         // Réponse illisible (réseau / navigateur) : le script a pu envoyer quand même → comportement d'avant
-        markSent(); setSending(false); addToast("Mail transmis à "+email.trim()+" (confirmation indisponible)"); onClose();
+        markSent(); setSending(false); addToast("Mail transmis à "+cleanEmail+" (confirmation indisponible)"); onClose();
       });
   };
 
@@ -3492,6 +3495,13 @@ function boot(){
   fsDeleteDoc = fb.deleteDoc;
   fsSetDoc = fb.setDoc;
   fsGetDoc = fb.getDoc;
+  // Le remplissage automatique du navigateur (Chrome « adresses ») injectait les infos de l'utilisateur
+  // dans les fiches clients : on le coupe partout sauf sur l'écran de connexion.
+  const noAutofill=()=>document.querySelectorAll("#root input, #root textarea").forEach(el=>{
+    if(el.closest(".login-card")||el.getAttribute("autocomplete")==="off-crm") return;
+    el.setAttribute("autocomplete","off-crm");
+  });
+  new MutationObserver(noAutofill).observe(document.getElementById("root"),{childList:true,subtree:true});
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(<App/>);
 }
