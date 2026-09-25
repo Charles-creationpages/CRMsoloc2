@@ -196,7 +196,8 @@
     el.innerHTML='<div class="extra-h"><span>'+(kind==="gar"?"Garant":"Personne")+' '+n+'</span><button type="button" class="rm">Retirer</button></div>'
       +'<div class="grp"><label class="lab">Prénom &amp; Nom</label><input class="fi" data-f="nom"/></div>'
       +'<div class="row grp"><div><label class="lab">Téléphone</label><input class="fi" data-f="tel"/></div><div><label class="lab">Mail</label><input class="fi" data-f="mail" type="email"/></div></div>'
-      +(kind==="gar"?'<div class="grp"><label class="lab">Lien avec le locataire</label><input class="fi" data-f="lien" placeholder="parent, ami…"/></div>':'');
+      +(kind==="gar"?'<div class="grp"><label class="lab">Lien avec le locataire</label><input class="fi" data-f="lien" placeholder="parent, ami…"/></div>'
+        :'<div class="grp"><label class="lab">Lien avec le locataire</label><select class="fi" data-f="lien"><option value="">— Choisir —</option><option>Couple</option><option>Colocataire</option><option>Famille</option><option>Autre</option></select></div>');
     el.querySelector(".rm").onclick=function(){ el.remove(); renumber(kind); };
     box.appendChild(el);
   }

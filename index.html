@@ -838,7 +838,8 @@ function AddLeadModal({onSave,onClose}){
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
 // Personnes / garants d'un dossier (optionnels) : [{nom, tel, mail, lien?}]
 const cleanPeople = (list) => asArray(list).map(o=>({...o, nom:(o.nom||"").trim(), tel:(o.tel||"").trim(), mail:(o.mail||"").trim()})).filter(o=>o.nom||o.tel||o.mail);
-function PeopleEditor({title, addLabel, list, onChange, withLien}){
+const LIENS_PERSONNE = ["Couple","Colocataire","Famille","Autre"];
+function PeopleEditor({title, addLabel, list, onChange, withLien, lienOptions}){
   const upd=(i,k,v)=>onChange(list.map((o,j)=>j===i?{...o,[k]:v}:o));
   return(
     <>
@@ -853,7 +854,11 @@ function PeopleEditor({title, addLabel, list, onChange, withLien}){
             <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={o.tel} onChange={e=>upd(i,"tel",e.target.value)}/></div>
             <div className="fg"><label className="fl">Email</label><input className="fi" value={o.mail} onChange={e=>upd(i,"mail",e.target.value)}/></div>
           </div>
-          {withLien&&<div className="fg"><label className="fl">Lien avec le locataire</label><input className="fi" placeholder="parent, ami…" value={o.lien||""} onChange={e=>upd(i,"lien",e.target.value)}/></div>}
+          {withLien&&<div className="fg"><label className="fl">Lien avec le locataire</label>
+            {lienOptions
+              ? <div className="seg" style={{flexWrap:"wrap"}}>{lienOptions.map(opt=><button key={opt} type="button" className={"seg-btn"+(o.lien===opt?" active":"")} onClick={()=>upd(i,"lien",o.lien===opt?"":opt)}>{opt}</button>)}</div>
+              : <input className="fi" placeholder="parent, ami…" value={o.lien||""} onChange={e=>upd(i,"lien",e.target.value)}/>}
+          </div>}
         </div>
       ))}
       <button type="button" className="btn btn-g" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onChange([...list,withLien?{nom:"",tel:"",mail:"",lien:""}:{nom:"",tel:"",mail:""}])}>{addLabel}</button>
@@ -870,7 +875,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
       notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"",
-      personnes:asArray(lead.personnes).map(o=>({nom:"",tel:"",mail:"",...o})), garants:asArray(lead.garants).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})) };
+      personnes:asArray(lead.personnes).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})), garants:asArray(lead.garants).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})) };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -954,7 +959,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
         </div>
-        <PeopleEditor title="Autres personnes du dossier" addLabel="+ Ajouter une personne" list={form.personnes} onChange={v=>setForm(p=>({...p,personnes:v}))}/>
+        <PeopleEditor title="Autres personnes du dossier" addLabel="+ Ajouter une personne" withLien lienOptions={LIENS_PERSONNE} list={form.personnes} onChange={v=>setForm(p=>({...p,personnes:v}))}/>
         <PeopleEditor title="Garants" addLabel="+ Ajouter un garant" withLien list={form.garants} onChange={v=>setForm(p=>({...p,garants:v}))}/>
         {lead.column==="valide"&&<div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={form.adresseBien} onChange={e=>setForm(p=>({...p,adresseBien:e.target.value}))}/></div>}
 
