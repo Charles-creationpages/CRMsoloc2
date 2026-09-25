@@ -36,6 +36,10 @@
   .state-ic{font-size:44px;margin-bottom:14px;}
   .state-t{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;}
   .state-s{font-size:14px;color:#5A6B7B;line-height:1.6;}
+  .extra{border:1.5px dashed #D8C7AE;border-radius:11px;padding:12px 12px 0;margin-bottom:12px;background:#fff8;}
+  .extra-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;color:#5A6B7B;margin-bottom:8px;}
+  .rm{background:none;border:none;color:#991B1B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .add{background:none;border:1.5px dashed #C1614F;color:#C1614F;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;margin-bottom:14px;}
 </style>
 </head>
 <body>
@@ -63,6 +67,8 @@
         <div><label class="lab">Mail</label><input class="fi" id="loc_mail" type="email" placeholder="vous@mail.com"/></div>
       </div>
       <div style="font-size:11px;color:#9AA7B2;margin:-6px 0 14px;">Au moins un téléphone ou un mail est requis <span class="req">*</span></div>
+      <div id="extra_pers"></div>
+      <button type="button" class="add" id="add_pers">+ Ajouter une personne (conjoint, colocataire…)</button>
 
       <div class="sub">Garant (optionnel)</div>
       <div class="grp"><label class="lab">Prénom &amp; Nom</label><input class="fi" id="gar_nom"/></div>
@@ -71,6 +77,8 @@
         <div><label class="lab">Mail</label><input class="fi" id="gar_mail"/></div>
       </div>
       <div class="grp"><label class="lab">Lien avec le locataire</label><input class="fi" id="gar_lien" placeholder="parent, ami…"/></div>
+      <div id="extra_gar"></div>
+      <button type="button" class="add" id="add_gar">+ Ajouter un garant</button>
 
       <div class="sec">VOS CRITÈRES DE RECHERCHE</div>
 
@@ -179,6 +187,29 @@
     const asap=$("asap"), dd=$("datentree");
     asap.onclick=function(){ asap.classList.toggle("on"); dd.disabled=asap.classList.contains("on"); dd.style.opacity=asap.classList.contains("on")?".4":"1"; };
   }
+  // Personnes / garants supplémentaires (optionnels)
+  function addExtra(kind){
+    const box=$(kind==="gar"?"extra_gar":"extra_pers");
+    const n=box.children.length+(kind==="gar"?2:2);
+    const el=document.createElement("div");
+    el.className="extra"; el.dataset.kind=kind;
+    el.innerHTML='<div class="extra-h"><span>'+(kind==="gar"?"Garant":"Personne")+' '+n+'</span><button type="button" class="rm">Retirer</button></div>'
+      +'<div class="grp"><label class="lab">Prénom &amp; Nom</label><input class="fi" data-f="nom"/></div>'
+      +'<div class="row grp"><div><label class="lab">Téléphone</label><input class="fi" data-f="tel"/></div><div><label class="lab">Mail</label><input class="fi" data-f="mail" type="email"/></div></div>'
+      +(kind==="gar"?'<div class="grp"><label class="lab">Lien avec le locataire</label><input class="fi" data-f="lien" placeholder="parent, ami…"/></div>':'');
+    el.querySelector(".rm").onclick=function(){ el.remove(); renumber(kind); };
+    box.appendChild(el);
+  }
+  function renumber(kind){
+    const box=$(kind==="gar"?"extra_gar":"extra_pers");
+    Array.from(box.children).forEach((el,i)=>{ el.querySelector(".extra-h span").textContent=(kind==="gar"?"Garant ":"Personne ")+(i+2); });
+  }
+  function readExtras(kind){
+    const box=$(kind==="gar"?"extra_gar":"extra_pers");
+    return Array.from(box.children).map(el=>{
+      const o={}; el.querySelectorAll("[data-f]").forEach(i=>{ o[i.dataset.f]=i.value.trim(); }); return o;
+    }).filter(o=>o.nom||o.tel||o.mail);
+  }
   const pickedMulti=(id)=>Array.from($(id).querySelectorAll("button.on")).map(b=>b.textContent.trim());
   const pickedSingle=(id)=>{ const b=$(id).querySelector("button.on"); return b?b.textContent.trim():""; };
 
@@ -190,6 +221,8 @@
     } catch(e){}
     if(preNom) $("loc_nom").value = preNom;
     initChoices();
+    $("add_pers").onclick=()=>addExtra("pers");
+    $("add_gar").onclick=()=>addExtra("gar");
     show("form");
     $("send").onclick = submit;
   }
@@ -216,6 +249,8 @@
       leadId: leadId,
       locataireNom: nom, phone: tel, email: mail,
       garantNom: $("gar_nom").value.trim(), garantTel: $("gar_tel").value.trim(), garantMail: $("gar_mail").value.trim(), garantLien: $("gar_lien").value.trim(),
+      personnes: readExtras("pers"),
+      garants: [{nom:$("gar_nom").value.trim(), tel:$("gar_tel").value.trim(), mail:$("gar_mail").value.trim(), lien:$("gar_lien").value.trim()}].filter(o=>o.nom||o.tel||o.mail).concat(readExtras("gar")),
       typologie: typo,
       budgetMax: budget,
       surfaceMin: $("surface").value.trim(),

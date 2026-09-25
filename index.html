@@ -836,6 +836,31 @@ function AddLeadModal({onSave,onClose}){
 }
 
 // ─── LEAD DETAIL / CRITERIA GATE MODAL ──────────────────────────────────
+// Personnes / garants d'un dossier (optionnels) : [{nom, tel, mail, lien?}]
+const cleanPeople = (list) => asArray(list).map(o=>({...o, nom:(o.nom||"").trim(), tel:(o.tel||"").trim(), mail:(o.mail||"").trim()})).filter(o=>o.nom||o.tel||o.mail);
+function PeopleEditor({title, addLabel, list, onChange, withLien}){
+  const upd=(i,k,v)=>onChange(list.map((o,j)=>j===i?{...o,[k]:v}:o));
+  return(
+    <>
+      <div className="modal-section">{title}</div>
+      {list.map((o,i)=>(
+        <div key={i} style={{border:"1.5px dashed var(--border2)",borderRadius:10,padding:"10px 10px 0",marginBottom:10}}>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+            <div className="fg" style={{flex:1}}><label className="fl">Prénom &amp; Nom</label><input className="fi" value={o.nom} onChange={e=>upd(i,"nom",e.target.value)}/></div>
+            <button type="button" className="ib" style={{color:"var(--red)",marginBottom:12}} onClick={()=>onChange(list.filter((_,j)=>j!==i))} title="Retirer"><Ic n="trash" s={14}/></button>
+          </div>
+          <div className="fr">
+            <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={o.tel} onChange={e=>upd(i,"tel",e.target.value)}/></div>
+            <div className="fg"><label className="fl">Email</label><input className="fi" value={o.mail} onChange={e=>upd(i,"mail",e.target.value)}/></div>
+          </div>
+          {withLien&&<div className="fg"><label className="fl">Lien avec le locataire</label><input className="fi" placeholder="parent, ami…" value={o.lien||""} onChange={e=>upd(i,"lien",e.target.value)}/></div>}
+        </div>
+      ))}
+      <button type="button" className="btn btn-g" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onChange([...list,withLien?{nom:"",tel:"",mail:"",lien:""}:{nom:"",tel:"",mail:""}])}>{addLabel}</button>
+    </>
+  );
+}
+
 function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartners, onMerge, isAdmin, onAddNewsletter, onPapernest}){
   const [form,setForm]=useState(()=>{
     const c={...blankCriteria,...(lead.criteria||{})};
@@ -844,7 +869,8 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"" };
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"",
+      personnes:asArray(lead.personnes).map(o=>({nom:"",tel:"",mail:"",...o})), garants:asArray(lead.garants).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})) };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -928,6 +954,8 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
         </div>
+        <PeopleEditor title="Autres personnes du dossier" addLabel="+ Ajouter une personne" list={form.personnes} onChange={v=>setForm(p=>({...p,personnes:v}))}/>
+        <PeopleEditor title="Garants" addLabel="+ Ajouter un garant" withLien list={form.garants} onChange={v=>setForm(p=>({...p,garants:v}))}/>
         {lead.column==="valide"&&<div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={form.adresseBien} onChange={e=>setForm(p=>({...p,adresseBien:e.target.value}))}/></div>}
 
         {lead.calendlyRdv&&(
@@ -3108,7 +3136,10 @@ function App(){
         prestationsSupp: asArray(sub.prestations).join(", ")
       };
       const extra=[];
-      if(sub.garantNom||sub.garantTel||sub.garantMail) extra.push("Garant : "+[sub.garantNom,sub.garantLien].filter(Boolean).join(" ")+(sub.garantTel?" · "+sub.garantTel:"")+(sub.garantMail?" · "+sub.garantMail:""));
+      // Garants et personnes supplémentaires → champs structurés de la fiche (plus dans les notes)
+      const subGarants = Array.isArray(sub.garants) ? sub.garants
+        : ((sub.garantNom||sub.garantTel||sub.garantMail) ? [{nom:sub.garantNom||"", tel:sub.garantTel||"", mail:sub.garantMail||"", lien:sub.garantLien||""}] : []);
+      const subPersonnes = Array.isArray(sub.personnes) ? sub.personnes : [];
       if(sub.transports) extra.push("Transports : "+sub.transports);
       if(sub.rdc) extra.push("Rez-de-chaussée accepté : "+sub.rdc);
       if(sub.ascenseur) extra.push("Ascenseur obligatoire : "+sub.ascenseur);
@@ -3120,6 +3151,7 @@ function App(){
         name: sub.locataireNom||lead.name, firstName: prenom,
         phone: sub.phone||lead.phone||"", email: sub.email||lead.email||"",
         criteria: newCrit, notes: notes,
+        ...(subGarants.length?{garants:subGarants}:{}), ...(subPersonnes.length?{personnes:subPersonnes}:{}),
         formulaireRempli: sub.submittedAt||nowISO(), lastActivity: nowISO()
       }).then(()=>{
         fsUpdateDoc(fsDocRef(db,"soumissions",sub.id),{traite:true}).catch(()=>{});
@@ -3272,6 +3304,7 @@ function App(){
     const partageExtra = (effTarget==="en_recherche") ? {partage:true} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
+      personnes:cleanPeople(form.personnes), garants:cleanPeople(form.garants),
       criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
