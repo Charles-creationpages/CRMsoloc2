@@ -2088,14 +2088,28 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     if(!statut){ addToast("Choisis un statut (il fixe la lettre et le montant)","error"); return; }
     if(!ENVOI_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
     setSending(true);
-    // 1) Déplacement en Envoyé + MàJ fiche (le passage en Envoyé n'a lieu qu'ici, à l'envoi du mail)
     const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, nbColoc:nbColoc};
-    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:email.trim(),criteria:critMaj}); }).catch(()=>{});
-    // 2) Créer/rafraîchir la config de la lettre (montant fixé côté base = non modifiable par le client)
-    fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:email.trim(), createdAt:nowISO() }).catch(()=>{});
-    // 3) Envoyer le mail des 3 liens
-    fetch(ENVOI_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:email.trim(), prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })}).catch(()=>{});
-    setTimeout(()=>{ setSending(false); addToast("✓ Mail envoyé à "+email.trim()); onClose(); },1000);
+    // Déplacement en Envoyé + MàJ fiche : seulement une fois le mail confirmé par le script
+    const markSent=()=>{
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:email.trim(), criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:email.trim(),criteria:critMaj}); }).catch(()=>{});
+      // Config de la lettre (montant fixé côté base = non modifiable par le client)
+      fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:email.trim(), createdAt:nowISO() }).catch(()=>{});
+    };
+    // Envoi du mail des 3 liens : on lit la réponse du script ("OK …" ou "ERREUR : …")
+    fetch(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:email.trim(), prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })})
+      .then(r=>r.text())
+      .then(txt=>{
+        if(/^ERREUR/i.test(String(txt).trim())){
+          setSending(false);
+          addToast("✗ Mail NON envoyé — "+String(txt).replace(/^ERREUR\s*:?\s*/i,""),"error");
+          return;
+        }
+        markSent(); setSending(false); addToast("✓ Mail envoyé à "+email.trim()); onClose();
+      })
+      .catch(()=>{
+        // Réponse illisible (réseau / navigateur) : le script a pu envoyer quand même → comportement d'avant
+        markSent(); setSending(false); addToast("Mail transmis à "+email.trim()+" (confirmation indisponible)"); onClose();
+      });
   };
 
   return(
