@@ -2211,6 +2211,7 @@ function PapernestModal({lead, user, onClose, addToast}){
       .then(txt=>{
         const t=String(txt).trim();
         if(/^ERREUR/i.test(t)){ setSending(false); addToast("✗ Mail de validation NON envoyé — "+t.replace(/^ERREUR\s*:?\s*/i,""),"error"); return; }
+        if(/^OK_SANS_RECAP/i.test(t)){ done("✓ Mail envoyé au client"); addToast("⚠ Récap hello@ NON envoyé — "+t.replace(/^OK_SANS_RECAP\s*:?\s*/i,""),"error"); return; }
         if(/<html|accounts\.google/i.test(t)){ setSending(false); addToast("✗ Mail de validation NON envoyé — script Google inaccessible (droits d'accès)","error"); return; }
         done("✓ Dossier validé, mail envoyé au client");
       })
