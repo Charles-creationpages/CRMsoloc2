@@ -180,6 +180,23 @@ const prestationFromLead = (l) => {
   return {ttc:honoForProfile(c.statutClient,c), pending:false};
 };
 
+// ─── ARCHIVES (réservé à Charles) ────────────────────────────────────────
+// Un dossier Validé ET payé d'un mois passé part automatiquement dans Archives,
+// rangé par mois de validation. Non payé → reste en Validé jusqu'à ce que Payé soit coché.
+const localMonthKey = (iso) => { const d=iso?new Date(iso):new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
+const validatedISO = (l) => {
+  if(l.validatedAt) return l.validatedAt;
+  const ev=asArray(l.history).slice().reverse().find(h=>h&&typeof h.text==="string"&&h.text.indexOf("Bail validé")!==-1);
+  return (ev&&ev.at) || l.lastActivity || l.createdAt || "";
+};
+const archiveMonthOf = (l) => l.archiveMonth || localMonthKey(validatedISO(l));
+const readyToArchive = (l) => l.column==="valide" && l.paid===true && !l.archived && archiveMonthOf(l) < localMonthKey();
+const splitName = (l) => {
+  const parts=String(l.name||"").trim().split(/\s+/).filter(Boolean);
+  return { prenom:l.firstName||parts[0]||"", nom:l.lastName||parts.slice(1).join(" ") };
+};
+const montantTTCOf = (l, lettre) => (lettre && lettre.montant) ? Number(lettre.montant) : prestationFromLead(l).ttc;
+
 // ─── PRIORITÉS TO-DO ─────────────────────────────────────────────────────
 const PRIORITIES = {
   urgent:      {rank:0, label:"Urgent",      color:"#DC2626", bg:"#FEE2E2", fg:"#991B1B"},
@@ -790,7 +807,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
     return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c };
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"" };
   });
   const [err,setErr]=useState("");
   const setCrit=(k,v)=>setForm(p=>({...p,criteria:{...p.criteria,[k]:v}}));
@@ -874,6 +891,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
         </div>
+        {lead.column==="valide"&&<div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={form.adresseBien} onChange={e=>setForm(p=>({...p,adresseBien:e.target.value}))}/></div>}
 
         {lead.calendlyRdv&&(
           <>
@@ -2076,6 +2094,7 @@ function NewsletterKeepModal({lead, nlId, onClose, addToast}){
 function PapernestModal({lead, user, onClose, addToast}){
   const [called,setCalled]=useState(false);
   const [rdv,setRdv]=useState("");
+  const [adresse,setAdresse]=useState(lead.adresseBien||"");
   const [sending,setSending]=useState(false);
   const hasEmail=!!(lead.email||"").trim();
   const prenom=(lead.firstName||String(lead.name||"").trim().split(/\s+/)[0]||"");
@@ -2092,9 +2111,10 @@ function PapernestModal({lead, user, onClose, addToast}){
   const confirm=()=>{
     if(!called){ addToast("Confirme d'abord l'appel pour l'annonce","error"); return; }
     if(!rdv){ addToast("Saisis la date et l'heure du RDV Papernest","error"); return; }
+    if(!adresse.trim()){ addToast("Saisis l'adresse du bien loué","error"); return; }
     const rdvLabel=fmtRdv(rdv);
     setSending(true);
-    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ papernestRdv:{iso:rdv,label:rdvLabel}, papernestEnvoye:true, papernestSender:roleOfEmail(user.email) }).catch(()=>{});
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ papernestRdv:{iso:rdv,label:rdvLabel}, papernestEnvoye:true, papernestSender:roleOfEmail(user.email), adresseBien:adresse.trim() }).catch(()=>{});
     if(VALIDATION_WEBAPP_URL){
       fetch(VALIDATION_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, sender:roleOfEmail(user.email) })}).catch(()=>{});
     }
@@ -2114,6 +2134,10 @@ function PapernestModal({lead, user, onClose, addToast}){
           <label className="fl">Date et heure du RDV Papernest *</label>
           <input className="fi" type="datetime-local" value={rdv} onChange={e=>setRdv(e.target.value)}/>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Le mail rappellera ce RDV au client (souscription énergie et internet en 30 min).</div>
+        </div>
+        <div className="fg">
+          <label className="fl">Adresse du bien loué *</label>
+          <input className="fi" placeholder="N°, rue, code postal, ville" value={adresse} onChange={e=>setAdresse(e.target.value)}/>
         </div>
         {!hasEmail&&<div style={{fontSize:12,color:"var(--red)",fontWeight:700,marginTop:8}}>⚠ Pas d'email sur la fiche : le mail ne pourra pas partir. Ajoute-le d'abord si tu veux l'envoyer.</div>}
         <div className="fa">
@@ -2191,6 +2215,116 @@ function RegistrePage({lettres, isAdmin, addToast}){
                 ))}
               </tbody>
             </table></div>}
+      </div>
+    </>
+  );
+}
+
+// ─── ARCHIVES (réservé à Charles) ────────────────────────────────────────
+function ArchivesPage({leads, lettres, addToast, isMobile}){
+  const lettreById={}; (lettres||[]).forEach(lt=>{ lettreById[lt.id]=lt; });
+  const archived=leads.filter(l=>l.archived);
+  const byMonth={};
+  archived.forEach(l=>{ const mk=archiveMonthOf(l); (byMonth[mk]=byMonth[mk]||[]).push(l); });
+  const months=Object.keys(byMonth).sort().reverse();
+  const [sel,setSel]=useState(null);
+  const selMonth=(sel&&byMonth[sel])?sel:(months[0]||null);
+  const idx=months.indexOf(selMonth);
+  const rows=(byMonth[selMonth]||[]).slice().sort((a,b)=>new Date(validatedISO(a)||0)-new Date(validatedISO(b)||0));
+  const caOf=(list)=>list.reduce((t,l)=>t+(montantTTCOf(l,lettreById[l.id])||0),0);
+  const caTTC=caOf(rows);
+  const attente=leads.filter(l=>l.column==="valide"&&!l.archived&&!l.paid&&archiveMonthOf(l)<localMonthKey()).length;
+
+  const editAdresse=(l)=>{
+    const v=prompt("Adresse du bien loué — "+l.name, l.adresseBien||"");
+    if(v===null) return;
+    fsUpdateDoc(fsDocRef(db,"leads",l.id),{adresseBien:v.trim()}).then(()=>addToast("✓ Adresse enregistrée")).catch(()=>addToast("Erreur","error"));
+  };
+  const desarchiver=(l)=>{
+    if(!confirm("Remettre "+l.name+" dans la colonne Validé ? La case Payé sera décochée (sinon il repartirait aussitôt en Archives).")) return;
+    fsUpdateDoc(fsDocRef(db,"leads",l.id),{archived:false, archiveMonth:null, paid:false, lastActivity:nowISO(),
+      history:[...(l.history||[]),mkEvent("↩️","Sorti des Archives")]}).then(()=>addToast(l.name+" remis en Validé")).catch(()=>addToast("Erreur","error"));
+  };
+  const exportCSV=()=>{
+    const esc=(v)=>{ const s=String(v==null?"":v); return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+    const head=["Nom","Prénom","Téléphone","Email","Montant TTC","Adresse du bien","Validé le"];
+    const lines=rows.map(l=>{ const n=splitName(l); const m=montantTTCOf(l,lettreById[l.id]); return [n.nom,n.prenom,l.phone||"",l.email||"",m!=null?m:"",l.adresseBien||"",fmtDate(validatedISO(l))].map(esc).join(";"); });
+    lines.push(["TOTAL","","","",caTTC,rows.length+" dossier"+(rows.length>1?"s":""),""].map(esc).join(";"));
+    const blob=new Blob(["\ufeff"+[head.join(";")].concat(lines).join("\n")],{type:"text/csv;charset=utf-8"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="archives-"+selMonth+".csv"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+
+  const card={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  const klab={fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".06em"};
+  const kval={fontSize:22,fontWeight:800,marginTop:4};
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Archives</div>
+          <div className="ps">Dossiers validés et payés, classés par mois de validation</div>
+        </div>
+        <div className="tb-right"><button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button></div>
+      </div>
+      <div className="main">
+        {attente>0&&<div style={{background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:12,padding:"11px 14px",marginBottom:14,fontSize:13,color:"#92400e",fontWeight:600}}>
+          ⏳ {attente} dossier{attente>1?"s":""} validé{attente>1?"s":""} d'un mois passé attend{attente>1?"ent":""} encore le paiement. Coche « Payé » dans le Pipeline pour l'archiver.
+        </div>}
+        {months.length===0
+          ? <div className="empty-state"><div className="es-ic">🗄️</div><div className="es-t">Aucun dossier archivé</div><div>Chaque mois, les dossiers validés et payés des mois précédents arrivent ici.</div></div>
+          : <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8,opacity:idx<months.length-1?1:.35}} disabled={idx>=months.length-1} onClick={()=>setSel(months[idx+1])}><Ic n="chevL" s={15}/></button>
+                <span style={{fontSize:14,fontWeight:700,minWidth:120,textAlign:"center"}}>{monthLabel(selMonth)}</span>
+                <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8,opacity:idx>0?1:.35}} disabled={idx<=0} onClick={()=>setSel(months[idx-1])}><Ic n="chevR" s={15}/></button>
+              </div>
+              <button className="btn btn-g" onClick={exportCSV}><Ic n="upload" s={13}/>Exporter le mois (CSV)</button>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:10,marginBottom:18}}>
+              <div style={{...card,background:"var(--ardoise)",borderColor:"var(--ardoise)"}}>
+                <div style={{...klab,color:"rgba(255,255,255,.55)"}}>Dossiers validés</div>
+                <div className="brand-font" style={{...kval,color:"#fff"}}>{rows.length}</div>
+              </div>
+              <div style={card}><div style={klab}>CA du mois TTC</div><div className="brand-font" style={{...kval,color:"var(--green)"}}>{eurFmt(caTTC)}</div></div>
+              <div style={card}><div style={klab}>CA du mois HT</div><div className="brand-font" style={kval}>{eurFmt(caTTC/1.2)}</div></div>
+              <div style={card}><div style={klab}>Panier moyen TTC</div><div className="brand-font" style={kval}>{rows.length?eurFmt(caTTC/rows.length):"—"}</div></div>
+            </div>
+
+            <div style={{overflowX:"auto"}}><table className="list-table">
+              <thead><tr><th>Nom</th><th>Prénom</th><th>Téléphone</th><th>Email</th><th>Montant TTC</th><th>Adresse du bien</th><th>Validé le</th><th style={{width:40}}></th></tr></thead>
+              <tbody>
+                {rows.map(l=>{ const n=splitName(l); const m=montantTTCOf(l,lettreById[l.id]); return(
+                  <tr key={l.id}>
+                    <td className="td-name">{n.nom||"—"}</td>
+                    <td>{n.prenom||"—"}</td>
+                    <td style={{whiteSpace:"nowrap"}}>{l.phone?<a href={"tel:"+l.phone} style={{color:"inherit"}}>{l.phone}</a>:"—"}</td>
+                    <td>{l.email?<a href={"mailto:"+l.email} style={{color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>{l.email}</a>:"—"}</td>
+                    <td style={{whiteSpace:"nowrap",fontWeight:700}}>{m!=null?eurFmt(m):"—"}</td>
+                    <td style={{cursor:"pointer",minWidth:160}} onClick={()=>editAdresse(l)} title="Modifier l'adresse">{l.adresseBien||<span style={{color:"var(--red)",fontWeight:700,fontSize:12}}>+ Ajouter l'adresse</span>}</td>
+                    <td style={{whiteSpace:"nowrap"}}>{fmtDate(validatedISO(l))}</td>
+                    <td><button className="ib" onClick={()=>desarchiver(l)} title="Remettre en Validé"><Ic n="x" s={14}/></button></td>
+                  </tr>);})}
+              </tbody>
+            </table></div>
+
+            <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase",margin:"22px 0 10px"}}>Récapitulatif par mois</div>
+            <div style={{overflowX:"auto"}}><table className="list-table">
+              <thead><tr><th>Mois</th><th>Dossiers</th><th>CA TTC</th><th>CA HT</th></tr></thead>
+              <tbody>
+                {months.map(mk=>{ const ca=caOf(byMonth[mk]); return(
+                  <tr key={mk} style={{cursor:"pointer",background:mk===selMonth?"var(--accent-l)":undefined}} onClick={()=>setSel(mk)}>
+                    <td className="td-name">{monthLabel(mk)}</td>
+                    <td>{byMonth[mk].length}</td>
+                    <td style={{fontWeight:700}}>{eurFmt(ca)}</td>
+                    <td>{eurFmt(ca/1.2)}</td>
+                  </tr>);})}
+              </tbody>
+            </table></div>
+          </>}
       </div>
     </>
   );
@@ -2802,6 +2936,25 @@ function App(){
     });
   },[leads,user]);
 
+  // Archivage mensuel : Validé + payé d'un mois passé → Archives (re-vérifié chaque heure pour le passage de mois)
+  const archiveRef=useRef(new Set());
+  const [monthTick,setMonthTick]=useState(localMonthKey());
+  useEffect(()=>{ const t=setInterval(()=>setMonthTick(localMonthKey()),3600000); return ()=>clearInterval(t); },[]);
+  useEffect(()=>{
+    if(!user) return;
+    const toArchive=leads.filter(l=>!archiveRef.current.has(l.id) && readyToArchive(l));
+    if(toArchive.length===0) return;
+    toArchive.forEach(l=>{
+      const mk=archiveMonthOf(l);
+      archiveRef.current.add(l.id);
+      fsUpdateDoc(fsDocRef(db,"leads",l.id),{
+        archived:true, archivedAt:nowISO(), archiveMonth:mk,
+        history:[...(l.history||[]),mkEvent("🗄️","Archivé — "+monthLabel(mk))]
+      }).catch(()=>archiveRef.current.delete(l.id));
+    });
+    if(user.email===FINANCE_EMAIL) addToast(toArchive.length+" dossier"+(toArchive.length>1?"s":"")+" archivé"+(toArchive.length>1?"s":""));
+  },[leads,user,monthTick]);
+
   // Newsletter : base de diffusion (accessible à toute l'équipe)
   useEffect(()=>{
     if(!user) return;
@@ -3081,7 +3234,7 @@ function App(){
     const evExtra = (effTarget==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
     const partageExtra = (effTarget==="en_recherche") ? {partage:true} : {};
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
-      name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes,
+      name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
       criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
@@ -3116,7 +3269,8 @@ function App(){
   };
 
   const q=search.toLowerCase();
-  const filteredLeads = leads.filter(l=>!q||l.name.toLowerCase().includes(q)||(l.phone||"").includes(q)||(l.email||"").toLowerCase().includes(q));
+  const activeLeads = leads.filter(l=>!l.archived);
+  const filteredLeads = activeLeads.filter(l=>!q||l.name.toLowerCase().includes(q)||(l.phone||"").includes(q)||(l.email||"").toLowerCase().includes(q));
 
   // Vue par rôle : admin (Charles) voit tout le pipeline ; Emmy/Aya seulement leurs leads.
   // L'onglet "En recherche" reste commun à tout le monde (non filtré).
@@ -3126,9 +3280,9 @@ function App(){
     ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>asArray(l.assignedTo).includes(pipeFilter)))
     : filteredLeads.filter(l=>asArray(l.assignedTo).includes(myRole) || l.partage===true || l.column==="en_recherche");
 
-  const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return leads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
+  const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return activeLeads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
-  leads.forEach(l=>{ if(partnersOf(l).length>0) dupeIds.add(l.id); });
+  activeLeads.forEach(l=>{ if(partnersOf(l).length>0) dupeIds.add(l.id); });
 
   return(
     <>
@@ -3149,6 +3303,7 @@ function App(){
             <div className={"nav-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={16}/>Registre</div>
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
+            {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="archives"?" active":"")} onClick={()=>setTab("archives")}><Ic n="folder" s={16}/>Archives</div>}
           </div>
           <div className="sb-footer">
             <div className="sb-user">{displayNameFromEmail(user.email)}</div>
@@ -3163,6 +3318,8 @@ function App(){
             ? <PilotagePage user={user} leads={leads}/>
             : (tab==="finance"&&user.email===FINANCE_EMAIL)
             ? <FinancePage user={user} leads={leads} addToast={addToast} isMobile={isMobile}/>
+            : (tab==="archives"&&user.email===FINANCE_EMAIL)
+            ? <ArchivesPage leads={leads} lettres={lettres} addToast={addToast} isMobile={isMobile}/>
             : tab==="partenaires"
             ? <PartenairesPage user={user} addToast={addToast}/>
             : tab==="biens"
@@ -3208,6 +3365,7 @@ function App(){
           <button className={"bn-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={21}/>Registre</button>
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
+          {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="archives"?" active":"")} onClick={()=>setTab("archives")}><Ic n="folder" s={21}/>Archives</button>}
         </nav>
       </div>
 
