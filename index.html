@@ -3506,9 +3506,13 @@ function boot(){
   fsGetDoc = fb.getDoc;
   // Le remplissage automatique du navigateur (Chrome « adresses ») injectait les infos de l'utilisateur
   // dans les fiches clients : on le coupe partout sauf sur l'écran de connexion.
+  // Chrome ignore « off » et les valeurs inventées pour ses suggestions d'adresses ; une valeur reconnue
+  // mais sans rapport (« one-time-code ») remplace sa détection par libellé (Prénom, Email…).
   const noAutofill=()=>document.querySelectorAll("#root input, #root textarea").forEach(el=>{
-    if(el.closest(".login-card")||el.getAttribute("autocomplete")==="off-crm") return;
-    el.setAttribute("autocomplete","off-crm");
+    if(el.closest(".login-card")||el.getAttribute("autocomplete")==="one-time-code") return;
+    if(["checkbox","radio","date","datetime-local","number","file"].includes(el.type)) return;
+    el.setAttribute("autocomplete","one-time-code");
+    el.setAttribute("name","crm-"+Math.random().toString(36).slice(2));
   });
   new MutationObserver(noAutofill).observe(document.getElementById("root"),{childList:true,subtree:true});
   const root = ReactDOM.createRoot(document.getElementById("root"));
