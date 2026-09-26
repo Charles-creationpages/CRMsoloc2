@@ -250,6 +250,9 @@ const EMMY_MAIL_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx-xKRRC20
 // URL du script Apps Script d'envoi d'un bien par mail (à coller après déploiement)
 const SEND_BIEN_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyJFKXJuCmIpcL0Zw6b0M1p_KLNYu4KjHaX2HG89ZDHApro6vymqSO6LCcDG8gOjgbs4g/exec";
 
+// fetch avec délai max : au-delà, on n'attend plus la confirmation (le mail part quand même côté script)
+const fetchTimeout = (url, opts, ms) => Promise.race([ fetch(url, opts).then(r => r.text()).then(t => ({ text: () => Promise.resolve(t) })), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)) ]);
+
 // URL du script Apps Script d'envoi du mail de validation (Papernest + pack) — à coller après déploiement
 const VALIDATION_WEBAPP_URL = "https://script.google.com/macros/s/AKfycby2zepnvalwxJ5a9rLr3ztVuR72ZKsWq6gc8WYbQg_BWJZKYSpOCUUvRavqE2vokE0jmw/exec";
 
@@ -2099,7 +2102,7 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
       fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:cleanEmail, createdAt:nowISO() }).catch(()=>{});
     };
     // Envoi du mail des 3 liens : on lit la réponse du script ("OK …" ou "ERREUR : …")
-    fetch(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:cleanEmail, prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })})
+    fetchTimeout(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:cleanEmail, prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })},20000)
       .then(r=>r.text())
       .then(txt=>{
         if(/^ERREUR/i.test(String(txt).trim())){
@@ -2206,7 +2209,7 @@ function PapernestModal({lead, user, onClose, addToast}){
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),base).catch(()=>{});
     const done=(msg)=>{ fsUpdateDoc(fsDocRef(db,"leads",lead.id),{papernestEnvoye:true}).catch(()=>{}); setSending(false); addToast(msg); onClose(); };
     if(!VALIDATION_WEBAPP_URL||!hasEmail){ done(hasEmail?"Dossier validé (envoi non configuré)":"Dossier validé (pas d'email, mail non envoyé)"); return; }
-    fetch(VALIDATION_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, adresse:adresse.trim(), sender:roleOfEmail(user.email) })})
+    fetchTimeout(VALIDATION_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:lead.email||"", prenom:prenom, nom:lead.name||"", phone:lead.phone||"", rdvLabel:rdvLabel, adresse:adresse.trim(), sender:roleOfEmail(user.email) })},20000)
       .then(r=>r.text())
       .then(txt=>{
         const t=String(txt).trim();
