@@ -1530,9 +1530,18 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
     if(!sendNl&&!sendMi){ addToast("Coche au moins une liste","error"); return; }
     if(total===0){ addToast("Aucun destinataire ne correspond","error"); return; }
     setSending(true); addToast("Envoi en cours…");
-    fetch(SEND_BIEN_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({bienId:bien.id, newsletter:sendNl, mission:sendMi, sender:sender})})
-      .then(()=>{ setTimeout(()=>{ setSending(false); addToast("✓ Bien envoyé à "+total+" destinataire"+(total>1?"s":"")); onClose(); },1000); })
-      .catch(()=>{ setSending(false); addToast("Erreur d'envoi","error"); });
+    // Le script répond « OK - x/y … », « PARTIEL - x/y … — raison » ou « ERREUR : … » (délai max 90 s : un mail par destinataire)
+    fetchTimeout(SEND_BIEN_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({bienId:bien.id, newsletter:sendNl, mission:sendMi, sender:sender})},90000)
+      .then(r=>r.text())
+      .then(txt=>{
+        const t=String(txt).trim();
+        setSending(false);
+        if(/^ERREUR/i.test(t)){ addToast("✗ Bien NON envoyé — "+t.replace(/^ERREUR\s*:?\s*/i,""),"error"); return; }
+        if(/^PARTIEL/i.test(t)){ addToast("⚠ Envoi partiel : "+t.replace(/^PARTIEL\s*-\s*/i,""),"error"); onClose(); return; }
+        if(/^OK/i.test(t)){ addToast("✓ Bien envoyé : "+t.replace(/^OK\s*-\s*/i,"")); onClose(); return; }
+        addToast("Bien transmis à "+total+" destinataire"+(total>1?"s":"")+" (confirmation indisponible)"); onClose();
+      })
+      .catch(()=>{ setSending(false); addToast("Bien transmis à "+total+" destinataire"+(total>1?"s":"")+" (confirmation indisponible)"); onClose(); });
   };
 
   const box=(checked,setF,title,sub)=>(
