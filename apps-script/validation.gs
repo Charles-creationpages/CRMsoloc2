@@ -28,7 +28,7 @@ function doPost(e) {
     // Mail de félicitations au client (seulement s'il a un email)
     if (p.email) {
       var sujet = "Félicitations " + (p.prenom || "") + ", votre dossier est validé !";
-      envoyerBrevo({
+      envoyerMail({
         to: p.email, subject: sujet, name: "SOLOC'",
         html: buildEmail(p.prenom || "", p.rdvLabel || "", sign),
         bcc: COPIE_HELLO ? EXPEDITEUR : ""
@@ -44,6 +44,22 @@ function doPost(e) {
     return ContentService.createTextOutput("OK");
   } catch (err) {
     return ContentService.createTextOutput("ERREUR : " + err.message);
+  }
+}
+
+// ── ENVOI : Brevo d'abord, Gmail en secours ─────────────────────────────
+// Si Brevo refuse (quota de 300/jour dépassé, panne, clé invalide…), le même mail
+// part par Gmail (quota Google ~100/jour). Si les deux échouent : erreur avec les deux raisons.
+function envoyerMail(o) {
+  try {
+    envoyerBrevo(o);
+  } catch (errBrevo) {
+    Logger.log("Brevo KO, secours Gmail : " + errBrevo.message);
+    try {
+      GmailApp.sendEmail(o.to, o.subject, o.text || "", { htmlBody: o.html, name: o.name || "SOLOC'", replyTo: EXPEDITEUR });
+    } catch (errGmail) {
+      throw new Error("Brevo : " + errBrevo.message + " | Gmail : " + errGmail.message);
+    }
   }
 }
 
@@ -104,7 +120,7 @@ function mailInternePapernest(p) {
     + "Email : " + (p.email || "") + "\n"
     + "Adresse du bien : " + (p.adresse || "") + "\n"
     + "Date du RDV Papernest : " + (p.rdvLabel || "");
-  envoyerBrevo({ to: EXPEDITEUR, subject: "URGENT - AJOUT PAPERNEST", name: "CRM SOLOC'", html: buildInterne(p), text: texte });
+  envoyerMail({ to: EXPEDITEUR, subject: "URGENT - AJOUT PAPERNEST", name: "CRM SOLOC'", html: buildInterne(p), text: texte });
   try {
     var label = GmailApp.getUserLabelByName("Charles") || GmailApp.createLabel("Charles");
     for (var i = 0; i < 4; i++) {

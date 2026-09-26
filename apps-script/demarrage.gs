@@ -24,7 +24,7 @@ function doPost(e) {
     var p = JSON.parse(e.postData.contents);
     if (!p.email) return ContentService.createTextOutput("ERREUR : email manquant");
     var sign = SIGNATURES[p.sender] || SIGNATURES.equipe;
-    envoyerBrevo({
+    envoyerMail({
       to: p.email,
       subject: SUJET_DEMARRAGE,
       html: buildEmail(p.prenom || "", sign, p.linkForm || "#", p.linkLettre || "#", p.linkDocs || "#"),
@@ -35,6 +35,22 @@ function doPost(e) {
     return ContentService.createTextOutput("OK - mail envoye a " + p.email);
   } catch (err) {
     return ContentService.createTextOutput("ERREUR : " + err.message);
+  }
+}
+
+// ── ENVOI : Brevo d'abord, Gmail en secours ─────────────────────────────
+// Si Brevo refuse (quota de 300/jour dépassé, panne, clé invalide…), le même mail
+// part par Gmail (quota Google ~100/jour). Si les deux échouent : erreur avec les deux raisons.
+function envoyerMail(o) {
+  try {
+    envoyerBrevo(o);
+  } catch (errBrevo) {
+    Logger.log("Brevo KO, secours Gmail : " + errBrevo.message);
+    try {
+      GmailApp.sendEmail(o.to, o.subject, o.text || "", { htmlBody: o.html, name: o.name || "SOLOC'", replyTo: EXPEDITEUR });
+    } catch (errGmail) {
+      throw new Error("Brevo : " + errBrevo.message + " | Gmail : " + errGmail.message);
+    }
   }
 }
 
