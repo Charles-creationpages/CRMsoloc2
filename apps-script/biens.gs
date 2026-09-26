@@ -160,17 +160,17 @@ function buildEmail(bien, prenom, honoSoloc, sign) {
   var agence  = Math.round((parseFloat(bien.surface) || 0) * 13.2);
   var depotHC = parseFloat(bien.loyerHC || bien.loyer) || 0;
   var depot   = Math.round(depotHC * (bien.meuble ? 2 : 1));
-  var photos  = bien.photos || [];
+  var photos  = (bien.photos || []).filter(function(u){ return !!u; });
 
   // Photos : hero + jusqu'à 4 vignettes
   var photoHtml = "";
   if (photos[0]) {
-    photoHtml += '<tr><td><img src="' + photos[0] + '" width="600" style="width:100%;max-height:300px;object-fit:cover;display:block;" alt=""/></td></tr>';
+    photoHtml += '<tr><td><img src="' + imgRelais(photos[0], 1200, 600) + '" width="600" style="width:100%;max-height:300px;object-fit:cover;display:block;" alt=""/></td></tr>';
     var thumbs = photos.slice(1, 5);
     if (thumbs.length) {
       var tw = Math.floor(600 / thumbs.length);
       var row = "";
-      thumbs.forEach(function(u) { row += '<td width="' + tw + '"><img src="' + u + '" width="' + tw + '" style="width:100%;height:80px;object-fit:cover;display:block;" alt=""/></td>'; });
+      thumbs.forEach(function(u) { row += '<td width="' + tw + '"><img src="' + imgRelais(u, 300, 160) + '" width="' + tw + '" style="width:100%;height:80px;object-fit:cover;display:block;" alt=""/></td>'; });
       photoHtml += '<tr><td style="padding:0;"><table width="100%" cellpadding="0" cellspacing="2" border="0"><tr>' + row + '</tr></table></td></tr>';
     }
   }
@@ -250,6 +250,13 @@ function buildEmail(bien, prenom, honoSoloc, sign) {
   + '</tr></table>'
   + '</div>';
   return html;
+}
+
+// Relais d'images wsrv.nl (gratuit, sans compte) : ImgBB gratuit bloque l'affichage direct
+// des photos dans les mails (« upgrade to a Pro account »). wsrv.nl récupère la photo et la sert
+// au mail, redimensionnée et allégée.
+function imgRelais(url, w, h) {
+  return "https://wsrv.nl/?url=" + encodeURIComponent(url) + "&w=" + w + "&h=" + h + "&fit=cover&output=jpg&q=80";
 }
 
 // petit helper : typologie du bien (fonction pour éviter collision de nom)
