@@ -8,7 +8,7 @@
 const EXPEDITEUR  = "hello@solocimmo.fr";
 // Copie cachée de chaque mail client dans hello@ (pour garder la trace + libellés Emmy/Aya).
 // Attention : chaque copie compte pour 1 mail dans le quota Brevo. Mettre false pour désactiver.
-const COPIE_HELLO = true;
+const COPIE_HELLO = false;
 
 const SIGNATURES = {
   emmy:   { name:"Emmy MARIET",     role:"Responsable recherche locative", phone:"06 12 89 64 15", photo:"https://charles-creationpages.github.io/CRMsoloc2/emmy.jpg" },
