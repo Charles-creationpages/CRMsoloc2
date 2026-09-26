@@ -6,12 +6,16 @@
 //   • BREVO_API_KEY   : clé API Brevo (xkeysib-…)
 //   • SCRIPT_PASSWORD : mot de passe du compte Firebase script@solocimmo.fr
 // Envoi : Brevo d'abord (300/jour), Gmail en secours si Brevo refuse.
+// Photos des biens : stockées dans le Drive de hello@ (dossier « CRM SOLOC - Photos biens »),
+// visibles par lien, supprimées automatiquement après 7 jours (lancer une fois installerNettoyage).
 
 // ── CONFIG ────────────────────────────────────────────────────────────────
 const EXPEDITEUR       = "hello@solocimmo.fr";
 const FIREBASE_API_KEY = "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q"; // clé publique Firebase (déjà dans le CRM)
 const FIREBASE_PROJECT = "soloc-crm";
 const SCRIPT_EMAIL     = "script@solocimmo.fr";
+const DOSSIER_PHOTOS   = "CRM SOLOC - Photos biens";
+const DUREE_PHOTOS_JOURS = 7;
 
 const SIGNATURES = {
   emmy:   { name:"Emmy MARIET",     role:"Responsable recherche locative", phone:"06 12 89 64 15", photo:"https://charles-creationpages.github.io/CRMsoloc2/emmy.jpg" },
@@ -23,6 +27,7 @@ const SIGNATURES = {
 function doPost(e) {
   try {
     var p = JSON.parse(e.postData.contents);
+    if (p.action === "uploadPhoto") return sauverPhoto(p);
     return runSend(p.bienId, p.newsletter===true, p.mission===true, p.sender || "equipe");
   } catch (err) {
     return ContentService.createTextOutput("ERREUR : " + err.message);
@@ -47,6 +52,7 @@ function runSend(bienId, doNewsletter, doMission, senderKey) {
   var bien  = getDoc(token, "biens/" + bienId);
   if (!bien) return ContentService.createTextOutput("ERREUR : bien introuvable");
   var typo = bien.typologie || "";
+  bien.photos = photosPourMail(bien.photos);
   var sign = SIGNATURES[senderKey] || SIGNATURES.equipe;
   var suj = sujet(bien, typo);
 
@@ -165,12 +171,12 @@ function buildEmail(bien, prenom, honoSoloc, sign) {
   // Photos : hero + jusqu'à 4 vignettes
   var photoHtml = "";
   if (photos[0]) {
-    photoHtml += '<tr><td><img src="' + imgRelais(photos[0], 1200, 600) + '" width="600" style="width:100%;max-height:300px;object-fit:cover;display:block;" alt=""/></td></tr>';
+    photoHtml += '<tr><td><img src="' + photos[0] + '" width="600" style="width:100%;max-height:300px;object-fit:cover;display:block;" alt=""/></td></tr>';
     var thumbs = photos.slice(1, 5);
     if (thumbs.length) {
       var tw = Math.floor(600 / thumbs.length);
       var row = "";
-      thumbs.forEach(function(u) { row += '<td width="' + tw + '"><img src="' + imgRelais(u, 300, 160) + '" width="' + tw + '" style="width:100%;height:80px;object-fit:cover;display:block;" alt=""/></td>'; });
+      thumbs.forEach(function(u) { row += '<td width="' + tw + '"><img src="' + u + '" width="' + tw + '" style="width:100%;height:80px;object-fit:cover;display:block;" alt=""/></td>'; });
       photoHtml += '<tr><td style="padding:0;"><table width="100%" cellpadding="0" cellspacing="2" border="0"><tr>' + row + '</tr></table></td></tr>';
     }
   }
@@ -252,15 +258,86 @@ function buildEmail(bien, prenom, honoSoloc, sign) {
   return html;
 }
 
-// Relais d'images wsrv.nl (gratuit, sans compte) : ImgBB gratuit bloque l'affichage direct
-// des photos dans les mails (« upgrade to a Pro account »). wsrv.nl récupère la photo et la sert
-// au mail, redimensionnée et allégée.
-function imgRelais(url, w, h) {
-  return "https://wsrv.nl/?url=" + encodeURIComponent(url) + "&w=" + w + "&h=" + h + "&fit=cover&output=jpg&q=80";
-}
-
 // petit helper : typologie du bien (fonction pour éviter collision de nom)
 function typo(bien){ return bien.typologie || "—"; }
+
+// ── PHOTOS (Drive de hello@) ──────────────────────────────────────────────
+function dossierPhotos() {
+  var it = DriveApp.getFoldersByName(DOSSIER_PHOTOS);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(DOSSIER_PHOTOS);
+}
+
+// Enregistre une photo dans le Drive, la rend visible par lien, et renvoie son adresse.
+function enregistrerDansDrive(blob) {
+  var file = dossierPhotos().createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return "https://lh3.googleusercontent.com/d/" + file.getId();
+}
+
+// Appelé par le CRM à l'ajout d'une photo : { action:"uploadPhoto", name, data (base64 JPEG) }
+function sauverPhoto(p) {
+  try {
+    if (!p.data) throw new Error("photo vide");
+    var bytes = Utilities.base64Decode(p.data);
+    if (bytes.length > 8 * 1024 * 1024) throw new Error("photo trop lourde (8 Mo max)");
+    var nom = String(p.name || "photo").replace(/[^\w.\- ]/g, "_").slice(0, 80);
+    var url = enregistrerDansDrive(Utilities.newBlob(bytes, "image/jpeg", nom.replace(/\.[^.]*$/, "") + ".jpg"));
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, url: url }));
+  } catch (err) {
+    return ContentService.createTextOutput("ERREUR : " + err.message);
+  }
+}
+
+// Photos à mettre dans le mail : Drive tel quel ; anciennes photos ImgBB recopiées dans le Drive
+// si ImgBB accepte (ImgBB bloque leur affichage direct dans les mails), sinon retirées du mail.
+function photosPourMail(photos) {
+  var props = PropertiesService.getScriptProperties();
+  var out = [];
+  (photos || []).forEach(function (u) {
+    if (!u) return;
+    if (!/ibb\.co/i.test(u)) { out.push(u); return; }
+    var cle = "img_" + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, u)).slice(0, 22);
+    var deja = props.getProperty(cle);
+    if (deja) { out.push(deja); return; }
+    try {
+      var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true });
+      var type = String(r.getHeaders()["Content-Type"] || r.getHeaders()["content-type"] || "");
+      if (r.getResponseCode() === 200 && type.indexOf("image") === 0) {
+        var url = enregistrerDansDrive(r.getBlob().setName("imgbb-" + cle + ".jpg"));
+        props.setProperty(cle, url);
+        out.push(url);
+      } else { Logger.log("Photo ImgBB non récupérable (" + r.getResponseCode() + ") : " + u); }
+    } catch (e) { Logger.log("Photo ImgBB non récupérable : " + e.message); }
+  });
+  return out;
+}
+
+// Supprime (corbeille) les photos de plus de 7 jours. Lancée chaque nuit par le déclencheur.
+function nettoyerPhotos() {
+  var limite = Date.now() - DUREE_PHOTOS_JOURS * 24 * 3600 * 1000;
+  var files = dossierPhotos().getFiles(), n = 0;
+  while (files.hasNext()) {
+    var f = files.next();
+    if (f.getDateCreated().getTime() < limite) { f.setTrashed(true); n++; }
+  }
+  Logger.log(n + " photo(s) supprimée(s)");
+}
+
+// À lancer UNE fois depuis l'éditeur : crée le nettoyage automatique chaque nuit (vers 4 h).
+function installerNettoyage() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "nettoyerPhotos") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("nettoyerPhotos").timeBased().everyDays(1).atHour(4).create();
+  Logger.log("OK : nettoyage automatique des photos installé (chaque nuit, photos de plus de " + DUREE_PHOTOS_JOURS + " jours)");
+}
+
+// Test : crée une petite image dans le Drive, la rend visible par lien et affiche son adresse.
+function testPhoto() {
+  var png = Utilities.base64Decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+  var url = enregistrerDansDrive(Utilities.newBlob(png, "image/png", "test-photo.png"));
+  Logger.log("OK : photo de test enregistrée et partagée → " + url);
+}
 
 // ── FIRESTORE ─────────────────────────────────────────────────────────────
 function getFirebaseToken() {
