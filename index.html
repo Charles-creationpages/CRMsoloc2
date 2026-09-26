@@ -234,19 +234,6 @@ function ArchiveEditModal({lead, montant, onClose, addToast}){
   );
 }
 
-// ─── PRIORITÉS TO-DO ─────────────────────────────────────────────────────
-const PRIORITIES = {
-  urgent:      {rank:0, label:"Urgent",      color:"#DC2626", bg:"#FEE2E2", fg:"#991B1B"},
-  prioritaire: {rank:1, label:"Prioritaire", color:"#D97706", bg:"#FEF3C7", fg:"#92400e"},
-  normale:     {rank:2, label:"Normale",     color:"#5A6B7B", bg:"#F2E8DA", fg:"#5A6B7B"},
-  basse:       {rank:3, label:"Basse",       color:"#9AA7B2", bg:"#F2E8DA", fg:"#9AA7B2"}
-};
-const PRIORITY_ORDER = ["urgent","prioritaire","normale","basse"];
-const priOf = (t) => PRIORITIES[(t&&t.priority)||"normale"] || PRIORITIES.normale;
-
-// URL du script Apps Script d'envoi de la to-do à Emmy (à coller après déploiement)
-const EMMY_MAIL_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx-xKRRC20lZmwMs5r8mriyohGlQwXnH-QwJ_tuG2cgK0-WMXxWiEDBSP4ErY1Xh2t2_A/exec";
-
 // URL du script Apps Script d'envoi d'un bien par mail (à coller après déploiement)
 const SEND_BIEN_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyJFKXJuCmIpcL0Zw6b0M1p_KLNYu4KjHaX2HG89ZDHApro6vymqSO6LCcDG8gOjgbs4g/exec";
 
@@ -558,36 +545,6 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 .upload-progress-bar{height:100%;background:var(--accent);transition:width .2s;}
 
 /* TO-DO */
-.todo-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
-.todo-date-label{font-size:18px;font-weight:800;color:var(--text);font-family:"Sora",sans-serif;letter-spacing:-.02em;}
-.todo-date-today-badge{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-l);border-radius:20px;padding:2px 9px;margin-left:8px;vertical-align:middle;}
-.todo-progress-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:20px;}
-.todo-progress-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
-.todo-progress-label{font-size:13px;font-weight:700;color:var(--text);}
-.todo-progress-pct{font-size:20px;font-weight:800;font-family:"Sora",sans-serif;}
-.todo-progress-bar-bg{background:var(--surface2);border-radius:20px;height:9px;overflow:hidden;}
-.todo-progress-bar-fill{height:100%;border-radius:20px;transition:width .3s ease;}
-.todo-add-row{display:flex;gap:8px;margin-bottom:18px;}
-.todo-add-row input{flex:1;}
-.todo-list{display:flex;flex-direction:column;gap:8px;margin-bottom:22px;}
-.todo-item{display:flex;align-items:flex-start;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 14px;transition:all .15s;}
-.todo-item.done{background:var(--surface2);}
-.todo-checkbox{width:21px;height:21px;border-radius:6px;border:2px solid var(--border2);background:#fff;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .15s;}
-.todo-checkbox:hover{border-color:var(--accent);}
-.todo-checkbox.checked{background:var(--green);border-color:var(--green);color:#fff;}
-.todo-item-body{flex:1;min-width:0;}
-.todo-item-text{font-size:13px;font-weight:600;color:var(--text);line-height:1.45;}
-.todo-item.done .todo-item-text{text-decoration:line-through;color:var(--text3);}
-.todo-item-meta{font-size:10px;color:var(--text3);margin-top:3px;}
-.todo-item-del{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;transition:all .15s;}
-.todo-item-del:hover{color:var(--red);background:var(--red-bg);}
-.todo-item-del:disabled{opacity:.25;cursor:not-allowed;}
-.todo-item-del:disabled:hover{color:var(--text3);background:none;}
-.todo-empty{text-align:center;padding:30px 0;color:var(--text3);font-size:13px;}
-.todo-history-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text2);padding:10px 0;border-top:1px solid var(--border);user-select:none;}
-.todo-history-day{margin-bottom:14px;}
-.todo-history-day-label{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
-.todo-history-day-pct{font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:20px;padding:1px 8px;}
 
 /* ─── RESPONSIVE MOBILE ─── */
 .bottom-nav{display:none;}
@@ -1868,184 +1825,6 @@ function PartenairesPage({user, addToast}){
         )}
       </div>
       {modal&&<PartenaireModal partenaire={modal.type==="edit"?modal.p:null} isAdmin={isAdmin} defaultOwner={modal.type==="edit"?partnerOwner(modal.p):myRole} onSave={savePartenaire} onClose={()=>setModal(null)}/>}
-    </>
-  );
-}
-
-// ─── TODO PAGE (v3 — priorités + envoi Emmy) ─────────────────────────────
-function TodoPage({user,addToast}){
-  const [tasks,setTasks]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [newText,setNewText]=useState("");
-  const [newPri,setNewPri]=useState("normale");
-  const [showDone,setShowDone]=useState(false);
-  const [sending,setSending]=useState(false);
-
-  const myName = displayNameFromEmail(user.email);
-  const isCharles = user.email===FINANCE_EMAIL;
-
-  useEffect(()=>{
-    const unsub=fsOnSnapshot(fsCollection(db,"todos"),snap=>{
-      setTasks(snap.docs.map(d=>({id:d.id,...d.data()})));
-      setLoading(false);
-    },()=>addToast("Erreur chargement to-do","error"));
-    return unsub;
-  },[]);
-
-  const isToday=(iso)=>{ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); };
-
-  const openTasks = tasks.filter(t=>!t.done).sort((a,b)=>{
-    const r=priOf(a).rank-priOf(b).rank;
-    return r!==0 ? r : new Date(a.createdAt||0)-new Date(b.createdAt||0);
-  });
-  const doneTasks = tasks.filter(t=>t.done).sort((a,b)=>new Date(b.doneAt||0)-new Date(a.doneAt||0));
-  const doneCount = doneTasks.length;
-  const doneToday = tasks.filter(t=>t.done && isToday(t.doneAt)).length;
-
-  const counts={urgent:0,prioritaire:0,normale:0,basse:0};
-  openTasks.forEach(t=>{ counts[(t.priority)||"normale"]=(counts[(t.priority)||"normale"]||0)+1; });
-
-  const addTask=()=>{
-    const text=newText.trim();
-    if(!text) return;
-    fsAddDoc(fsCollection(db,"todos"),{
-      text, done:false, priority:newPri, createdBy:myName, createdAt:nowISO(), doneAt:null
-    }).then(()=>{setNewText("");}).catch(()=>addToast("Erreur d'ajout","error"));
-  };
-
-  const toggleTask=(t)=>{
-    const willDone=!t.done;
-    fsUpdateDoc(fsDocRef(db,"todos",t.id),{done:willDone, doneAt:willDone?nowISO():null})
-      .catch(()=>addToast("Erreur","error"));
-  };
-
-  const cyclePriority=(t)=>{
-    const i=PRIORITY_ORDER.indexOf((t.priority)||"normale");
-    const next=PRIORITY_ORDER[(i+1)%PRIORITY_ORDER.length];
-    fsUpdateDoc(fsDocRef(db,"todos",t.id),{priority:next}).catch(()=>addToast("Erreur","error"));
-  };
-
-  const deleteTask=(t)=>{
-    if(!confirm("Supprimer cette tâche ?")) return;
-    fsDeleteDoc(fsDocRef(db,"todos",t.id))
-      .then(()=>addToast("Tâche supprimée"))
-      .catch(()=>addToast("Erreur de suppression","error"));
-  };
-
-  const sendToEmmy=()=>{
-    if(!EMMY_MAIL_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
-    if(openTasks.length===0){ addToast("Aucune tâche à envoyer","error"); return; }
-    setSending(true);
-    addToast("Envoi de la to-do à Emmy…");
-    fetch(EMMY_MAIL_WEBAPP_URL,{method:"POST",mode:"no-cors"})
-      .then(()=>{ setTimeout(()=>{ setSending(false); addToast("✓ To-do envoyée à Emmy"); },700); })
-      .catch(()=>{ setSending(false); addToast("Erreur d'envoi","error"); });
-  };
-
-  const OpenRow=({t})=>{
-    const pr=priOf(t);
-    const overdue=Math.floor(daysSince(t.createdAt))>=3;
-    const showBorder = t.priority==="urgent"||t.priority==="prioritaire";
-    const showChip = t.priority==="urgent"||t.priority==="prioritaire"||t.priority==="basse";
-    return(
-      <div className="todo-item" style={showBorder?{borderLeft:"3px solid "+pr.color}:{}}>
-        <div className="todo-checkbox" onClick={()=>toggleTask(t)}></div>
-        <button className="ib" style={{color:pr.color,padding:2,flexShrink:0}} title="Changer la priorité" onClick={()=>cyclePriority(t)}><Ic n="flag" s={16}/></button>
-        <div className="todo-item-body">
-          <div className="todo-item-text">{t.text}</div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          {overdue&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e",whiteSpace:"nowrap"}}>depuis {Math.floor(daysSince(t.createdAt))}j</span>}
-          {showChip&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:pr.bg,color:pr.fg,whiteSpace:"nowrap"}}>{pr.label}</span>}
-          <button className="todo-item-del" onClick={()=>deleteTask(t)} title="Supprimer"><Ic n="trash" s={14}/></button>
-        </div>
-      </div>
-    );
-  };
-
-  const DoneRow=({t})=>(
-    <div className="todo-item done">
-      <div className="todo-checkbox checked" onClick={()=>toggleTask(t)}><Ic n="check" s={13}/></div>
-      <div className="todo-item-body">
-        <div className="todo-item-text">{t.text}</div>
-      </div>
-      <button className="todo-item-del" onClick={()=>deleteTask(t)} title="Supprimer"><Ic n="trash" s={14}/></button>
-    </div>
-  );
-
-  return(
-    <>
-      <div className="topbar">
-        <div>
-          <div className="pt">To-do</div>
-          <div className="ps">Les tâches restent affichées tant qu'elles ne sont pas cochées</div>
-        </div>
-        <div className="tb-right">
-          {isCharles&&<button className="btn btn-p" onClick={sendToEmmy} disabled={sending}><Ic n="mail" s={14}/>{sending?"Envoi…":"Envoyer à Emmy"}</button>}
-          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
-        </div>
-      </div>
-      <div className="main">
-        {loading?(
-          <div className="empty-state"><div className="es-t">Chargement…</div></div>
-        ):(
-          <>
-            <div className="todo-progress-card">
-              <div className="todo-progress-top">
-                <span className="todo-progress-label">{openTasks.length} tâche{openTasks.length!==1?"s":""} à faire</span>
-                <span style={{fontSize:11,color:"var(--green)",fontWeight:700}}>{doneToday} terminée{doneToday!==1?"s":""} aujourd'hui</span>
-              </div>
-              <div style={{display:"flex",height:10,borderRadius:20,overflow:"hidden",background:"var(--surface2)"}}>
-                {openTasks.length===0
-                  ? <div style={{flex:1,background:"var(--green)"}}/>
-                  : PRIORITY_ORDER.map(k=> counts[k]>0 ? <div key={k} style={{flex:counts[k],background:PRIORITIES[k].color}}/> : null)}
-              </div>
-              <div style={{display:"flex",gap:14,marginTop:8,fontSize:10,color:"var(--text3)",fontWeight:600,flexWrap:"wrap"}}>
-                {PRIORITY_ORDER.map(k=>(
-                  <span key={k}><span style={{display:"inline-block",width:8,height:8,borderRadius:2,background:PRIORITIES[k].color,marginRight:4}}/>{PRIORITIES[k].label}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="todo-add-row">
-              <input className="fi" placeholder="Nouvelle tâche…" value={newText}
-                onChange={e=>setNewText(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter")addTask();}}/>
-              <button className="btn btn-p" onClick={addTask}><Ic n="plus" s={13}/>Ajouter</button>
-            </div>
-            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:20,flexWrap:"wrap"}}>
-              <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Priorité :</span>
-              {PRIORITY_ORDER.map(k=>{
-                const on=newPri===k;
-                return <button key={k} type="button" onClick={()=>setNewPri(k)} style={{padding:"5px 11px",borderRadius:8,border:"1.5px solid",borderColor:on?PRIORITIES[k].color:"var(--border2)",background:on?PRIORITIES[k].color:"var(--surface2)",color:on?"#fff":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{PRIORITIES[k].label}</button>;
-              })}
-            </div>
-
-            <div style={{fontSize:10,fontWeight:800,color:"var(--accent)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>À faire</div>
-            {openTasks.length===0?(
-              <div className="todo-empty">Tout est fait. Rien à faire pour le moment.</div>
-            ):(
-              <div className="todo-list">
-                {openTasks.map(t=><OpenRow key={t.id} t={t}/>)}
-              </div>
-            )}
-
-            <div className="todo-history-toggle" onClick={()=>setShowDone(s=>!s)}>
-              <Ic n={showDone?"chevDown":"chevR"} s={13}/>
-              Terminées ({doneCount})
-            </div>
-            {showDone&&(
-              doneCount===0?(
-                <div className="todo-empty">Aucune tâche terminée.</div>
-              ):(
-                <div className="todo-list">
-                  {doneTasks.map(t=><DoneRow key={t.id} t={t}/>)}
-                </div>
-              )
-            )}
-          </>
-        )}
-      </div>
     </>
   );
 }
@@ -3404,7 +3183,6 @@ function App(){
             <div className={"nav-item"+(tab==="newsletter"?" active":"")} onClick={()=>setTab("newsletter")}><Ic n="mail" s={16}/>Newsletter</div>
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
-            <div className={"nav-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={16}/>To-do</div>
             <div className={"nav-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={16}/>Registre</div>
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
@@ -3429,8 +3207,6 @@ function App(){
             ? <PartenairesPage user={user} addToast={addToast}/>
             : tab==="biens"
             ? <BiensPage user={user} newsletter={newsletter} leads={leads} addToast={addToast}/>
-            : tab==="todo"
-            ? <TodoPage user={user} addToast={addToast}/>
             : tab==="newsletter"
             ? <NewsletterPage user={user} rows={newsletter} addToast={addToast}/>
             : (<>
@@ -3466,7 +3242,6 @@ function App(){
           <button className={"bn-item"+(tab==="newsletter"?" active":"")} onClick={()=>setTab("newsletter")}><Ic n="mail" s={21}/>News</button>
           <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
-          <button className={"bn-item"+(tab==="todo"?" active":"")} onClick={()=>setTab("todo")}><Ic n="listCheck" s={21}/>To-do</button>
           <button className={"bn-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={21}/>Registre</button>
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
