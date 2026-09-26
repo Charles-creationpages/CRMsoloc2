@@ -47,10 +47,12 @@ let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnaps
 
 // ─── IMGBB ───────────────────────────────────────────────────────────────
 const IMGBB_KEY = "080558055619053ee6387a12c1a4c5bb";
+// Photos supprimées automatiquement par ImgBB 7 jours après l'upload (plus utiles ensuite, libère de la place)
+const IMGBB_EXPIRATION = 7*24*3600;
 const uploadToImgBB = (file) => new Promise((resolve, reject) => {
   const fd = new FormData();
   fd.append("image", file);
-  fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method:"POST", body:fd })
+  fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}&expiration=${IMGBB_EXPIRATION}`, { method:"POST", body:fd })
     .then(r=>r.json())
     .then(data=>{ if(data.success) resolve(data.data.url); else reject(new Error("ImgBB error")); })
     .catch(reject);
