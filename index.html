@@ -1335,7 +1335,7 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,marginBottom:8}}>
             {form.photos.map((url,i)=>(
               <div key={i} style={{position:"relative"}}>
-                <img src={url} style={{width:72,height:54,objectFit:"cover",borderRadius:7,border:"1px solid var(--border)"}}/>
+                <img src={url} referrerPolicy="no-referrer" style={{width:72,height:54,objectFit:"cover",borderRadius:7,border:"1px solid var(--border)"}}/>
                 <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:-5,right:-5,background:"var(--red)",border:"none",color:"#fff",width:18,height:18,borderRadius:"50%",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
               </div>
             ))}
@@ -1381,12 +1381,12 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
 
     var photoHtml="";
     if(cover){
-      photoHtml='<div class="hero"><img src="'+cover+'" alt="photo"/></div>';
+      photoHtml='<div class="hero"><img src="'+cover+'" referrerpolicy="no-referrer" alt="photo"/></div>';
       if(thumbs.length){
         photoHtml+='<div class="thumbs">';
         thumbs.forEach(function(u,i){
           var more=(i===thumbs.length-1 && extra>0)?'<div class="thumb-more">+'+extra+'</div>':'';
-          photoHtml+='<div class="thumb"><img src="'+u+'" alt="photo"/>'+more+'</div>';
+          photoHtml+='<div class="thumb"><img src="'+u+'" referrerpolicy="no-referrer" alt="photo"/>'+more+'</div>';
         });
         photoHtml+='</div>';
       }
@@ -1452,7 +1452,7 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
           <div className="bien-detail-left">
             <div className="bien-detail-photos">
               {photos.length>0
-                ?<img src={photos[photoIdx]} className="bien-detail-main-img" alt="photo bien"/>
+                ?<img src={photos[photoIdx]} referrerPolicy="no-referrer" className="bien-detail-main-img" alt="photo bien"/>
                 :<div className="bien-detail-main-placeholder"><Ic n="img" s={32}/><span>Aucune photo</span></div>}
               {photos.length>1&&<>
                 <button className="photo-nav-btn prev" onClick={prev}><Ic n="chevL" s={13}/></button>
@@ -1463,7 +1463,7 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
             {photos.length>1&&(
               <div className="thumbs-row">
                 {photos.map((u,i)=>(
-                  <img key={i} src={u} className={"thumb-img"+(i===photoIdx?" active":"")} onClick={()=>setPhotoIdx(i)} alt={"photo "+(i+1)}/>
+                  <img key={i} src={u} referrerPolicy="no-referrer" className={"thumb-img"+(i===photoIdx?" active":"")} onClick={()=>setPhotoIdx(i)} alt={"photo "+(i+1)}/>
                 ))}
               </div>
             )}
@@ -1633,7 +1633,7 @@ function BiensPage({user, newsletter, leads, addToast}){
     return(
       <div className="bien-card" onClick={()=>setModal({type:"detail",bien:b})}>
         <div className="bien-card-photo">
-          {cover?<img src={cover} alt={typ}/>:<><Ic n="img" s={28}/></>}
+          {cover?<img src={cover} referrerPolicy="no-referrer" alt={typ}/>:<><Ic n="img" s={28}/></>}
         </div>
         <div className="bien-card-body">
           <span className="bien-card-type">{typ}</span>
@@ -3318,7 +3318,12 @@ function boot(){
   });
   new MutationObserver(noAutofill).observe(document.getElementById("root"),{childList:true,subtree:true});
   // Photos de biens supprimées (7 jours) : on masque l'image cassée plutôt que l'icône d'erreur
-  document.addEventListener("error",e=>{ const t=e.target; if(t&&t.tagName==="IMG"&&/googleusercontent|ibb\.co/.test(t.src||"")) t.style.visibility="hidden"; },true);
+  document.addEventListener("error",e=>{
+    const t=e.target; if(!t||t.tagName!=="IMG") return;
+    const src=t.src||"", m=src.match(/lh3\.googleusercontent\.com\/d\/([\w-]+)/);
+    if(m && !t.dataset.retry){ t.dataset.retry="1"; t.referrerPolicy="no-referrer"; t.src="https://drive.google.com/thumbnail?id="+m[1]+"&sz=w1600"; return; }
+    if(/googleusercontent|drive\.google|ibb\.co/.test(src)) t.style.visibility="hidden";
+  },true);
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(<App/>);
 }
