@@ -45,17 +45,29 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ─── FIREBASE (modulaire, assigné quand window.__fb est prêt) ────────────
 let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc, fsSetDoc, fsGetDoc;
 
-// ─── IMGBB ───────────────────────────────────────────────────────────────
-const IMGBB_KEY = "080558055619053ee6387a12c1a4c5bb";
-// Photos supprimées automatiquement par ImgBB 7 jours après l'upload (plus utiles ensuite, libère de la place)
-const IMGBB_EXPIRATION = 7*24*3600;
-const uploadToImgBB = (file) => new Promise((resolve, reject) => {
-  const fd = new FormData();
-  fd.append("image", file);
-  fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}&expiration=${IMGBB_EXPIRATION}`, { method:"POST", body:fd })
-    .then(r=>r.json())
-    .then(data=>{ if(data.success) resolve(data.data.url); else reject(new Error("ImgBB error")); })
-    .catch(reject);
+// ─── PHOTOS DES BIENS (Drive de hello@ via le script d'envoi de biens) ────
+// Photo compressée dans le navigateur (1600 px max, JPEG), envoyée au script qui la range dans
+// le Drive de hello@ et renvoie une adresse visible par lien (CRM + mails). Supprimée après 7 jours.
+const compressImage = (file, max=1600, quality=0.82) => new Promise((resolve, reject) => {
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => {
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    resolve(c.toDataURL("image/jpeg", quality).split(",")[1]);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image illisible")); };
+  img.src = url;
+});
+const uploadPhoto = (file) => compressImage(file).then(data =>
+  fetchTimeout(SEND_BIEN_WEBAPP_URL, { method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({ action:"uploadPhoto", name:file.name||"photo", data }) }, 60000)
+).then(r => r.text()).then(t => {
+  let j = null; try { j = JSON.parse(t); } catch(e) {}
+  if (j && j.ok && j.url) return j.url;
+  throw new Error(String(t||"").replace(/^ERREUR\s*:?\s*/i, "") || "réponse inattendue");
 });
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────
@@ -1220,9 +1232,9 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
     if(!files||!files.length) return;
     setUploading(true); setUploadPct(0);
     const arr=Array.from(files); let done=0;
-    Promise.all(arr.map(file=>uploadToImgBB(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })))
+    Promise.all(arr.map(file=>uploadPhoto(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })))
       .then(urls=>{ setForm(p=>({...p,photos:[...(p.photos||[]),...urls]})); setUploading(false); setUploadPct(0); })
-      .catch(()=>{ setErr("Erreur upload — vérifie ta connexion."); setUploading(false); });
+      .catch(e=>{ setErr("Erreur upload photo : "+((e&&e.message)||"vérifie ta connexion")); setUploading(false); });
   };
   const removePhoto=(idx)=>setForm(p=>({...p,photos:p.photos.filter((_,i)=>i!==idx)}));
 
@@ -3305,6 +3317,8 @@ function boot(){
     el.setAttribute("name","crm-"+Math.random().toString(36).slice(2));
   });
   new MutationObserver(noAutofill).observe(document.getElementById("root"),{childList:true,subtree:true});
+  // Photos de biens supprimées (7 jours) : on masque l'image cassée plutôt que l'icône d'erreur
+  document.addEventListener("error",e=>{ const t=e.target; if(t&&t.tagName==="IMG"&&/googleusercontent|ibb\.co/.test(t.src||"")) t.style.visibility="hidden"; },true);
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(<App/>);
 }
