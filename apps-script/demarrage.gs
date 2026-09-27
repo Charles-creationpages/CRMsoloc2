@@ -217,12 +217,21 @@ function testRelanceMail() {
 function relancesAuto(apercu) {
   var token = getFirebaseToken();
   var leads = getCollectionAvecId(token, "leads");
+  // Avancement lu directement dans la base (sans attendre que le CRM soit ouvert) :
+  // formulaire reçu = soumissions/{id} ; lettre signée = lettres/{id} au statut « signe ».
+  var soumissions = {}, lettres = {};
+  getCollectionAvecId(token, "soumissions").forEach(function (x) { soumissions[x.leadId || x.id] = x; });
+  getCollectionAvecId(token, "lettres").forEach(function (x) { lettres[x.id] = x; });
   var maintenant = Date.now(), jour = 24 * 3600 * 1000, envoyees = 0, lignes = [];
   leads.forEach(function (l) {
     if (l.column !== "envoye" || l.archived || !l.email) return;
+    var sm = soumissions[l.id], lt = lettres[l.id];
+    if (!l.formulaireRempli && sm) l.formulaireRempli = sm.submittedAt || "oui";
+    if (!l.lettreSignee && lt && lt.status === "signe") l.lettreSignee = lt.signedAt || "oui";
     var n = parseInt(l.relanceAutoCount || 0, 10);
     if (n >= RELANCE_MAX) return;
-    var dernier = Math.max(dateMs(l.lastActivity), dateMs(l.envoyeAt), dateMs(l.envoiAt), dateMs(l.relanceAutoAt));
+    var dernier = Math.max(dateMs(l.lastActivity), dateMs(l.envoyeAt), dateMs(l.envoiAt), dateMs(l.relanceAutoAt),
+                           dateMs(sm && sm.submittedAt), dateMs(lt && lt.signedAt)); // formulaire / signature = le dossier a bougé
     if (!dernier || maintenant - dernier < RELANCE_JOURS * jour) return;
     var num = n + 1;
     lignes.push(l.name + " <" + l.email + "> → relance " + num + "/" + RELANCE_MAX);
