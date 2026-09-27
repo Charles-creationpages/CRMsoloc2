@@ -63,7 +63,7 @@ const compressImage = (file, max=1600, quality=0.82) => new Promise((resolve, re
   img.src = url;
 });
 const uploadPhoto = (file) => compressImage(file).then(data =>
-  fetchTimeout(SEND_BIEN_WEBAPP_URL, { method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({ action:"uploadPhoto", name:file.name||"photo", data }) }, 60000)
+  fetchTimeout(SEND_BIEN_WEBAPP_URL, { method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({ action:"uploadPhoto", name:file.name||"photo", data }) }, 90000)
 ).then(r => r.text()).then(t => {
   let j = null; try { j = JSON.parse(t); } catch(e) {}
   if (j && j.ok && j.url) return j.url;
@@ -1222,19 +1222,35 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
   const [form,setForm]=useState(editing?{...blankBien,...bien, atouts:bienAtouts(bien), loyerCC:bienLoyerCC(bien), secteur:bienLoc(bien), rue:bienRue(bien), dispoAsap:bien.dispoAsap!==undefined?bien.dispoAsap:!bien.dateDisponibilite}:{...blankBien});
   const [uploading,setUploading]=useState(false);
   const [uploadPct,setUploadPct]=useState(0);
+  const [uploadMsg,setUploadMsg]=useState("");
+  const [uploadErr,setUploadErr]=useState("");
   const [err,setErr]=useState("");
   const fileRef=useRef();
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
   const toggleAtout=(a)=>setForm(p=>{const cur=asArray(p.atouts);return {...p,atouts:cur.includes(a)?cur.filter(x=>x!==a):[...cur,a]};});
   const eur=(n)=>Math.round(n).toLocaleString("fr-FR")+" €";
 
-  const uploadPhotos=(files)=>{
+  // Photos envoyées une par une : chaque photo réussie est ajoutée tout de suite,
+  // une photo en échec n'annule pas les autres, et l'erreur s'affiche sous la zone photos.
+  const uploadPhotos=async(files)=>{
     if(!files||!files.length) return;
-    setUploading(true); setUploadPct(0);
-    const arr=Array.from(files); let done=0;
-    Promise.all(arr.map(file=>uploadPhoto(file).then(url=>{ done++; setUploadPct(Math.round(done/arr.length*100)); return url; })))
-      .then(urls=>{ setForm(p=>({...p,photos:[...(p.photos||[]),...urls]})); setUploading(false); setUploadPct(0); })
-      .catch(e=>{ setErr("Erreur upload photo : "+((e&&e.message)||"vérifie ta connexion")); setUploading(false); });
+    const arr=Array.from(files); const errs=[];
+    setUploading(true); setUploadErr(""); setUploadPct(0);
+    for(let i=0;i<arr.length;i++){
+      const f=arr[i], t0=Date.now();
+      setUploadMsg("Photo "+(i+1)+"/"+arr.length+" — envoi…"); setUploadPct(Math.round(i/arr.length*100));
+      try{
+        const url=await uploadPhoto(f);
+        setForm(p=>({...p,photos:[...(p.photos||[]),url]}));
+        console.log("[photos] OK "+f.name+" en "+((Date.now()-t0)/1000).toFixed(1)+" s → "+url);
+      }catch(e){
+        const m=(e&&e.message)==="timeout"?"pas de réponse du script en 90 s":((e&&e.message)||"erreur inconnue");
+        errs.push(f.name+" : "+m);
+        console.warn("[photos] ÉCHEC "+f.name+" après "+((Date.now()-t0)/1000).toFixed(1)+" s : "+m, e);
+      }
+    }
+    setUploading(false); setUploadPct(0); setUploadMsg("");
+    if(errs.length) setUploadErr(errs.length+" photo"+(errs.length>1?"s":"")+" non ajoutée"+(errs.length>1?"s":"")+" — "+errs.join(" · "));
   };
   const removePhoto=(idx)=>setForm(p=>({...p,photos:p.photos.filter((_,i)=>i!==idx)}));
 
@@ -1327,10 +1343,11 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
         <div className="modal-section">Médias — optionnel</div>
         <div className="upload-zone" onClick={()=>!uploading&&fileRef.current.click()}>
           <Ic n="upload" s={18}/><br/>
-          {uploading?`Upload en cours… ${uploadPct}%`:"Cliquer pour ajouter des photos (plusieurs possibles)"}
+          {uploading?(uploadMsg||`Upload en cours… ${uploadPct}%`):"Cliquer pour ajouter des photos (plusieurs possibles)"}
           {uploading&&<div className="upload-progress"><div className="upload-progress-bar" style={{width:uploadPct+"%"}}/></div>}
         </div>
-        <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>uploadPhotos(e.target.files)}/>
+        {uploadErr&&<div className="ferr" style={{marginTop:8}}>{uploadErr}</div>}
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{ const fl=e.target.files; uploadPhotos(fl&&Array.from(fl)); e.target.value=""; }}/>
         {form.photos&&form.photos.length>0&&(
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,marginBottom:8}}>
             {form.photos.map((url,i)=>(
