@@ -678,6 +678,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {isAdmin&&lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
         {lead.formulaireRempli&&<span style={chip("#DBEAFE","#1d4ed8")}>📋 Formulaire</span>}
         {lead.lettreSignee&&<span style={chip("#DCFCE7","#15803d")}>📄 Signée</span>}
+        {lead.relanceAutoCount>0&&<span style={chip("#FFE4E6","#be123c")} title={"Dernière relance auto le "+fmtDate(lead.relanceAutoAt)}>🔁 {lead.relanceAutoCount}/3</span>}
       </div>
       {lead.column==="en_attente"&&lead.notes&&(
         <div style={{fontSize:10.5,color:"#475569",background:"#F1F5F9",border:"1px solid #E2E8F0",borderRadius:7,padding:"5px 8px",marginTop:6,lineHeight:1.4}}>⏸ {lead.notes}</div>
@@ -713,7 +714,7 @@ function todayTasks(leads, role, filter){
      test:l=>l.column==="relance" && !isToday(l.lastActivity), why:l=>"Prochaine relance : "+((l.relanceCount||0)+1)+"/3"},
     {key:"envoye", icon:"✉️", label:"Dossier envoyé incomplet", color:"#7c3aed", bg:"#F3E8FF",
      test:l=>l.column==="envoye" && daysSince(l.envoyeAt||l.lastActivity)>=3 && (!l.formulaireRempli||!l.lettreSignee),
-     why:l=>"Envoyé il y a "+Math.floor(daysSince(l.envoyeAt||l.lastActivity))+" j — manque "+[!l.formulaireRempli&&"formulaire",!l.lettreSignee&&"lettre"].filter(Boolean).join(" + ")},
+     why:l=>"Envoyé il y a "+Math.floor(daysSince(l.envoyeAt||l.lastActivity))+" j — manque "+[!l.formulaireRempli&&"formulaire",!l.lettreSignee&&"lettre"].filter(Boolean).join(" + ")+(l.relanceAutoCount>0?" · 🔁 relance auto "+l.relanceAutoCount+"/3":"")},
     {key:"stale",  icon:"⏳", label:"Sans nouvelles depuis 3 jours ou +", color:"#92400e", bg:"#FFF7ED",
      test:l=>ACTIVE_ALERT_COLS.includes(l.column) && daysSince(l.lastActivity)>=3,
      why:l=>(PIPELINE_COLS.find(c=>c.id===l.column)||{}).label+" · "+Math.floor(daysSince(l.lastActivity))+" j sans mouvement"},
@@ -964,6 +965,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
             {lead.lettreSignee
               ? <span className="badge" style={{background:"#DCFCE7",color:"#15803d"}}>📄 Lettre signée{lead.lettreNumero?(" · "+lead.lettreNumero):""}</span>
               : (lead.envoiEnvoye&&<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)"}}>📄 Lettre en attente</span>)}
+            {lead.relanceAutoCount>0&&<span className="badge" style={{background:"#FFE4E6",color:"#be123c"}}>🔁 Relance auto {lead.relanceAutoCount}/3 · dernière le {fmtDate(lead.relanceAutoAt)}</span>}
           </div>
         )}
 
