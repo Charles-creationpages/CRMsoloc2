@@ -173,6 +173,9 @@ function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/
 // ══════════════════════════════════════════════════════════════════════════
 const RELANCE_JOURS    = 3;
 const RELANCE_MAX      = 3;
+// Ancienneté max : on ne relance que les clients passés en « Envoyé » depuis moins de N jours
+// (les plus anciens sont ignorés, à traiter à la main). 0 = pas de limite.
+const RELANCE_AGE_MAX_JOURS = 21;
 const CLIENT_BASE_URL  = "https://charles-creationpages.github.io/CRMsoloc2/";
 const FIREBASE_API_KEY = "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q"; // clé publique Firebase (déjà dans le CRM)
 const FIREBASE_PROJECT = "soloc-crm";
@@ -222,10 +225,14 @@ function relancesAuto(apercu) {
   var soumissions = {}, lettres = {};
   getCollectionAvecId(token, "soumissions").forEach(function (x) { soumissions[x.leadId || x.id] = x; });
   getCollectionAvecId(token, "lettres").forEach(function (x) { lettres[x.id] = x; });
-  var maintenant = Date.now(), jour = 24 * 3600 * 1000, envoyees = 0, lignes = [];
+  var maintenant = Date.now(), jour = 24 * 3600 * 1000, envoyees = 0, lignes = [], ignores = [];
   leads.forEach(function (l) {
+    l.email = String(l.email || "").replace(/\s+/g, "");
     if (l.column !== "envoye" || l.archived || !l.email) return;
     var sm = soumissions[l.id], lt = lettres[l.id];
+    var debut = dateMs(l.envoyeAt) || dateMs(l.envoiAt) || dateMs(l.lastActivity);
+    var age = debut ? Math.floor((Date.now() - debut) / (24 * 3600 * 1000)) : 999;
+    if (RELANCE_AGE_MAX_JOURS && age > RELANCE_AGE_MAX_JOURS) { ignores.push(l.name + " (en Envoyé depuis " + age + " j)"); return; }
     if (!l.formulaireRempli && sm) l.formulaireRempli = sm.submittedAt || "oui";
     if (!l.lettreSignee && lt && lt.status === "signe") l.lettreSignee = lt.signedAt || "oui";
     var n = parseInt(l.relanceAutoCount || 0, 10);
@@ -234,7 +241,7 @@ function relancesAuto(apercu) {
                            dateMs(sm && sm.submittedAt), dateMs(lt && lt.signedAt)); // formulaire / signature = le dossier a bougé
     if (!dernier || maintenant - dernier < RELANCE_JOURS * jour) return;
     var num = n + 1;
-    lignes.push(l.name + " <" + l.email + "> → relance " + num + "/" + RELANCE_MAX);
+    lignes.push(l.name + " <" + l.email + "> → relance " + num + "/" + RELANCE_MAX + " (en Envoyé depuis " + age + " j)");
     if (apercu) return;
     try {
       var m = mailRelance(l, num);
@@ -251,6 +258,7 @@ function relancesAuto(apercu) {
     } catch (err) { Logger.log("Echec relance " + l.email + " : " + err.message); }
   });
   Logger.log((apercu ? "APERÇU (rien envoyé) — " : "") + lignes.length + " client(s) à relancer" + (lignes.length ? " :\n" + lignes.join("\n") : ""));
+  if (ignores.length) Logger.log(ignores.length + " client(s) ignoré(s), trop anciens (limite " + RELANCE_AGE_MAX_JOURS + " j) :\n" + ignores.join("\n"));
   if (!apercu) Logger.log(envoyees + " relance(s) envoyée(s)");
 }
 
