@@ -178,14 +178,19 @@ const FIREBASE_API_KEY = "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q"; // clé publ
 const FIREBASE_PROJECT = "soloc-crm";
 const SCRIPT_EMAIL     = "script@solocimmo.fr";
 
-// Textes des 3 relances (à retravailler) — {prenom} est remplacé par le prénom du client.
+// Textes des 3 relances — {prenom} = prénom du client ; {criteres} = « correspondant à votre recherche
+// (T2 · Lyon 7 · 750 € max) » d'après les critères de la fiche (ou sans parenthèse s'ils sont vides).
+// encart = phrase mise en avant dans un bloc coloré sous l'introduction.
 const RELANCE_TEXTES = [
-  { sujet: "{prenom}, on avance sur votre dossier ?",
-    intro: "Je reviens vers vous au sujet de votre accompagnement SOLOC'. Il reste quelques étapes à compléter pour que l'on puisse lancer la recherche de votre logement." },
-  { sujet: "{prenom}, votre dossier SOLOC' vous attend",
-    intro: "Petit rappel : votre dossier n'est pas encore complet. Dès que ces étapes sont faites, votre chasseur dédié peut démarrer la recherche." },
-  { sujet: "{prenom}, dernière relance pour votre dossier",
-    intro: "Je me permets une dernière relance. Si vous avez des questions ou si votre projet a évolué, répondez simplement à ce mail ou appelez-moi, je serai ravi(e) de vous aider." }
+  { sujet: "{prenom}, des logements correspondent déjà à votre recherche",
+    intro: "Bonne nouvelle : nous recevons chaque jour de nouvelles offres {criteres}. Cependant, il manque encore quelques éléments à votre dossier pour que l'on puisse vous les proposer.",
+    encart: "Complétez les étapes ci-dessous (quelques minutes suffisent) et nous vous envoyons les prochaines offres en priorité." },
+  { sujet: "{prenom}, ne passez pas à côté des prochaines offres",
+    intro: "Cette semaine encore, plusieurs biens {criteres} sont passés entre nos mains. Les meilleurs logements partent en quelques heures, et les propriétaires retiennent d'abord les dossiers complets.",
+    encart: "Votre dossier n'est pas encore complet : finalisez-le pour que l'on puisse vous positionner dès la prochaine offre." },
+  { sujet: "{prenom}, on garde votre place ?",
+    intro: "Sans nouvelles de votre part, nous allons bientôt mettre votre recherche en pause. Si votre projet est toujours d'actualité, il suffit de finaliser les étapes ci-dessous et nous reprenons immédiatement la recherche de biens {criteres}.",
+    encart: "Vos plans ont changé ? Répondez simplement à ce mail pour nous le dire, cela nous aide beaucoup." }
 ];
 
 // À lancer UNE fois : crée la relance automatique chaque matin (vers 10 h).
@@ -259,6 +264,10 @@ function mailRelance(l, num) {
   var A="#C1614F", D="#2C3E50", BD="#E5D9C6", T2="#5A6B7B", G="#9AA7B2";
   var prenom = l.firstName || String(l.name || "").trim().split(/\s+/)[0] || "";
   var txt = RELANCE_TEXTES[Math.min(num, RELANCE_TEXTES.length) - 1];
+  var crit0 = l.criteria || {};
+  var details = [ (Array.isArray(crit0.typologie) ? crit0.typologie : (crit0.typologie ? [crit0.typologie] : [])).join(" / "),
+                  crit0.secteur || "", crit0.loyer ? String(crit0.loyer).replace(/\s*€?$/, "") + " € max" : "" ].filter(function (x) { return x; }).join(" · ");
+  var criteres = "correspondant à votre recherche" + (details ? " (" + escapeHtml(details) + ")" : "");
   var sign = signataire(l);
   var crit = l.criteria || {};
   var liens = [
@@ -276,7 +285,8 @@ function mailRelance(l, num) {
   }).join("");
   var html = ''
   + '<div style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:' + D + ';background:#fff;">'
-  + '<div style="padding:22px 28px 6px;font-size:15px;line-height:1.7;">Bonjour <b>' + escapeHtml(prenom) + '</b>,<br><br>' + txt.intro + '</div>'
+  + '<div style="padding:22px 28px 6px;font-size:15px;line-height:1.7;">Bonjour <b>' + escapeHtml(prenom) + '</b>,<br><br>' + txt.intro.replace("{criteres}", criteres) + '</div>'
+  + (txt.encart ? '<div style="margin:10px 28px 4px;background:#F5E2DD;border-left:4px solid ' + A + ';border-radius:8px;padding:12px 14px;font-size:14px;font-weight:700;color:#A14E3F;line-height:1.5;">' + txt.encart + '</div>' : '')
   + '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:0 28px;width:auto;margin:0 28px;">' + etapes + '</table>'
   + '<div style="padding:14px 28px 4px;font-size:14px;color:' + T2 + ';line-height:1.7;">Une question ? Répondez simplement à ce mail' + (sign.phone ? ' ou appelez-moi au <b>' + sign.phone + '</b>' : '') + '.</div>'
   + '<table cellpadding="0" cellspacing="0" border="0" style="margin:18px 28px 26px;border-top:1px solid ' + BD + ';padding-top:14px;"><tr>'
