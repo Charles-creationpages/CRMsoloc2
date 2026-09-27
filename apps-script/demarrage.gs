@@ -175,7 +175,7 @@ const RELANCE_JOURS    = 3;
 const RELANCE_MAX      = 3;
 // Ancienneté max : on ne relance que les clients passés en « Envoyé » depuis moins de N jours
 // (les plus anciens sont ignorés, à traiter à la main). 0 = pas de limite.
-const RELANCE_AGE_MAX_JOURS = 21;
+const RELANCE_AGE_MAX_JOURS = 0;
 const CLIENT_BASE_URL  = "https://charles-creationpages.github.io/CRMsoloc2/";
 const FIREBASE_API_KEY = "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q"; // clé publique Firebase (déjà dans le CRM)
 const FIREBASE_PROJECT = "soloc-crm";
@@ -227,7 +227,8 @@ function relancesAuto(apercu) {
   getCollectionAvecId(token, "lettres").forEach(function (x) { lettres[x.id] = x; });
   var maintenant = Date.now(), jour = 24 * 3600 * 1000, envoyees = 0, lignes = [], ignores = [];
   leads.forEach(function (l) {
-    l.email = String(l.email || "").replace(/\s+/g, "");
+    var emailOrigine = String(l.email || "");
+    l.email = corrigerEmail(emailOrigine);
     if (l.column !== "envoye" || l.archived || !l.email) return;
     var sm = soumissions[l.id], lt = lettres[l.id];
     var debut = dateMs(l.envoyeAt) || dateMs(l.envoiAt) || dateMs(l.lastActivity);
@@ -241,7 +242,8 @@ function relancesAuto(apercu) {
                            dateMs(sm && sm.submittedAt), dateMs(lt && lt.signedAt)); // formulaire / signature = le dossier a bougé
     if (!dernier || maintenant - dernier < RELANCE_JOURS * jour) return;
     var num = n + 1;
-    lignes.push(l.name + " <" + l.email + "> → relance " + num + "/" + RELANCE_MAX + " (en Envoyé depuis " + age + " j)");
+    lignes.push(l.name + " <" + l.email + "> → relance " + num + "/" + RELANCE_MAX + " (en Envoyé depuis " + age + " j)"
+      + (l.email !== emailOrigine ? "  [adresse corrigée, était « " + emailOrigine + " »]" : ""));
     if (apercu) return;
     try {
       var m = mailRelance(l, num);
@@ -249,8 +251,10 @@ function relancesAuto(apercu) {
       //    (évite de renvoyer la même relance chaque matin)
       var iso = new Date().toISOString();
       var journal = (Array.isArray(l.relanceAutoLog) ? l.relanceAutoLog : []).concat([iso]);
-      majLead(token, l.id, { relanceAutoCount: { integerValue: String(num) }, relanceAutoAt: { stringValue: iso },
-        relanceAutoLog: { arrayValue: { values: journal.map(function (d) { return { stringValue: d }; }) } } });
+      var champs = { relanceAutoCount: { integerValue: String(num) }, relanceAutoAt: { stringValue: iso },
+        relanceAutoLog: { arrayValue: { values: journal.map(function (d) { return { stringValue: d }; }) } } };
+      if (l.email !== emailOrigine) champs.email = { stringValue: l.email }; // adresse corrigée enregistrée sur la fiche
+      majLead(token, l.id, champs);
       // 2) puis on envoie le mail
       envoyerMail({ to: l.email, subject: m.sujet, html: m.html, name: "SOLOC'" });
       envoyees++;
@@ -260,6 +264,20 @@ function relancesAuto(apercu) {
   Logger.log((apercu ? "APERÇU (rien envoyé) — " : "") + lignes.length + " client(s) à relancer" + (lignes.length ? " :\n" + lignes.join("\n") : ""));
   if (ignores.length) Logger.log(ignores.length + " client(s) ignoré(s), trop anciens (limite " + RELANCE_AGE_MAX_JOURS + " j) :\n" + ignores.join("\n"));
   if (!apercu) Logger.log(envoyees + " relance(s) envoyée(s)");
+}
+
+// Nettoie l'adresse (espaces) et corrige les fautes de frappe courantes sur le domaine.
+const DOMAINES_CORRIGES = {
+  "ail.com": "gmail.com", "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmal.com": "gmail.com", "gamil.com": "gmail.com",
+  "gmail.co": "gmail.com", "gmail.fr": "gmail.com", "gmail.con": "gmail.com", "gmaill.com": "gmail.com",
+  "hotmial.com": "hotmail.com", "hotmal.com": "hotmail.com", "hotmail.con": "hotmail.com", "hotmial.fr": "hotmail.fr",
+  "yahou.fr": "yahoo.fr", "yaho.fr": "yahoo.fr", "yahoo.con": "yahoo.com", "outlok.fr": "outlook.fr", "outlok.com": "outlook.com"
+};
+function corrigerEmail(e) {
+  e = String(e || "").replace(/\s+/g, "");
+  var i = e.lastIndexOf("@");
+  if (i > 0) { var dom = e.slice(i + 1).toLowerCase(); if (DOMAINES_CORRIGES[dom]) e = e.slice(0, i + 1) + DOMAINES_CORRIGES[dom]; }
+  return e;
 }
 
 function dateMs(iso) { var t = iso ? new Date(iso).getTime() : 0; return isNaN(t) ? 0 : t; }
