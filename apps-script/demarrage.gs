@@ -224,11 +224,14 @@ function relancesAuto(apercu) {
     if (apercu) return;
     try {
       var m = mailRelance(l, num);
-      envoyerMail({ to: l.email, subject: m.sujet, html: m.html, name: "SOLOC'" });
+      // 1) on note la relance dans le CRM AVANT d'envoyer : si l'écriture échoue, rien ne part
+      //    (évite de renvoyer la même relance chaque matin)
       var iso = new Date().toISOString();
       var journal = (Array.isArray(l.relanceAutoLog) ? l.relanceAutoLog : []).concat([iso]);
       majLead(token, l.id, { relanceAutoCount: { integerValue: String(num) }, relanceAutoAt: { stringValue: iso },
         relanceAutoLog: { arrayValue: { values: journal.map(function (d) { return { stringValue: d }; }) } } });
+      // 2) puis on envoie le mail
+      envoyerMail({ to: l.email, subject: m.sujet, html: m.html, name: "SOLOC'" });
       envoyees++;
       Utilities.sleep(200);
     } catch (err) { Logger.log("Echec relance " + l.email + " : " + err.message); }
