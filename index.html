@@ -11,7 +11,6 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="SOLOC'"/>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <style>body{margin:0;padding:0;background:#FBF7F0;}</style>
@@ -3347,12 +3346,26 @@ function boot(){
 if(window.__fb) boot(); else window.addEventListener("fbready", boot, {once:true});
 </script>
 <script>
+// Démarrage rapide : le code du CRM est traduit (Babel) une seule fois puis gardé en mémoire
+// dans le navigateur. Il n'est retraduit que si le code change (mise à jour du CRM).
 (function(){
   var src = document.getElementById("app-source").textContent;
-  var out = Babel.transform(src, { presets: [["react",{runtime:"classic"}]] }).code;
-  var s = document.createElement("script");
-  s.text = out;
-  document.body.appendChild(s);
+  var KEY = "soloc-crm-compiled-v1";
+  var h = 2166136261; for (var i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
+  var hash = (h >>> 0).toString(36) + "-" + src.length;
+  function run(code){ var s = document.createElement("script"); s.text = code; document.body.appendChild(s); }
+  try {
+    var cached = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (cached && cached.hash === hash && cached.code) { run(cached.code); return; }
+  } catch (e) {}
+  var b = document.createElement("script");
+  b.src = "https://unpkg.com/@babel/standalone/babel.min.js";
+  b.onload = function(){
+    var out = Babel.transform(src, { presets: [["react",{runtime:"classic"}]] }).code;
+    try { localStorage.setItem(KEY, JSON.stringify({ hash: hash, code: out })); } catch (e) {}
+    run(out);
+  };
+  document.head.appendChild(b);
 })();
 </script>
 <script>
