@@ -280,6 +280,18 @@ function corrigerEmail(e) {
   return e;
 }
 
+// Prénom propre : si le nom complet est rangé dans le prénom (import Calendly / WhatsApp…), on le découpe.
+// Les mots EN MAJUSCULES sont le nom de famille (« TOUZANI Farah » → Farah), sinon 1er mot = prénom.
+function prenomDe(o) {
+  var f = String(o.firstName || "").trim(), n = String(o.name || "").trim();
+  if (f && !(/\s/.test(f) && (!String(o.lastName || "").trim() || f === n))) return f;
+  var w = String(f || n).split(/\s+/).filter(function (x) { return x; });
+  if (w.length <= 1) return w[0] || "";
+  var caps = function (t) { return t.length > 1 && t === t.toUpperCase() && /[A-ZÀ-Þ]/.test(t); };
+  var low = w.filter(function (t) { return !caps(t); });
+  return (low.length && low.length < w.length) ? low.join(" ") : w[0];
+}
+
 function dateMs(iso) { var t = iso ? new Date(iso).getTime() : 0; return isNaN(t) ? 0 : t; }
 
 function signataire(l) {
@@ -297,7 +309,7 @@ function docProfil(statut) {
 
 function mailRelance(l, num) {
   var A="#C1614F", D="#2C3E50", BD="#E5D9C6", T2="#5A6B7B", G="#9AA7B2";
-  var prenom = l.firstName || String(l.name || "").trim().split(/\s+/)[0] || "";
+  var prenom = prenomDe(l);
   var txt = RELANCE_TEXTES[Math.min(num, RELANCE_TEXTES.length) - 1];
   var crit0 = l.criteria || {};
   var details = [ (Array.isArray(crit0.typologie) ? crit0.typologie : (crit0.typologie ? [crit0.typologie] : [])).join(" / "),
