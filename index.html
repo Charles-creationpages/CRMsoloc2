@@ -924,7 +924,8 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     c.etatLogement=asArray(c.etatLogement);
     c.etatBien=asArray(c.etatBien);
     if(c.dateAsap===undefined) c.dateAsap=false;
-    return { name:lead.name, phone:lead.phone||"", email:lead.email||"",
+    return { name:lead.name, firstName:lead.firstName||String(lead.name||"").trim().split(/\s+/)[0]||"", firstNameTouched:false,
+      phone:lead.phone||"", email:lead.email||"",
       notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"",
       personnes:asArray(lead.personnes).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})), garants:asArray(lead.garants).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})) };
   });
@@ -1006,7 +1007,10 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
           ? <div style={{fontSize:12,color:"var(--green)",fontWeight:700,marginBottom:10}}>✓ Mail de validation envoyé{lead.papernestRdv&&lead.papernestRdv.label?(" · RDV Papernest "+lead.papernestRdv.label):""}</div>
           : <button className="btn btn-p" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onPapernest(lead)}><Ic n="mail" s={13}/>Envoyer le mail de validation</button>)}
         <button className="btn btn-g" style={{width:"100%",marginBottom:10,justifyContent:"center"}} onClick={()=>onAddNewsletter(lead)}><Ic n="mail" s={13}/>Ajouter à la newsletter</button>
-        <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
+        <div className="fr">
+          <div className="fg"><label className="fl">Nom du client</label><input className="fi" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
+          <div className="fg"><label className="fl">Prénom <span style={{fontWeight:400,color:"var(--text3)"}}>(utilisé dans les mails)</span></label><input className="fi" value={form.firstName} onChange={e=>setForm(p=>({...p,firstName:e.target.value,firstNameTouched:true}))}/></div>
+        </div>
         <div className="fr">
           <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))}/></div>
           <div className="fg"><label className="fl">Email</label><input className="fi" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
@@ -3234,15 +3238,27 @@ function App(){
     const ssExtra = (effTarget==="sans_suite" && lead.column!=="sans_suite") ? {sansSuiteAt:nowISO()} : {};
     const evExtra = (effTarget==="envoye" && lead.column!=="envoye") ? {envoyeAt:nowISO()} : {};
     const partageExtra = (effTarget==="en_recherche") ? {partage:true} : {};
+    // Prénom des mails : celui saisi ; si le nom a changé sans toucher au prénom et que l'ancien
+    // prénom n'apparaît plus dans le nom (ex. « Louis » corrigé en « Luis »), on reprend le 1er mot du nom.
+    const newName=(form.name||"").trim()||lead.name;
+    let newFirst=(form.firstName||"").trim();
+    if(!form.firstNameTouched && newName!==lead.name){
+      const words=newName.split(/\s+/).filter(Boolean), old=(lead.firstName||"").trim().toLowerCase();
+      if(!old || !words.some(w=>w.toLowerCase()===old)) newFirst=words[0]||"";
+    }
+    if(newFirst!==(lead.firstName||"") || newName!==lead.name){
+      const nl=newsletterEntryOf({...lead,phone:form.phone,email:form.email});
+      if(nl && (nl.firstName!==newFirst || nl.name!==newName)) fsUpdateDoc(fsDocRef(db,"newsletter",nl.id),{firstName:newFirst, name:newName}).catch(()=>{});
+    }
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
-      name:(form.name||"").trim()||lead.name, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
+      name:newName, firstName:newFirst, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
       personnes:cleanPeople(form.personnes), garants:cleanPeople(form.garants),
       criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
-      if(gateEnvoi){ setModal({type:"envoi",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name,criteria:form.criteria}}); return; }
-      if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye){ setModal({type:"papernest",lead:{...lead,email:form.email,name:(form.name||"").trim()||lead.name}}); return; }
+      if(gateEnvoi){ setModal({type:"envoi",lead:{...lead,email:form.email,name:newName,firstName:newFirst,criteria:form.criteria}}); return; }
+      if(targetCol==="valide" && lead.column!=="valide" && !lead.papernestEnvoye){ setModal({type:"papernest",lead:{...lead,email:form.email,name:newName,firstName:newFirst}}); return; }
       if(effTarget==="sans_suite" && lead.column!=="sans_suite"){ const nl=newsletterEntryOf({...lead,phone:form.phone,email:form.email}); if(nl){ setModal({type:"nlkeep",lead:{...lead,name:(form.name||"").trim()||lead.name},nlId:nl.id}); return; } }
       setModal(null);
     });
