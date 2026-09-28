@@ -46,9 +46,9 @@ const { useState, useEffect, useRef, useCallback } = React;
 let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc, fsSetDoc, fsGetDoc;
 
 // ─── PHOTOS DES BIENS (Drive de hello@ via le script d'envoi de biens) ────
-// Photo compressée dans le navigateur (1600 px max, JPEG), envoyée au script qui la range dans
+// Photo compressée dans le navigateur (1280 px max, JPEG), envoyée au script qui la range dans
 // le Drive de hello@ et renvoie une adresse visible par lien (CRM + mails). Supprimée après 7 jours.
-const compressImage = (file, max=1600, quality=0.82) => new Promise((resolve, reject) => {
+const compressImage = (file, max=1280, quality=0.8) => new Promise((resolve, reject) => {
   const img = new Image(), url = URL.createObjectURL(file);
   img.onload = () => {
     const k = Math.min(1, max / Math.max(img.width, img.height));
@@ -59,15 +59,31 @@ const compressImage = (file, max=1600, quality=0.82) => new Promise((resolve, re
     URL.revokeObjectURL(url);
     resolve(c.toDataURL("image/jpeg", quality).split(",")[1]);
   };
-  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image illisible")); };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(/hei[cf]/i.test(file.name||file.type||"") ? "photo HEIC illisible par ce navigateur (utilise Safari, ou exporte la photo en JPEG)" : "image illisible")); };
   img.src = url;
 });
-const uploadPhoto = (file) => compressImage(file).then(data =>
-  fetchTimeout(SEND_BIEN_WEBAPP_URL, { method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({ action:"uploadPhoto", name:file.name||"photo", data }) }, 90000)
-).then(r => r.text()).then(t => {
-  let j = null; try { j = JSON.parse(t); } catch(e) {}
-  if (j && j.ok && j.url) return j.url;
-  throw new Error(String(t||"").replace(/^ERREUR\s*:?\s*/i, "") || "réponse inattendue");
+// Message lisible quand Google renvoie une page d'erreur HTML au lieu de la réponse du script
+const erreurLisible = (t) => {
+  const s = String(t||"").trim();
+  if (/^<!DOCTYPE|^<html/i.test(s)) { const m = s.match(/<title>([^<]*)<\/title>/i); return "Google a renvoyé une page d'erreur" + (m&&m[1] ? " (« "+m[1].trim()+" »)" : ""); }
+  return s.replace(/^ERREUR\s*:?\s*/i, "").slice(0, 200) || "réponse inattendue";
+};
+const envoyerPhotoUneFois = (data, name) =>
+  fetchTimeout(SEND_BIEN_WEBAPP_URL, { method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({ action:"uploadPhoto", name, data }) }, 90000)
+  .then(r => r.text()).then(t => {
+    let j = null; try { j = JSON.parse(t); } catch(e) {}
+    if (j && j.ok && j.url) return j.url;
+    throw new Error(erreurLisible(t));
+  });
+// Jusqu'à 3 essais (pause 2 s puis 5 s) : les coupures réseau ou pages d'erreur Google sont souvent passagères
+const uploadPhoto = (file) => compressImage(file).then(data => {
+  const name = (file.name||"photo").replace(/\.[^.]*$/, "") + ".jpg";
+  const essai = (n) => envoyerPhotoUneFois(data, name).catch(e => {
+    if (n >= 3 || /illisible|trop lourde|photo vide/.test(e.message)) throw e;
+    console.warn("[photos] essai "+n+" raté ("+e.message+"), nouvel essai…");
+    return new Promise(r => setTimeout(r, n===1?2000:5000)).then(() => essai(n+1));
+  });
+  return essai(1);
 });
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────
