@@ -395,16 +395,50 @@ function arrIncludes(arr, val) {
 }
 function norm(s) { return String(s || "").trim().toLowerCase(); }
 function firstName(o) { return prenomDe(o); }
-// Prénom propre : si le nom complet est rangé dans le prénom (import Calendly / WhatsApp…), on le découpe.
-// Les mots EN MAJUSCULES sont le nom de famille (« TOUZANI Farah » → Farah), sinon 1er mot = prénom.
+// Prénom propre (même règle que le CRM) : si le prénom de la fiche est vide ou contient le nom complet,
+// on cherche le mot qui ressemble le plus à un prénom grâce à la liste officielle (prenoms.js du site,
+// gardée 6 h en cache). Mots EN MAJUSCULES mêlés à des minuscules = nom ; « Da Rocha » reste entier ;
+// aucun prénom reconnu → 1er mot ; prénom TOUT EN MAJUSCULES → « Karima ».
+var _prenoms = null;
+function listePrenoms() {
+  if (_prenoms) return _prenoms;
+  var txt = "";
+  try {
+    var cache = CacheService.getScriptCache();
+    txt = cache.get("prenoms_fr") || "";
+    if (!txt) {
+      var r = UrlFetchApp.fetch("https://charles-creationpages.github.io/CRMsoloc2/prenoms.js", { muteHttpExceptions: true });
+      var m = r.getResponseCode() === 200 ? r.getContentText().match(/PRENOMS_FR="([^"]*)"/) : null;
+      txt = m ? m[1].replace(/\\n/g, "\n") : "";
+      if (txt) cache.put("prenoms_fr", txt, 21600);
+    }
+  } catch (e) { txt = ""; } // liste indisponible → ancienne règle (1er mot)
+  _prenoms = {}; txt.split("\n").forEach(function (x) { if (x) _prenoms[x] = 1; });
+  return _prenoms;
+}
 function prenomDe(o) {
   var f = String(o.firstName || "").trim(), n = String(o.name || "").trim();
   if (f && !(/\s/.test(f) && (!String(o.lastName || "").trim() || f === n))) return f;
   var w = String(f || n).split(/\s+/).filter(function (x) { return x; });
-  if (w.length <= 1) return w[0] || "";
+  var P = listePrenoms(), aListe = Object.keys(P).length > 0;
+  var PART = { DA:1, DE:1, DI:1, DU:1, DOS:1, DES:1, EL:1, AL:1, LE:1, LA:1, VAN:1, VON:1, DEL:1, BEN:1, BIN:1, OULD:1, MAC:1, MC:1 };
+  var cle = function (t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z-]/g, ""); };
+  var estPrenom = function (t) { var k = cle(t); return !!k && k.split("-").filter(function (x) { return x; }).every(function (x) { return P[x]; }); };
+  var titre = function (s) { return /[a-zà-ÿ]/.test(s) ? s : String(s).toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function (m, a, b) { return a + b.toUpperCase(); }); };
+  if (w.length <= 1) return titre(w[0] || "");
   var caps = function (t) { return t.length > 1 && t === t.toUpperCase() && /[A-ZÀ-Þ]/.test(t); };
   var low = w.filter(function (t) { return !caps(t); });
-  return (low.length && low.length < w.length) ? low.join(" ") : w[0];
+  if (low.length && low.length < w.length) {
+    var pr = aListe ? low.filter(estPrenom) : low;
+    return titre((pr.length ? pr : low).join(" "));
+  }
+  if (!aListe) return titre(w[0]);
+  var flags = w.map(function (t, i) { return estPrenom(t) && !(PART[cle(t)] && i + 1 < w.length && !estPrenom(w[i + 1])); });
+  var i = flags.indexOf(true);
+  if (i < 0) return titre(PART[cle(w[0])] ? w.join(" ") : w[0]);
+  var j = i; while (j + 1 < w.length && flags[j + 1]) j++;
+  if (i === 0 && j === w.length - 1) j = 0;
+  return titre(w.slice(i, j + 1).join(" "));
 }
 
 function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
