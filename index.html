@@ -11,6 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="SOLOC'"/>
+<script src="prenoms.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <style>body{margin:0;padding:0;background:#FBF7F0;}</style>
@@ -204,15 +205,33 @@ const validatedISO = (l) => {
 };
 const archiveMonthOf = (l) => l.archiveMonth || localMonthKey(validatedISO(l));
 const readyToArchive = (l) => l.column==="valide" && l.paid===true && !l.archived && archiveMonthOf(l) < localMonthKey();
-// Découpe « Prénom Nom » : les mots EN MAJUSCULES sont le nom de famille (« TOUZANI Farah » → Farah / TOUZANI),
-// sinon 1er mot = prénom, le reste = nom.
-const splitFullName = (full) => {
+// Découpe « Prénom Nom » en cherchant le mot qui ressemble le plus à un prénom (liste officielle
+// de prénoms, prenoms.js). Mots EN MAJUSCULES mêlés à des minuscules = nom de famille
+// (« TOUZANI Farah » → Farah). Particules (Da, El, De…) suivies d'un nom = nom de famille
+// (« Da Rocha » reste entier). Aucun prénom reconnu → 1er mot. Prénom TOUT EN MAJUSCULES → « Karima ».
+const PRENOMS = new Set(String(window.PRENOMS_FR||"").split("\n").filter(Boolean));
+const PARTICULES = new Set(["DA","DE","DI","DU","DOS","DES","EL","AL","LE","LA","VAN","VON","DEL","BEN","BIN","OULD","MAC","MC"]);
+const nameKey = (t) => String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z-]/g,"");
+const isPrenomWord = (t) => { const k=nameKey(t); return !!k && k.split("-").filter(Boolean).every(x=>PRENOMS.has(x)); };
+const titleCase = (s) => /[a-zà-ÿ]/.test(s) ? s : String(s).toLowerCase().replace(/(^|[\s-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
+const splitFullName = (full) => { const r=splitFullNameRaw(full); return { prenom:titleCase(r.prenom), nom:r.nom }; };
+const splitFullNameRaw = (full) => {
   const w=String(full||"").trim().split(/\s+/).filter(Boolean);
   if(w.length<=1) return { prenom:w[0]||"", nom:"" };
   const caps=(t)=>t.length>1 && t===t.toUpperCase() && /[A-ZÀ-Þ]/.test(t);
   const up=w.filter(caps), low=w.filter(t=>!caps(t));
-  if(up.length && low.length) return { prenom:low.join(" "), nom:up.join(" ") };
-  return { prenom:w[0], nom:w.slice(1).join(" ") };
+  if(up.length && low.length){
+    let pr=PRENOMS.size ? low.filter(isPrenomWord) : low;
+    if(!pr.length) pr=low;
+    return { prenom:pr.join(" "), nom:w.filter(t=>!pr.includes(t)).join(" ") };
+  }
+  if(!PRENOMS.size) return { prenom:w[0], nom:w.slice(1).join(" ") };
+  const flags=w.map((t,i)=>isPrenomWord(t) && !(PARTICULES.has(nameKey(t)) && i+1<w.length && !isPrenomWord(w[i+1])));
+  const i=flags.indexOf(true);
+  if(i<0) return PARTICULES.has(nameKey(w[0])) ? { prenom:w.join(" "), nom:"" } : { prenom:w[0], nom:w.slice(1).join(" ") };
+  let j=i; while(j+1<w.length && flags[j+1]) j++;
+  if(i===0 && j===w.length-1) j=0; // tous les mots ressemblent à des prénoms : le 1er est le prénom
+  return { prenom:w.slice(i,j+1).join(" "), nom:w.slice(0,i).concat(w.slice(j+1)).join(" ") };
 };
 // Prénom mal rempli = vide, ou nom complet rangé dans le prénom (import Calendly / WhatsApp…)
 const badFirstName = (o) => { const f=String(o.firstName||"").trim(), n=String(o.name||"").trim();
