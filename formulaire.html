@@ -36,6 +36,11 @@
   .state-ic{font-size:44px;margin-bottom:14px;}
   .state-t{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;}
   .state-s{font-size:14px;color:#5A6B7B;line-height:1.6;}
+  .next{margin-top:22px;padding-top:20px;border-top:1px solid #E5D9C6;}
+  .next-btn{display:block;background:#C1614F;color:#fff;text-decoration:none;font-family:'Sora',sans-serif;font-size:17px;font-weight:800;padding:16px 18px;border-radius:12px;box-shadow:0 6px 18px rgba(193,97,79,.35);}
+  .next-btn:hover{background:#A14E3F;}
+  .next-note{font-size:12px;color:#5A6B7B;margin-top:9px;line-height:1.5;}
+  .next-ok{font-size:14px;font-weight:700;color:#15803d;margin-bottom:12px;}
   .extra{border:1.5px dashed #D8C7AE;border-radius:11px;padding:12px 12px 0;margin-bottom:12px;background:#fff8;}
   .extra-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;color:#5A6B7B;margin-bottom:8px;}
   .rm{background:none;border:none;color:#991B1B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -141,12 +146,34 @@
       <div class="state-ic">✅</div>
       <div class="state-t">Merci, c'est bien reçu !</div>
       <div class="state-s">Vos critères nous sont parvenus. Votre conseiller SOLOC' revient vers vous très vite.</div>
+      <div class="next" data-next style="display:none;">
+        <div data-lm>
+          <a class="next-btn" data-lm-link href="#">✍️ Signer ma lettre de mission</a>
+          <div class="next-note">La lettre de mission est obligatoire pour recevoir nos biens. Signature en ligne, en 2 minutes.</div>
+        </div>
+        <div data-docs style="display:none;">
+          <div class="next-ok">✓ Votre lettre de mission est signée, merci !</div>
+          <a class="next-btn" data-docs-link href="#">📂 Préparer mes documents</a>
+          <div class="next-note">Dernière étape : constituez votre dossier locatif pour que l'on puisse vous positionner sur les biens.</div>
+        </div>
+      </div>
     </div>
 
     <div id="already" class="state" style="display:none;">
       <div class="state-ic">📋</div>
       <div class="state-t">Formulaire déjà rempli</div>
       <div class="state-s">Ce formulaire a déjà été complété. Si vous devez modifier vos critères, contactez votre conseiller SOLOC'.</div>
+      <div class="next" data-next style="display:none;">
+        <div data-lm>
+          <a class="next-btn" data-lm-link href="#">✍️ Signer ma lettre de mission</a>
+          <div class="next-note">La lettre de mission est obligatoire pour recevoir nos biens. Signature en ligne, en 2 minutes.</div>
+        </div>
+        <div data-docs style="display:none;">
+          <div class="next-ok">✓ Votre lettre de mission est signée, merci !</div>
+          <a class="next-btn" data-docs-link href="#">📂 Préparer mes documents</a>
+          <div class="next-note">Dernière étape : constituez votre dossier locatif pour que l'on puisse vous positionner sur les biens.</div>
+        </div>
+      </div>
     </div>
 
     <div id="invalid" class="state" style="display:none;">
@@ -175,6 +202,22 @@
   const preNom = params.get("n");
 
   const $ = (id)=>document.getElementById(id);
+
+  // Étape suivante sous la confirmation : gros bouton « Signer ma lettre de mission »,
+  // ou « Préparer mes documents » si la lettre est déjà signée.
+  async function etapeSuivante(){
+    if(!leadId) return;
+    let lt = null;
+    try { const s = await getDoc(doc(db,"lettres",leadId)); if(s.exists()) lt = s.data(); } catch(e) {}
+    const signee = lt && lt.status === "signe";
+    document.querySelectorAll("[data-next]").forEach(function(box){
+      box.querySelector("[data-lm-link]").href = "lettre.html?id=" + encodeURIComponent(leadId);
+      box.querySelector("[data-docs-link]").href = "documents.html?id=" + encodeURIComponent(leadId) + "&p=" + encodeURIComponent((lt && lt.profil) || "salarie");
+      box.querySelector("[data-lm]").style.display = signee ? "none" : "block";
+      box.querySelector("[data-docs]").style.display = signee ? "block" : "none";
+      box.style.display = "block";
+    });
+  }
   const show = (id)=>{ ["loading","form","done","already","invalid"].forEach(x=>$(x).style.display="none"); $(id).style.display = id==="form"?"block":(id==="loading"?"block":"block"); };
 
   function initChoices(){
@@ -218,7 +261,7 @@
     if(!leadId){ show("invalid"); return; }
     try {
       const snap = await getDoc(doc(db,"soumissions",leadId));
-      if(snap.exists()){ show("already"); return; }
+      if(snap.exists()){ show("already"); etapeSuivante(); return; }
     } catch(e){}
     if(preNom) $("loc_nom").value = preNom;
     initChoices();
@@ -272,10 +315,10 @@
     $("send").disabled=true; $("send").textContent="Envoi…";
     try {
       await setDoc(doc(db,"soumissions",leadId), data);
-      show("done");
+      show("done"); etapeSuivante();
     } catch(e){
       // create refusé = doc déjà existant (déjà rempli) OU erreur réseau
-      if(String(e.code||"").indexOf("permission")!==-1){ show("already"); }
+      if(String(e.code||"").indexOf("permission")!==-1){ show("already"); etapeSuivante(); }
       else { $("send").disabled=false; $("send").textContent="Envoyer mes critères"; err.textContent="Une erreur est survenue, réessayez dans un instant."; err.style.display="block"; }
     }
   }

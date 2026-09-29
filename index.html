@@ -141,6 +141,8 @@ const PIPELINE_COLS = [
   {id:"valide",        label:"Validé",          color:"#16A34A"},
 ];
 const ACTIVE_ALERT_COLS = PIPELINE_COLS.filter(c=>!["sans_suite","valide"].includes(c.id)).map(c=>c.id);
+// À partir d'« Envoyé », un client est visible par toute l'équipe (Emmy et Aya), étiquette inchangée.
+const VISIBLE_PAR_TOUS = ["envoye","en_attente","en_recherche","en_commission","valide"];
 const SANS_SUITE_TTL_DAYS = 15;
 const STATUTS = ["Étudiant","CDI","CDD","Indépendant","Colocation"];
 const TYPOLOGIES = ["Studio / T1","T2","T3","T4","T5+"];
@@ -1685,7 +1687,10 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
   const myRole = roleOfEmail(user.email);
   const [sendNl,setSendNl]=useState(true);
   const [sendMi,setSendMi]=useState(true);
-  const [sender,setSender]=useState((myRole==="emmy"||myRole==="aya")?myRole:"equipe");
+  // Signature imposée : la personne qui a créé le bien (bandeau + son numéro dans le mail).
+  // Biens anciens sans créateur connu : la personne qui envoie. Charles / autre compte : l'équipe.
+  const creatorRole = bien.createdBy ? roleOfEmail(bien.createdBy) : myRole;
+  const sender = (creatorRole==="emmy"||creatorRole==="aya") ? creatorRole : "equipe";
   const [sending,setSending]=useState(false);
   const total = (sendNl?nlMatch.length:0)+(sendMi?missionMatch.length:0);
   const senderLabels={emmy:"Emmy",aya:"Aya",equipe:"Équipe SOLOC'"};
@@ -1725,10 +1730,11 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
         {box(sendNl,setSendNl,"Newsletter",nlMatch.length+" contact"+(nlMatch.length!==1?"s":"")+" qui cherche"+(nlMatch.length!==1?"nt":"")+" du "+(typo||"—"))}
         {box(sendMi,setSendMi,"Lettre de Mission (En recherche)",missionMatch.length+" client"+(missionMatch.length!==1?"s":"")+" suivi"+(missionMatch.length!==1?"s":"")+" · honoraires selon profil")}
         <div className="modal-section">Signature du mail</div>
-        <div className="seg">
-          {["emmy","aya","equipe"].map(s=>(
-            <button key={s} type="button" className={"seg-btn"+(sender===s?" active":"")} onClick={()=>setSender(s)}>{senderLabels[s]}</button>
-          ))}
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",border:"1.5px solid var(--border2)",borderRadius:10,background:"var(--surface2)"}}>
+          <span className="badge" style={{background:(ASSIGNEES[sender]||{}).color||"var(--ardoise)",color:"#fff"}}>{senderLabels[sender]}</span>
+          <span style={{fontSize:12,color:"var(--text2)"}}>{sender==="equipe"
+            ? (bien.createdBy?"bien créé par Charles : signature « L'équipe SOLOC' » (sans numéro de téléphone).":"signature « L'équipe SOLOC' » (sans numéro de téléphone).")
+            : (bien.createdBy?"a créé ce bien : le mail est signé à son nom, avec son numéro de téléphone.":"signature de la personne qui envoie, avec son numéro de téléphone.")}</span>
         </div>
         <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>Envoi depuis hello@solocimmo.fr — un mail personnalisé par destinataire (honoraires selon profil).</div>
         <div className="fa">
@@ -1761,8 +1767,8 @@ function BiensPage({user, newsletter, leads, addToast}){
         .then(()=>{addToast("✓ Bien mis à jour");setModal(null);})
         .catch(()=>addToast("Erreur","error"));
     } else {
-      fsAddDoc(fsCollection(db,"biens"),{...form,createdAt:nowISO()})
-        .then(ref=>{addToast("✓ Bien ajouté");setModal({type:"send",bien:{...form,id:ref.id}});})
+      fsAddDoc(fsCollection(db,"biens"),{...form,createdBy:user.email,createdAt:nowISO()})
+        .then(ref=>{addToast("✓ Bien ajouté");setModal({type:"send",bien:{...form,createdBy:user.email,id:ref.id}});})
         .catch(()=>addToast("Erreur","error"));
     }
   };
@@ -3359,7 +3365,7 @@ function App(){
   const isAdmin = myRole==="admin";
   const pipelineLeads = isAdmin
     ? (pipeFilter==="all" ? filteredLeads : filteredLeads.filter(l=>asArray(l.assignedTo).includes(pipeFilter)))
-    : filteredLeads.filter(l=>asArray(l.assignedTo).includes(myRole) || l.partage===true || l.column==="en_recherche");
+    : filteredLeads.filter(l=>asArray(l.assignedTo).includes(myRole) || l.partage===true || l.envoiEnvoye===true || VISIBLE_PAR_TOUS.includes(l.column));
 
   const partnersOf=(lead)=>{ if(!lead) return []; const ph=normPhone(lead.phone); const em=normEmail(lead.email); return activeLeads.filter(o=>o.id!==lead.id && ((ph&&normPhone(o.phone)===ph)||(em&&normEmail(o.email)===em))); };
   const dupeIds=new Set();
