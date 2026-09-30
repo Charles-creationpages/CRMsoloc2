@@ -702,6 +702,51 @@ function LoginScreen(){
 }
 
 // ─── LEAD CARD ───────────────────────────────────────────────────────────
+// ─── SECTEUR RÉSUMÉ (pastille compacte « En recherche ») ─────────────────
+// « Croix-Rousse, Pentes » → LYON 4 · « Lyon 2, Lyon 3 » → LYON 2/3 · 3 arrondissements ou + → LYON
+const QUARTIERS_LYON = [
+  ["pentes de la croix-rousse",1],["pentes de la croix rousse",1],
+  ["presqu'ile",2],["presquile",2],["bellecour",2],["perrache",2],["confluence",2],["ainay",2],["cordeliers",2],["jacobins",2],["celestins",2],
+  ["terreaux",1],["hotel de ville",1],["pentes",1],
+  ["part-dieu",3],["part dieu",3],["montchat",3],["villette",3],["sans souci",3],["dauphine",3],["prefecture",3],["paul bert",3],["garibaldi",3],["saxe",3],
+  ["croix-rousse",4],["croix rousse",4],
+  ["vieux lyon",5],["vieux-lyon",5],["saint-jean",5],["saint jean",5],["st jean",5],["fourviere",5],["point du jour",5],["saint-just",5],["saint just",5],["menival",5],
+  ["brotteaux",6],["foch",6],["massena",6],["tete d'or",6],["cite internationale",6],
+  ["jean mace",7],["jean-mace",7],["gerland",7],["guillotiere",7],["berthelot",7],
+  ["monplaisir",8],["etats-unis",8],["etats unis",8],["bachut",8],["mermoz",8],["grange blanche",8],["laennec",8],
+  ["vaise",9],["gorge de loup",9],["duchere",9],["valmy",9],["saint-rambert",9],["ile barbe",9]
+];
+const MOTS_VIDES_SECTEUR = /^(lyon|lyon centre|centre|centre ville|arrondissement|arrondissements|arr|secteur|proche|idealement|de preference|quartier|quartiers|ou|et|peu importe|tous|tout|)$/;
+function secteurCourt(txt){
+  if(!txt) return "";
+  let s = String(txt).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[’`]/g,"'");
+  const arrs = new Set(); let lyonGeneral = false;
+  const addN = n => { n=parseInt(n,10); if(n>=1&&n<=9) arrs.add(n); };
+  // « Lyon 3 », « Lyon 3e », « Lyon 2, 3 et 7 », « lyon 9 Lyon 7 »
+  s = s.replace(/lyon\s*((?:\d{1,2}\s*(?:er|eme|e)?\b\s*(?:[,/&+-]|et|ou)?\s*)+)/g, (m,nums)=>{ (nums.match(/\d{1,2}/g)||[]).forEach(addN); return ","; });
+  // codes postaux 69001…69009 et « 3e arrondissement »
+  s = s.replace(/\b6900(\d)\b/g, (m,n)=>{ addN(n); return ","; });
+  s = s.replace(/\b(\d)\s*(?:er|eme|e)\s*(?:arr\w*)?\b/g, (m,n)=>{ addN(n); return ","; });
+  // quartiers de Lyon
+  QUARTIERS_LYON.forEach(([q,n])=>{ if(s.includes(q)){ arrs.add(n); s = s.split(q).join(","); } });
+  const autres = [];
+  s.split(/[,;/+&\n()]|\bet\b|\bou\b/).map(p=>p.replace(/[.\-]+$/,"").replace(/^[\s.\-]+/,"").replace(/\s+/g," ").trim()).forEach(p=>{
+    if(!p) return;
+    if(/^lyon\b/.test(p) && MOTS_VIDES_SECTEUR.test(p.replace(/^lyon\s*/,""))){ lyonGeneral = true; return; }
+    if(MOTS_VIDES_SECTEUR.test(p) || /^\d+$/.test(p) || /^((de|la|le|les|du|des|l'|d'|a|au|aux|sur|pres|cote|vers)\s*)+$/.test(p)) return;
+    const up = p.toUpperCase();
+    if(!autres.includes(up)) autres.push(up);
+  });
+  const liste = [...arrs].sort((a,b)=>a-b);
+  let lyon = "";
+  if(liste.length===1) lyon = "LYON "+liste[0];
+  else if(liste.length===2) lyon = "LYON "+liste.join("/");
+  else if(liste.length>2 || lyonGeneral) lyon = "LYON";
+  const tout = (lyon?[lyon]:[]).concat(autres);
+  if(tout.length<=2) return tout.join(" / ");
+  return tout.slice(0,2).join(" / ")+" +"+(tout.length-2);
+}
+
 function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isDupe, isAdmin}){
   const stale = ACTIVE_ALERT_COLS.includes(lead.column) && daysSince(lead.lastActivity)>=3;
   const cls = ["kb-card"];
@@ -710,6 +755,24 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
   const typoArr = asArray(lead.criteria && lead.criteria.typologie);
   const critSummary = typoArr.length ? (typoArr.join("/")+" · "+(lead.criteria.secteur||"—")+" · "+(lead.criteria.loyer?lead.criteria.loyer+"€":"—")) : null;
   const chip=(bg,fg)=>({fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:bg,color:fg,whiteSpace:"nowrap"});
+
+  // « En recherche » : pastille réduite à l'essentiel (le détail reste dans la fiche)
+  if(lead.column==="en_recherche"){
+    const c = lead.criteria||{};
+    const budget = c.loyer ? (/€/.test(String(c.loyer)) ? String(c.loyer) : c.loyer+"€") : "";
+    const ligne = [typoArr.join("/"), budget, secteurCourt(c.secteur)].filter(Boolean).join(" · ") || "Critères à compléter";
+    return(
+      <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)} style={{padding:"8px 11px"}} title={[typoArr.join("/"),budget,c.secteur].filter(Boolean).join(" · ")}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:3}}>
+          <div className="kb-card-name" style={{margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name}</div>
+          {asArray(lead.assignedTo).length>0
+            ? <span style={{display:"flex",gap:3,flexShrink:0}}>{asArray(lead.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>
+            : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stale?"⚠ ":""}{ligne}</div>
+      </div>
+    );
+  }
 
   return(
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
