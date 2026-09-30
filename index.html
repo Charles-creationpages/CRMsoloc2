@@ -753,26 +753,12 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
   if(stale) cls.push("warn");
   if(isAdmin&&lead.column==="valide"&&lead.paid) cls.push("paid");
   const typoArr = asArray(lead.criteria && lead.criteria.typologie);
-  const critSummary = typoArr.length ? (typoArr.join("/")+" · "+(lead.criteria.secteur||"—")+" · "+(lead.criteria.loyer?lead.criteria.loyer+"€":"—")) : null;
+  // « En recherche » : critères résumés en une ligne TYPOLOGIE · BUDGET · SECTEUR (le détail reste dans la fiche)
+  const cr = lead.criteria||{};
+  const critSummary = lead.column==="en_recherche"
+    ? ([typoArr.join("/"), cr.loyer?(/€/.test(String(cr.loyer))?String(cr.loyer):cr.loyer+"€"):"", secteurCourt(cr.secteur)].filter(Boolean).join(" · ") || null)
+    : (typoArr.length ? (typoArr.join("/")+" · "+(cr.secteur||"—")+" · "+(cr.loyer?cr.loyer+"€":"—")) : null);
   const chip=(bg,fg)=>({fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:bg,color:fg,whiteSpace:"nowrap"});
-
-  // « En recherche » : pastille réduite à l'essentiel (le détail reste dans la fiche)
-  if(lead.column==="en_recherche"){
-    const c = lead.criteria||{};
-    const budget = c.loyer ? (/€/.test(String(c.loyer)) ? String(c.loyer) : c.loyer+"€") : "";
-    const ligne = [typoArr.join("/"), budget, secteurCourt(c.secteur)].filter(Boolean).join(" · ") || "Critères à compléter";
-    return(
-      <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)} style={{padding:"8px 11px"}} title={[typoArr.join("/"),budget,c.secteur].filter(Boolean).join(" · ")}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:3}}>
-          <div className="kb-card-name" style={{margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name}</div>
-          {asArray(lead.assignedTo).length>0
-            ? <span style={{display:"flex",gap:3,flexShrink:0}}>{asArray(lead.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>
-            : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
-        </div>
-        <div style={{fontSize:11,color:"var(--text2)",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stale?"⚠ ":""}{ligne}</div>
-      </div>
-    );
-  }
 
   return(
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
@@ -782,7 +768,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
           ? <span style={{display:"flex",gap:3,flexShrink:0}}>{asArray(lead.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>
           : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
       </div>
-      {critSummary&&<div style={{fontSize:11,color:"var(--text2)",fontWeight:600,marginBottom:5}}>{critSummary}</div>}
+      {critSummary&&<div style={{fontSize:lead.column==="en_recherche"?12:11,color:"var(--text2)",fontWeight:lead.column==="en_recherche"?700:600,marginBottom:5,...(lead.column==="en_recherche"?{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}:{})}} title={lead.column==="en_recherche"?cr.secteur:undefined}>{critSummary}</div>}
       {lead.phone&&<div style={{fontSize:10.5,color:"var(--text3)"}}>📞 {lead.phone}</div>}
       <div className="kb-badges" style={{marginTop:5}}>
         {lead.calendlyRdv&&<span style={chip("#EFF6FF","#1d4ed8")}>🗓 {lead.calendlyRdv.dateLabel}</span>}
