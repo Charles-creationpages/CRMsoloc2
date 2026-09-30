@@ -761,30 +761,40 @@ function todayTasks(leads, role, filter){
     return true;
   });
   const groups=[
-    {key:"rdv",    icon:"📅", label:"RDV aujourd'hui", color:"#1d4ed8", bg:"#EFF6FF",
-     test:l=>l.calendlyRdv&&l.calendlyRdv.startTime&&isToday(l.calendlyRdv.startTime), why:l=>"RDV "+(l.calendlyRdv.timeLabel||"")},
-    {key:"relance",icon:"📞", label:"À relancer", color:"#b45309", bg:"#FEF3C7",
+    {key:"rdv",    icon:"📅", label:"RDV aujourd'hui", color:"#1d4ed8", bg:"#EFF6FF", done:true, hint:"disparaît dès que la fiche est mise à jour ou déplacée après le RDV",
+     test:l=>l.calendlyRdv&&l.calendlyRdv.startTime&&isToday(l.calendlyRdv.startTime)
+       && !(new Date(l.lastActivity||0).getTime() >= new Date(l.calendlyRdv.startTime).getTime()), // traité après le début du RDV → retiré
+     why:l=>"RDV "+(l.calendlyRdv.timeLabel||"")},
+    {key:"relance",icon:"📞", label:"À relancer", color:"#b45309", bg:"#FEF3C7", done:true, hint:"disparaît après « Pas de réponse », un déplacement ou ✓ (jusqu'à demain)",
      test:l=>l.column==="relance" && !isToday(l.lastActivity), why:l=>"Prochaine relance : "+((l.relanceCount||0)+1)+"/3"},
-    {key:"envoye", icon:"✉️", label:"Dossier envoyé incomplet", color:"#7c3aed", bg:"#F3E8FF",
+    {key:"envoye", icon:"✉️", label:"Dossier envoyé incomplet", color:"#7c3aed", bg:"#F3E8FF", done:true, hint:"disparaît quand formulaire + lettre sont faits, au déplacement, ou ✓ (3 jours)",
      test:l=>l.column==="envoye" && daysSince(l.envoyeAt||l.lastActivity)>=3 && (!l.formulaireRempli||!l.lettreSignee),
      why:l=>"Envoyé il y a "+Math.floor(daysSince(l.envoyeAt||l.lastActivity))+" j — manque "+[!l.formulaireRempli&&"formulaire",!l.lettreSignee&&"lettre"].filter(Boolean).join(" + ")+(l.relanceAutoCount>0?" · 🔁 relance auto "+l.relanceAutoCount+"/3":"")},
-    {key:"stale",  icon:"⏳", label:"Sans nouvelles depuis 3 jours ou +", color:"#92400e", bg:"#FFF7ED",
+    {key:"stale",  icon:"⏳", label:"Sans nouvelles depuis 3 jours ou +", color:"#92400e", bg:"#FFF7ED", done:true, hint:"disparaît dès que la fiche bouge, ou ✓",
      test:l=>ACTIVE_ALERT_COLS.includes(l.column) && daysSince(l.lastActivity)>=3,
      why:l=>(PIPELINE_COLS.find(c=>c.id===l.column)||{}).label+" · "+Math.floor(daysSince(l.lastActivity))+" j sans mouvement"},
-    {key:"nonassigne", icon:"👤", label:"Non assignés", color:"#475569", bg:"#F1F5F9", adminOnly:true,
+    {key:"nonassigne", icon:"👤", label:"Non assignés", color:"#475569", bg:"#F1F5F9", adminOnly:true, hint:"disparaît quand Emmy ou Aya est assignée",
      test:l=>asArray(l.assignedTo).length===0 && !["sans_suite","valide"].includes(l.column), why:l=>"À attribuer à Emmy ou Aya"},
-    {key:"nonpaye",icon:"💶", label:"Validés non payés", color:"#15803d", bg:"#DCFCE7", adminOnly:true,
+    {key:"nonpaye",icon:"💶", label:"Validés non payés", color:"#15803d", bg:"#DCFCE7", adminOnly:true, hint:"disparaît quand « Payé » est coché",
      test:l=>l.column==="valide" && !l.paid, why:l=>"Validé le "+fmtDate(l.validatedAt||l.lastActivity)}
   ];
   const used=new Set();
   return groups.filter(g=>!g.adminOnly||role==="admin").map(g=>{
     const pool = g.key==="nonassigne" ? (role==="admin"&&(!filter||filter==="all") ? leads : []) : mine;
-    const items = pool.filter(l=>!used.has(l.id) && g.test(l));
+    const items = pool.filter(l=>!used.has(l.id) && g.test(l) && !todoSnoozed(l,g.key));
     items.forEach(l=>used.add(l.id));
     return {...g, items};
   }).filter(g=>g.items.length);
 }
-function TodayPanel({leads, role, filter, onOpen}){
+// ✓ « Fait » : la tâche est masquée (RDV : définitivement pour ce RDV ; relance : jusqu'à demain ;
+// dossier envoyé / sans nouvelles : 3 jours). La fiche est aussi marquée comme « bougée ».
+const todoSnoozeKey = (l,key) => key==="rdv" ? "rdv:"+((l.calendlyRdv&&l.calendlyRdv.startTime)||"") : key;
+const todoSnoozed = (l,key) => { const z=l.todoSnooze; return !!(z && z.key===todoSnoozeKey(l,key) && Date.now() < new Date(z.until).getTime()); };
+const todoSnoozeUntil = (key) => { const d=new Date();
+  if(key==="relance"){ d.setHours(23,59,59,0); return d.toISOString(); }
+  if(key==="rdv") return new Date(Date.now()+30*86400000).toISOString();
+  return new Date(Date.now()+3*86400000).toISOString(); };
+function TodayPanel({leads, role, filter, onOpen, onDone}){
   const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem("soloc-today-open")!=="0"; }catch(e){ return true; } });
   const [showAll,setShowAll]=useState({});
   const groups=todayTasks(leads, role, filter);
@@ -807,14 +817,17 @@ function TodayPanel({leads, role, filter, onOpen}){
               const lim=showAll[g.key]?g.items.length:5;
               return(
                 <div key={g.key}>
-                  <div style={{fontSize:11,fontWeight:800,color:g.color,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{g.icon} {g.label} ({g.items.length})</div>
+                  <div style={{fontSize:11,fontWeight:800,color:g.color,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{g.icon} {g.label} ({g.items.length}) {g.hint&&<span style={{textTransform:"none",letterSpacing:0,fontWeight:600,color:"var(--text3)"}}>· {g.hint}</span>}</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                     {g.items.slice(0,lim).map(l=>(
-                      <button key={l.id} type="button" onClick={()=>onOpen(l)} style={{display:"flex",alignItems:"center",gap:7,background:g.bg,border:"1px solid transparent",borderRadius:10,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                        <span style={{fontSize:12.5,fontWeight:800,color:"var(--text)"}}>{l.name}</span>
-                        <span style={{fontSize:11,color:"var(--text2)"}}>{g.why(l)}</span>
-                        {role==="admin"&&asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}
-                      </button>
+                      <div key={l.id} style={{display:"flex",alignItems:"stretch",background:g.bg,borderRadius:10,overflow:"hidden"}}>
+                        <button type="button" onClick={()=>onOpen(l)} style={{display:"flex",alignItems:"center",gap:7,background:"transparent",border:"none",padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          <span style={{fontSize:12.5,fontWeight:800,color:"var(--text)"}}>{l.name}</span>
+                          <span style={{fontSize:11,color:"var(--text2)"}}>{g.why(l)}</span>
+                          {role==="admin"&&asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}
+                        </button>
+                        {g.done&&onDone&&<button type="button" title="Marquer comme fait" onClick={()=>onDone(l,g)} style={{border:"none",borderLeft:"1px solid rgba(0,0,0,.08)",background:"rgba(255,255,255,.55)",color:g.color,fontWeight:900,fontSize:14,padding:"0 10px",cursor:"pointer"}}>✓</button>}
+                      </div>
                     ))}
                     {g.items.length>5&&<button type="button" className="btn btn-g btn-sm" onClick={()=>setShowAll(p=>({...p,[g.key]:!p[g.key]}))}>{showAll[g.key]?"Voir moins":"+ "+(g.items.length-5)+" autres"}</button>}
                   </div>
@@ -3293,6 +3306,13 @@ function App(){
     }
   };
 
+  const markTodoDone=(lead,g)=>{
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
+      todoSnooze:{key:todoSnoozeKey(lead,g.key), until:todoSnoozeUntil(g.key)}, lastActivity:nowISO(),
+      history:[...(lead.history||[]),mkEvent("✓","Tâche faite : "+g.label)]
+    }).then(()=>addToast("✓ "+lead.name+" — "+g.label)).catch(()=>addToast("Erreur","error"));
+  };
+
   const togglePaid=(lead)=>{
     const paid=!lead.paid;
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
@@ -3433,7 +3453,7 @@ function App(){
               </div>
               <div className="main">
                 {tab==="pipeline"
-                  ? <><TodayPanel leads={filteredLeads} role={myRole} filter={pipeFilter} onOpen={lead=>setModal({type:"detail",lead})}/><KanbanBoard leads={pipelineLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds} isAdmin={isAdmin}/></>
+                  ? <><TodayPanel leads={filteredLeads} role={myRole} filter={pipeFilter} onOpen={lead=>setModal({type:"detail",lead})} onDone={markTodoDone}/><KanbanBoard leads={pipelineLeads} onOpen={lead=>setModal({type:"detail",lead})} onMove={moveLead} onRelanceAction={relanceAction} onTogglePaid={togglePaid} isMobile={isMobile} dupeIds={dupeIds} isAdmin={isAdmin}/></>
                   : <RechercheTable leads={filteredLeads} search={search}/>}
               </div>
             </>)}
