@@ -3041,6 +3041,51 @@ function App(){
     addToast(toDelete.length+" fiche"+(toDelete.length>1?"s":"")+" en sans suite supprimée"+(toDelete.length>1?"s":"")+" (+15j)");
   },[leads,user]);
 
+  // Doublons Calendly : l'outil externe qui crée les leads Calendly en crée parfois 2 ou 3 pour le même client.
+  // Fiches encore en Premier contact, avec un RDV Calendly et le même téléphone ou email → fusion automatique
+  // dans la plus ancienne (elle garde son historique, le RDV le plus récent est conservé), les autres sont supprimées.
+  // Transaction : si plusieurs CRM sont ouverts, la fusion n'est faite qu'une fois.
+  const calDupRef=useRef(new Set());
+  useEffect(()=>{
+    if(!user||!fsRunTransaction) return;
+    const cands=leads.filter(l=>!l.archived && l.column==="premier_contact" && l.calendlyRdv);
+    const groups={};
+    cands.forEach(l=>{
+      const k=normPhone(l.phone)||normEmail(l.email);
+      if(!k) return;
+      (groups[k]=groups[k]||[]).push(l);
+    });
+    Object.values(groups).forEach(g=>{
+      if(g.length<2) return;
+      const byAge=[...g].sort((a,b)=>(new Date(a.createdAt||0)-new Date(b.createdAt||0))||String(a.id).localeCompare(String(b.id)));
+      const keep=byAge[0];
+      const newest=byAge[byAge.length-1];
+      byAge.slice(1).forEach(drop=>{
+        if(calDupRef.current.has(drop.id)) return;
+        calDupRef.current.add(drop.id);
+        const keepRef=fsDocRef(db,"leads",keep.id), dropRef=fsDocRef(db,"leads",drop.id);
+        fsRunTransaction(db, async tx=>{
+          const k=await tx.get(keepRef), d=await tx.get(dropRef);
+          if(!k.exists()||!d.exists()) return false;
+          const kd=k.data(), dd=d.data();
+          const notes=[kd.notes,dd.notes].filter(Boolean).filter((n,i,a)=>a.indexOf(n)===i).join("\n— — —\n");
+          tx.update(keepRef,{
+            firstName:kd.firstName||dd.firstName||"", lastName:kd.lastName||dd.lastName||"", name:kd.name||dd.name||"",
+            phone:kd.phone||dd.phone||"", email:kd.email||dd.email||"",
+            criteria:mergeCriteria(kd.criteria,dd.criteria),
+            calendlyRdv:(drop.id===newest.id?dd.calendlyRdv:null)||kd.calendlyRdv||dd.calendlyRdv||null,
+            calendlyEventUri:(drop.id===newest.id?dd.calendlyEventUri:null)||kd.calendlyEventUri||dd.calendlyEventUri||null,
+            whatsappContact:kd.whatsappContact||dd.whatsappContact||null,
+            notes:notes,
+            history:[...(kd.history||[]),mkEvent("🔗","Doublon Calendly fusionné automatiquement")]
+          });
+          tx.delete(dropRef);
+          return true;
+        }).catch(()=>calDupRef.current.delete(drop.id));
+      });
+    });
+  },[leads,user]);
+
   // Auto-répartition des leads non assignés (Calendly = jour du RDV, WhatsApp = jour de réception).
   // Les leads manuels arrivent déjà assignés (choix obligatoire à l'ajout), donc ne passent pas ici.
   const assignRef=useRef(new Set());
