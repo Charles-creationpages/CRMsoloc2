@@ -21,7 +21,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
@@ -35,7 +35,7 @@
   window.__fb = {
     auth: getAuth(fbApp), db: getFirestore(fbApp),
     onAuthStateChanged, signInWithEmailAndPassword, signOut,
-    collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc
+    collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, runTransaction
   };
   window.dispatchEvent(new Event("fbready"));
 </script>
@@ -43,7 +43,7 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ─── FIREBASE (modulaire, assigné quand window.__fb est prêt) ────────────
-let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc, fsSetDoc, fsGetDoc;
+let auth, db, fsOnAuthStateChanged, fsSignIn, fsSignOut, fsCollection, fsOnSnapshot, fsAddDoc, fsDocRef, fsUpdateDoc, fsDeleteDoc, fsSetDoc, fsGetDoc, fsRunTransaction;
 
 // ─── PHOTOS DES BIENS (Drive de hello@ via le script d'envoi de biens) ────
 // Photo compressée dans le navigateur (1280 px max, JPEG), envoyée au script qui la range dans
@@ -3132,7 +3132,9 @@ function App(){
       if(statut==="") notesArr.push("Statut déclaré : "+(cap.statut||"—")+" (à qualifier)");
       if(cap.dispos) notesArr.push("Disponibilités : "+cap.dispos);
       const who=assigneeFromDate(cap.createdAt||nowISO());
-      fsAddDoc(fsCollection(db,"leads"),{
+      // Plusieurs navigateurs ouverts (Charles, Emmy, Aya) voient la même capture en même temps :
+      // le lead a un identifiant fixe lié à la capture et n'est créé que s'il n'existe pas encore → jamais de doublon.
+      const leadData={
         name:((cap.prenom||"")+" "+(cap.nom||"")).trim(), firstName:cap.prenom||"", lastName:cap.nom||"",
         phone:cap.phone||"", email:cap.email||"",
         criteria:{...blankCriteria, statutClient:statut},
@@ -3141,9 +3143,14 @@ function App(){
         notes:notesArr.join("\n"),
         createdAt:cap.createdAt||nowISO(), lastActivity:nowISO(),
         history:[mkEvent("🌱","Lead créé — TikTok")]
-      }).then(ref=>{
-        fsUpdateDoc(fsDocRef(db,"captures",cap.id),{traite:true,leadId:ref.id}).catch(()=>{});
-        addToast("✓ Nouveau lead TikTok : "+((cap.prenom||"")+" "+(cap.nom||"")).trim());
+      };
+      const leadRef=fsDocRef(db,"leads","tiktok_"+cap.id);
+      const creer = fsRunTransaction
+        ? fsRunTransaction(db, async tx=>{ const ex=await tx.get(leadRef); if(ex.exists()) return false; tx.set(leadRef,leadData); return true; })
+        : fsAddDoc(fsCollection(db,"leads"),leadData).then(()=>true);
+      creer.then(created=>{
+        fsUpdateDoc(fsDocRef(db,"captures",cap.id),{traite:true,leadId:leadRef.id}).catch(()=>{});
+        if(created) addToast("✓ Nouveau lead TikTok : "+((cap.prenom||"")+" "+(cap.nom||"")).trim());
       }).catch(()=>captureRef.current.delete(cap.id));
     });
   },[captures,user]);
@@ -3555,6 +3562,7 @@ function boot(){
   fsDeleteDoc = fb.deleteDoc;
   fsSetDoc = fb.setDoc;
   fsGetDoc = fb.getDoc;
+  fsRunTransaction = fb.runTransaction;
   // Le remplissage automatique du navigateur (Chrome « adresses ») injectait les infos de l'utilisateur
   // dans les fiches clients : on le coupe partout sauf sur l'écran de connexion.
   // Chrome ignore « off » et les valeurs inventées pour ses suggestions d'adresses ; une valeur reconnue
