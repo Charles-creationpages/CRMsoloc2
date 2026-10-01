@@ -13,13 +13,25 @@
 
 // ── CONFIG ────────────────────────────────────────────────────────────────
 const PROPS             = PropertiesService.getScriptProperties();
-const CALENDLY_TOKEN    = PROPS.getProperty("CALENDLY_TOKEN") || "";
+const CALENDLY_TOKEN    = nettoyerSecret(PROPS.getProperty("CALENDLY_TOKEN"));
 const CALENDLY_USER_URI = "https://api.calendly.com/users/3edae6fe-f73e-4bda-a495-4cae7fcf2a28";
 const FIREBASE_API_KEY  = "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q"; // clé publique Firebase (déjà dans le CRM)
 const FIREBASE_PROJECT  = "soloc-crm";
 const SCRIPT_EMAIL      = "script@solocimmo.fr";
-const SCRIPT_PASSWORD   = PROPS.getProperty("SCRIPT_PASSWORD") || "";
+const SCRIPT_PASSWORD   = nettoyerSecret(PROPS.getProperty("SCRIPT_PASSWORD"));
 const MEMOIRE_JOURS     = 60; // durée de mémorisation des RDV déjà traités
+
+// Valeur collée dans les propriétés : on enlève espaces, retours à la ligne, guillemets et « Bearer » éventuels
+function nettoyerSecret(v) {
+  return String(v || "").replace(/^\s*Bearer\s+/i, "").replace(/[\s"';]/g, "");
+}
+
+// Test : vérifie que le jeton Calendly est accepté
+function testCalendly() {
+  Logger.log("Jeton : " + CALENDLY_TOKEN.length + " caracteres, commence par " + CALENDLY_TOKEN.slice(0, 6) + "…, finit par …" + CALENDLY_TOKEN.slice(-6));
+  var me = calendlyGet("https://api.calendly.com/users/me").resource;
+  Logger.log("OK : jeton valide pour " + me.name + " (" + me.uri + ")");
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 //  SYNC AUTOMATIQUE (déclencheur toutes les 15 min)
