@@ -2642,16 +2642,19 @@ const libProvenance = (k) => PROVENANCES_SITE[k] || (k ? k.charAt(0).toUpperCase
 function StatsPage({leads}){
   const [clics,setClics]=useState([]);
   const [clicsErr,setClicsErr]=useState(false);
-  const [periode,setPeriode]=useState("30");
+  // Période : un mois calendaire (remis à zéro chaque mois, navigation ‹ ›) ou vue globale
+  const [mode,setMode]=useState("month");
+  const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
+  const moisLabel=(mk)=>{ const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
+  const decaleMois=(n)=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()+n); setSelMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); };
   useEffect(()=>{
     const unsub=fsOnSnapshot(fsCollection(db,"clics"),snap=>{ setClics(snap.docs.map(d=>({id:d.id,...d.data()}))); setClicsErr(false); },()=>setClicsErr(true));
     return unsub;
   },[]);
 
   // Période : 7 jours / 30 jours (aujourd'hui compris) / tout
-  const debut = periode==="all" ? "" : (()=>{ const d=new Date(); d.setDate(d.getDate()-(+periode-1)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
   const jourLocal = (iso) => { if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-  const dansPeriode = (jour) => !debut || (jour && jour>=debut);
+  const dansPeriode = (jour) => mode==="total" || (!!jour && jour.slice(0,7)===selMonth);
 
   const clicsP = clics.filter(c=>dansPeriode(String(c.date||"")));
   const leadsP = leads.filter(l=>dansPeriode(jourLocal(l.createdAt)));
@@ -2717,13 +2720,17 @@ function StatsPage({leads}){
       <div className="topbar">
         <div>
           <div className="pt">Statistiques</div>
-          <div className="ps">D'où viennent les leads · site solocimmo.fr et formulaires</div>
+          <div className="ps">D'où viennent les leads · {mode==="month"?moisLabel(selMonth):"vue globale"}</div>
         </div>
         <div className="tb-right">
+          {mode==="month"&&<>
+            <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={()=>decaleMois(-1)}><Ic n="chevL" s={15}/></button>
+            <span style={{fontSize:13,fontWeight:700,minWidth:120,textAlign:"center"}}>{moisLabel(selMonth)}</span>
+            <button className="ib" style={{border:"1.5px solid var(--border2)",borderRadius:8}} onClick={()=>decaleMois(1)}><Ic n="chevR" s={15}/></button>
+          </>}
           <div className="seg" style={{flexShrink:0}}>
-            {[["7","7 jours"],["30","30 jours"],["all","Tout"]].map(([k,lb])=>(
-              <button key={k} type="button" className={"seg-btn"+(periode===k?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setPeriode(k)}>{lb}</button>
-            ))}
+            <button type="button" className={"seg-btn"+(mode==="month"?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setMode("month")}>Ce mois</button>
+            <button type="button" className={"seg-btn"+(mode==="total"?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setMode("total")}>Total</button>
           </div>
           <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
         </div>
@@ -2756,7 +2763,7 @@ function StatsPage({leads}){
             </div>
           ))}
         </div>
-        <div style={{fontSize:10.5,color:"var(--text3)",marginTop:12,lineHeight:1.5}}>Les clics sont comptés depuis la mise en place du compteur sur le site (pas d'historique avant). Le taux = leads ÷ clics sur la période.</div>
+        <div style={{fontSize:10.5,color:"var(--text3)",marginTop:12,lineHeight:1.5}}>Les clics sont comptés depuis la mise en place du compteur sur le site (pas d'historique avant). Le taux = leads ÷ clics sur la période. « Ce mois » repart de zéro le 1er de chaque mois.</div>
       </div>
     </>
   );
