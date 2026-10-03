@@ -369,6 +369,7 @@ const ICONS = (s) => ({
   minus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   arrowUp:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/></svg>,
   arrowDown:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="16 17 7 17 7 8"/></svg>,
+  chart:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="9"/><line x1="3" y1="20" x2="21" y2="20"/></svg>,
   wallet:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M21 12a2 2 0 0 0-2-2h-4a2 2 0 0 0 0 4h4a2 2 0 0 0 2-2z"/></svg>,
   flag:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>,
 });
@@ -2600,6 +2601,135 @@ function PilotagePage({user, leads}){
   );
 }
 
+// ─── STATISTIQUES (réservé à Charles) : provenance des leads du site solocimmo.fr ─────
+// Le site écrit : leads.origine = { bouton, provenance, campagne } (anciens leads : « Bouton cliqué : … » dans les notes)
+// et compte les clics dans la collection « clics » : un document par jour × bouton × provenance { date, bouton, provenance, n }.
+const BOUTONS_SITE = {
+  hero:"Haut de page", bulle:"Bulle flottante", etudiant:"Pack Étudiant", salarie:"Pack Salarié", surmesure:"Pack Sur-mesure",
+  exclu:"Biens exclusifs", methode:"Section Méthode", faq:"FAQ", final:"Bas de page", quiz:"Questionnaire 30 s", blog:"Articles du blog"
+};
+const PROVENANCES_SITE = { tiktok:"TikTok", instagram:"Instagram", facebook:"Facebook", google:"Google", snapchat:"Snapchat", linkedin:"LinkedIn", direct:"Direct" };
+const cleStat = (v) => String(v||"").trim().toLowerCase();
+// Origine d'un lead venu du site (null si le lead ne vient pas du site)
+const origineOf = (l) => {
+  const o = l.origine;
+  if(o && (o.bouton || o.provenance)) return { bouton:cleStat(o.bouton)||"inconnu", provenance:cleStat(o.provenance)||"direct" };
+  const n = String(l.notes||"");
+  const b = n.match(/Bouton cliqu[ée]\s*:\s*([^\n]+)/i);
+  if(!b) return null;
+  const pr = n.match(/Provenance\s*:\s*([^\n/]+)/i);
+  return { bouton:cleStat(b[1])||"inconnu", provenance:(pr&&cleStat(pr[1]))||"direct" };
+};
+const libBouton = (k) => BOUTONS_SITE[k] || (k==="inconnu"?"Inconnu":k);
+const libProvenance = (k) => PROVENANCES_SITE[k] || (k ? k.charAt(0).toUpperCase()+k.slice(1) : "Direct");
+
+function StatsPage({leads}){
+  const [clics,setClics]=useState([]);
+  const [clicsErr,setClicsErr]=useState(false);
+  const [periode,setPeriode]=useState("30");
+  useEffect(()=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"clics"),snap=>{ setClics(snap.docs.map(d=>({id:d.id,...d.data()}))); setClicsErr(false); },()=>setClicsErr(true));
+    return unsub;
+  },[]);
+
+  // Période : 7 jours / 30 jours (aujourd'hui compris) / tout
+  const debut = periode==="all" ? "" : (()=>{ const d=new Date(); d.setDate(d.getDate()-(+periode-1)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+  const jourLocal = (iso) => { if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const dansPeriode = (jour) => !debut || (jour && jour>=debut);
+
+  const clicsP = clics.filter(c=>dansPeriode(String(c.date||"")));
+  const leadsP = leads.filter(l=>dansPeriode(jourLocal(l.createdAt)));
+  const siteLeads = leadsP.map(l=>({l,o:origineOf(l)})).filter(x=>x.o);
+
+  const agg = (cle) => {
+    const m = {};
+    const get = (k) => (m[k] = m[k] || { k, clics:0, leads:0 });
+    clicsP.forEach(c=>{ get(cleStat(c[cle])||(cle==="provenance"?"direct":"inconnu")).clics += (+c.n||0); });
+    siteLeads.forEach(x=>{ get(x.o[cle]).leads += 1; });
+    return Object.values(m).sort((a,b)=>(b.leads-a.leads)||(b.clics-a.clics));
+  };
+  const parBouton = agg("bouton");
+  const parProv = agg("provenance");
+  const totClics = clicsP.reduce((s,c)=>s+(+c.n||0),0);
+  const totSite = siteLeads.length;
+
+  // Tous les leads de la période, par canal d'arrivée
+  const canalOf = (l) => origineOf(l) ? "site" : (l.source || (l.calendlyRdv?"calendly":(l.whatsappContact?"whatsapp":"manuel")));
+  const CANAUX = { site:"🌐 Site solocimmo.fr", calendly:"📅 Calendly", tiktok:"📱 TikTok (formulaire)", whatsapp:"💬 WhatsApp", manuel:"✍️ Manuel" };
+  const parCanal = Object.entries(leadsP.reduce((m,l)=>{ const k=canalOf(l); m[k]=(m[k]||0)+1; return m; },{})).sort((a,b)=>b[1]-a[1]);
+
+  const pct = (r) => r.clics>0 ? Math.round(r.leads/r.clics*100)+" %" : "—";
+  const card={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  const klab={fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"};
+  const kval={fontSize:24,fontWeight:800,marginTop:3};
+  const titre=(t)=><div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase",margin:"20px 0 10px"}}>{t}</div>;
+  const Table=({rows,lib,taux})=>{
+    const max=Math.max(1,...rows.map(r=>taux?r.clics:r.leads));
+    return rows.length===0
+      ? <div style={{...card,fontSize:12.5,color:"var(--text3)",fontStyle:"italic"}}>Aucune donnée sur la période.</div>
+      : <div style={{overflowX:"auto"}}><table className="list-table">
+          <thead><tr><th></th><th style={{textAlign:"right"}}>Clics</th><th style={{textAlign:"right"}}>Leads</th><th style={{textAlign:"right"}}>Taux</th><th style={{width:"35%"}}></th></tr></thead>
+          <tbody>{rows.map(r=>(
+            <tr key={r.k}>
+              <td className="td-name">{lib(r.k)}</td>
+              <td style={{textAlign:"right"}}>{r.clics}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{r.leads}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:"var(--accent)"}}>{pct(r)}</td>
+              <td><div style={{background:"var(--surface2)",borderRadius:6,height:10,overflow:"hidden"}}><div style={{width:((taux?r.clics:r.leads)/max*100)+"%",height:"100%",background:"var(--accent)",borderRadius:6}}/></div></td>
+            </tr>))}</tbody>
+        </table></div>;
+  };
+
+  return(
+    <>
+      <div className="topbar">
+        <div>
+          <div className="pt">Statistiques</div>
+          <div className="ps">D'où viennent les leads · site solocimmo.fr</div>
+        </div>
+        <div className="tb-right">
+          <div className="seg" style={{flexShrink:0}}>
+            {[["7","7 jours"],["30","30 jours"],["all","Tout"]].map(([k,lb])=>(
+              <button key={k} type="button" className={"seg-btn"+(periode===k?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setPeriode(k)}>{lb}</button>
+            ))}
+          </div>
+          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
+        </div>
+      </div>
+      <div className="main">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+          <div style={{...card,background:"var(--ardoise)",borderColor:"var(--ardoise)"}}>
+            <div style={{...klab,color:"rgba(255,255,255,.55)"}}>Leads du site</div>
+            <div className="brand-font" style={{...kval,color:"#fff"}}>{totSite}</div>
+          </div>
+          <div style={card}><div style={klab}>Clics sur le site</div><div className="brand-font" style={kval}>{totClics}</div></div>
+          <div style={card}><div style={klab}>Taux site</div><div className="brand-font" style={{...kval,color:"var(--accent)"}}>{totClics>0?Math.round(totSite/totClics*100)+" %":"—"}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>leads ÷ clics</div></div>
+          <div style={card}><div style={klab}>Tous les leads</div><div className="brand-font" style={kval}>{leadsP.length}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>tous canaux</div></div>
+        </div>
+        {clicsErr&&<div style={{fontSize:12,color:"var(--red)",fontWeight:700,marginTop:10}}>⚠ Compteur de clics illisible : vérifie les règles Firestore de la collection « clics ».</div>}
+
+        {titre("Par bouton du site")}
+        <Table rows={parBouton} lib={libBouton} taux/>
+        {titre("Par provenance")}
+        <Table rows={parProv} lib={libProvenance} taux/>
+
+        {titre("Tous les leads par canal")}
+        <div style={card}>
+          {parCanal.length===0&&<div style={{fontSize:12.5,color:"var(--text3)",fontStyle:"italic"}}>Aucun lead sur la période.</div>}
+          {parCanal.map(([k,n])=>(
+            <div key={k} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
+              <div style={{width:170,fontSize:12,color:"var(--text2)",fontWeight:600,flexShrink:0}}>{CANAUX[k]||k}</div>
+              <div style={{flex:1,background:"var(--surface2)",borderRadius:6,height:18,overflow:"hidden"}}><div style={{width:(n/Math.max(1,leadsP.length)*100)+"%",height:"100%",background:"var(--ardoise)",borderRadius:6}}/></div>
+              <div style={{width:30,fontSize:12,fontWeight:800,textAlign:"right"}}>{n}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:10.5,color:"var(--text3)",marginTop:12,lineHeight:1.5}}>Les clics sont comptés depuis la mise en place du compteur sur le site (pas d'historique avant). Le taux = leads ÷ clics sur la période.</div>
+      </div>
+    </>
+  );
+}
+
 // ─── FINANCE PAGE (réservée à Charles) ───────────────────────────────────
 function FinancePage({user, leads, addToast, isMobile}){
   const [finance,setFinance]=useState([]);
@@ -3509,6 +3639,7 @@ function App(){
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={16}/>Registre</div>
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
+            {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="stats"?" active":"")} onClick={()=>setTab("stats")}><Ic n="chart" s={16}/>Statistiques</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="archives"?" active":"")} onClick={()=>setTab("archives")}><Ic n="folder" s={16}/>Archives</div>}
           </div>
@@ -3523,6 +3654,8 @@ function App(){
             ? <RegistrePage lettres={lettres} isAdmin={isAdmin} addToast={addToast}/>
             : (tab==="pilotage"&&user.email===FINANCE_EMAIL)
             ? <PilotagePage user={user} leads={leads}/>
+            : (tab==="stats"&&user.email===FINANCE_EMAIL)
+            ? <StatsPage leads={leads}/>
             : (tab==="finance"&&user.email===FINANCE_EMAIL)
             ? <FinancePage user={user} leads={leads} addToast={addToast} isMobile={isMobile}/>
             : (tab==="archives"&&user.email===FINANCE_EMAIL)
@@ -3568,6 +3701,7 @@ function App(){
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
           <button className={"bn-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={21}/>Registre</button>
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
+          {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="stats"?" active":"")} onClick={()=>setTab("stats")}><Ic n="chart" s={21}/>Stats</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="archives"?" active":"")} onClick={()=>setTab("archives")}><Ic n="folder" s={21}/>Archives</button>}
         </nav>
