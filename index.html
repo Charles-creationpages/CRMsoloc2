@@ -396,7 +396,8 @@ body{background:var(--bg);color:var(--text);font-family:"Inter",sans-serif;font-
 
 /* LOGIN */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ardoise);}
-.login-card{background:var(--surface);border-radius:20px;padding:38px 36px;width:360px;box-shadow:var(--sh-lg);}
+.login-card{background:var(--surface);border-radius:20px;padding:38px 36px;width:360px;max-width:calc(100vw - 32px);box-sizing:border-box;box-shadow:var(--sh-lg);}
+.login-card .login-in{font-size:16px;} /* iPhone : pas de zoom automatique sur le champ */
 .login-logo{width:50px;height:50px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;margin:0 auto 18px;font-family:"Sora",sans-serif;}
 .login-title{font-family:"Sora",sans-serif;font-weight:800;font-size:21px;text-align:center;color:var(--text);margin-bottom:4px;letter-spacing:-.02em;}
 .login-sub{text-align:center;font-size:12px;color:var(--text3);margin-bottom:26px;}
@@ -661,6 +662,9 @@ function LoginScreen(){
   const [password,setPassword]=useState("");
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
+  // Sur téléphone (et surtout dans l'appli installée sur l'écran d'accueil iPhone), le focus automatique
+  // bloque les champs : on ne le garde que sur ordinateur.
+  const sansAutoFocus = (window.matchMedia && window.matchMedia("(pointer:coarse)").matches) || window.navigator.standalone===true || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
 
   const submit=(e)=>{
     e.preventDefault();
@@ -688,12 +692,12 @@ function LoginScreen(){
         <div className="login-sub">Connexion à l'espace pro</div>
         {error&&<div className="login-err">{error}</div>}
         <div className="fg">
-          <label className="fl">Email</label>
-          <input className="fi" type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus/>
+          <label className="fl" htmlFor="login-email">Email</label>
+          <input id="login-email" className="fi login-in" type="email" name="email" autoComplete="username" inputMode="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={e=>setEmail(e.target.value)} autoFocus={!sansAutoFocus}/>
         </div>
         <div className="fg">
-          <label className="fl">Mot de passe</label>
-          <input className="fi" type="password" value={password} onChange={e=>setPassword(e.target.value)}/>
+          <label className="fl" htmlFor="login-password">Mot de passe</label>
+          <input id="login-password" className="fi login-in" type="password" name="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/>
         </div>
         <button className="btn btn-p btn-block" type="submit" disabled={loading} style={{marginTop:8}}>
           {loading?"Connexion…":"Se connecter"}
