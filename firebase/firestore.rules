@@ -8,22 +8,18 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow read, update, delete: if request.auth != null && request.auth.token.email != "site@solocimmo.fr";
       allow create: if request.auth != null;
+      // Site (non connecté) : création seule. On n'impose plus la liste exacte des champs (le site peut en ajouter),
+      // mais on bloque tout ce qui donnerait un faux statut : colonne autre que Premier contact, « payé », archivé…
       allow create: if request.auth == null
-        && request.resource.data.keys().hasOnly(['firstName','lastName','name','phone','email','column','relanceCount','paid',
-             'notes','criteria','createdAt','lastActivity','source','whatsappContact','history','origine'])
-        && request.resource.data.column == 'premier_contact'
-        && request.resource.data.source == 'whatsapp'
-        && request.resource.data.paid == false
-        && request.resource.data.relanceCount == 0
-        && request.resource.data.name is string && request.resource.data.name.size() <= 120
-        && request.resource.data.phone is string && request.resource.data.phone.size() >= 6 && request.resource.data.phone.size() <= 40
-        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000))
-        && (!('origine' in request.resource.data) || (
-             request.resource.data.origine.keys().hasOnly(['bouton','provenance','campagne'])
-             && request.resource.data.origine.bouton is string && request.resource.data.origine.bouton.size() <= 40
-             && request.resource.data.origine.provenance is string && request.resource.data.origine.provenance.size() <= 40
-             && (!('campagne' in request.resource.data.origine) || (request.resource.data.origine.campagne is string && request.resource.data.origine.campagne.size() <= 80))
-           ));
+        && request.resource.data.size() <= 30
+        && request.resource.data.get('column', 'premier_contact') == 'premier_contact'
+        && request.resource.data.get('paid', false) == false
+        && request.resource.data.get('archived', false) == false
+        && !('validatedAt' in request.resource.data) && !('envoiEnvoye' in request.resource.data)
+        && !('lettreSignee' in request.resource.data) && !('formulaireRempli' in request.resource.data)
+        && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 150
+        && request.resource.data.get('phone', '') is string && request.resource.data.get('phone', '').size() <= 40
+        && request.resource.data.get('notes', '') is string && request.resource.data.get('notes', '').size() <= 2000;
     }
 
     // ── CLICS (compteur anonyme du site, statistiques de Charles) ─────────
