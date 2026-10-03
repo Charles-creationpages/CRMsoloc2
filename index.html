@@ -174,7 +174,7 @@ const assigneeFromDate = (iso) => {
   if(d===3||d===4||d===5) return "aya";      // mer/jeu/ven
   return "emmy";                             // lun/mar/sam/dim
 };
-const SOURCE_LABEL = { tiktok:"📱 TikTok", whatsapp:"💬 WhatsApp", calendly:"📅 Calendly", manuel:"✍️ Manuel", site:"🌐 Site" };
+const SOURCE_LABEL = { tiktok:"📱 TikTok", instagram:"📸 Instagram", whatsapp:"💬 WhatsApp", calendly:"📅 Calendly", manuel:"✍️ Manuel", site:"🌐 Site" };
 const sourceLabel = (s) => SOURCE_LABEL[s] || (s ? s : "");
 const round2 = (x) => Math.round((x||0)*100)/100;
 const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
@@ -2616,11 +2616,11 @@ const origineOf = (l) => {
   if(o && (o.bouton || o.provenance)) return { bouton:cleStat(o.bouton)||"inconnu", provenance:cleStat(o.provenance)||"direct" };
   const n = String(l.notes||"");
   const b = n.match(/Bouton cliqu[ée]\s*:\s*([^\n]+)/i);
-  if(!b) return null;
+  if(!b) return l.source==="tiktok" ? { bouton:"formulaire", provenance:"tiktok" } : null; // anciens leads du formulaire TikTok
   const pr = n.match(/Provenance\s*:\s*([^\n/]+)/i);
   return { bouton:cleStat(b[1])||"inconnu", provenance:(pr&&cleStat(pr[1]))||"direct" };
 };
-const libBouton = (k) => BOUTONS_SITE[k] || (k==="inconnu"?"Inconnu":k);
+const libBouton = (k) => k.indexOf("formulaire:")===0 ? "Formulaire "+libProvenance(k.slice(11)) : (BOUTONS_SITE[k] || (k==="inconnu"?"Inconnu":k));
 const libProvenance = (k) => PROVENANCES_SITE[k] || (k ? k.charAt(0).toUpperCase()+k.slice(1) : "Direct");
 
 function StatsPage({leads}){
@@ -2641,21 +2641,26 @@ function StatsPage({leads}){
   const leadsP = leads.filter(l=>dansPeriode(jourLocal(l.createdAt)));
   const siteLeads = leadsP.map(l=>({l,o:origineOf(l)})).filter(x=>x.o);
 
-  const agg = (cle) => {
+  // Le formulaire (tiktok.html) compte comme un bouton à part : « Formulaire TikTok », « Formulaire Instagram »…
+  const normO = (o) => ({ bouton:cleStat(o.bouton)||"inconnu", provenance:cleStat(o.provenance)||"direct" });
+  const cleBouton = (o) => o.bouton==="formulaire" ? "formulaire:"+o.provenance : o.bouton;
+  const sousCanal = (o) => o.bouton==="formulaire" ? "formulaire" : "site";
+  const agg = (cleFn, sousFn) => {
     const m = {};
-    const get = (k) => (m[k] = m[k] || { k, clics:0, leads:0 });
-    clicsP.forEach(c=>{ get(cleStat(c[cle])||(cle==="provenance"?"direct":"inconnu")).clics += (+c.n||0); });
-    siteLeads.forEach(x=>{ get(x.o[cle]).leads += 1; });
+    const get = (o) => { const k=cleFn(o); const r=(m[k] = m[k] || { k, clics:0, leads:0, sous:{} }); if(sousFn){ const sk=sousFn(o); r.sous[sk]=r.sous[sk]||{k:sk,clics:0,leads:0}; return [r,r.sous[sk]]; } return [r]; };
+    clicsP.forEach(c=>{ get(normO(c)).forEach(r=>{ r.clics += (+c.n||0); }); });
+    siteLeads.forEach(x=>{ get(x.o).forEach(r=>{ r.leads += 1; }); });
     return Object.values(m).sort((a,b)=>(b.leads-a.leads)||(b.clics-a.clics));
   };
-  const parBouton = agg("bouton");
-  const parProv = agg("provenance");
+  const parBouton = agg(cleBouton);
+  const parProv = agg(o=>o.provenance, sousCanal);
+  const LIB_SOUS = { site:"Lien en bio (site)", formulaire:"Formulaire" };
   const totClics = clicsP.reduce((s,c)=>s+(+c.n||0),0);
   const totSite = siteLeads.length;
 
   // Tous les leads de la période, par canal d'arrivée
-  const canalOf = (l) => origineOf(l) ? "site" : (l.source || (l.calendlyRdv?"calendly":(l.whatsappContact?"whatsapp":"manuel")));
-  const CANAUX = { site:"🌐 Site solocimmo.fr", calendly:"📅 Calendly", tiktok:"📱 TikTok (formulaire)", whatsapp:"💬 WhatsApp", manuel:"✍️ Manuel" };
+  const canalOf = (l) => { const o=origineOf(l); return o ? (o.bouton==="formulaire" ? "formulaire:"+o.provenance : "site") : (l.source || (l.calendlyRdv?"calendly":(l.whatsappContact?"whatsapp":"manuel"))); };
+  const CANAUX = { site:"🌐 Site solocimmo.fr", "formulaire:tiktok":"📱 Formulaire TikTok", "formulaire:instagram":"📸 Formulaire Instagram", calendly:"📅 Calendly", whatsapp:"💬 WhatsApp", manuel:"✍️ Manuel" };
   const parCanal = Object.entries(leadsP.reduce((m,l)=>{ const k=canalOf(l); m[k]=(m[k]||0)+1; return m; },{})).sort((a,b)=>b[1]-a[1]);
 
   const pct = (r) => r.clics>0 ? Math.round(r.leads/r.clics*100)+" %" : "—";
@@ -2669,14 +2674,25 @@ function StatsPage({leads}){
       ? <div style={{...card,fontSize:12.5,color:"var(--text3)",fontStyle:"italic"}}>Aucune donnée sur la période.</div>
       : <div style={{overflowX:"auto"}}><table className="list-table">
           <thead><tr><th></th><th style={{textAlign:"right"}}>Clics</th><th style={{textAlign:"right"}}>Leads</th><th style={{textAlign:"right"}}>Taux</th><th style={{width:"35%"}}></th></tr></thead>
-          <tbody>{rows.map(r=>(
-            <tr key={r.k}>
+          <tbody>{rows.map(r=>{
+            const sous = (r.sous && r.sous.formulaire) ? ["site","formulaire"].map(k=>r.sous[k]).filter(Boolean) : [];
+            return <React.Fragment key={r.k}>
+            <tr>
               <td className="td-name">{lib(r.k)}</td>
               <td style={{textAlign:"right"}}>{r.clics}</td>
               <td style={{textAlign:"right",fontWeight:700}}>{r.leads}</td>
               <td style={{textAlign:"right",fontWeight:700,color:"var(--accent)"}}>{pct(r)}</td>
               <td><div style={{background:"var(--surface2)",borderRadius:6,height:10,overflow:"hidden"}}><div style={{width:((taux?r.clics:r.leads)/max*100)+"%",height:"100%",background:"var(--accent)",borderRadius:6}}/></div></td>
-            </tr>))}</tbody>
+            </tr>
+            {sous.map((x,i)=>(
+              <tr key={r.k+"_"+x.k} style={{background:"var(--surface2)"}}>
+                <td style={{paddingLeft:22,fontSize:12,color:"var(--text2)"}}>{i===sous.length-1?"└":"├"} {LIB_SOUS[x.k]||x.k}</td>
+                <td style={{textAlign:"right",fontSize:12}}>{x.clics}</td>
+                <td style={{textAlign:"right",fontSize:12,fontWeight:700}}>{x.leads}</td>
+                <td style={{textAlign:"right",fontSize:12,color:"var(--accent)"}}>{pct(x)}</td>
+                <td><div style={{background:"var(--surface)",borderRadius:6,height:6,overflow:"hidden"}}><div style={{width:((taux?x.clics:x.leads)/max*100)+"%",height:"100%",background:"var(--accent-l2)",borderRadius:6}}/></div></td>
+              </tr>))}
+            </React.Fragment>;})}</tbody>
         </table></div>;
   };
 
@@ -2685,7 +2701,7 @@ function StatsPage({leads}){
       <div className="topbar">
         <div>
           <div className="pt">Statistiques</div>
-          <div className="ps">D'où viennent les leads · site solocimmo.fr</div>
+          <div className="ps">D'où viennent les leads · site solocimmo.fr et formulaires</div>
         </div>
         <div className="tb-right">
           <div className="seg" style={{flexShrink:0}}>
@@ -2699,16 +2715,16 @@ function StatsPage({leads}){
       <div className="main">
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
           <div style={{...card,background:"var(--ardoise)",borderColor:"var(--ardoise)"}}>
-            <div style={{...klab,color:"rgba(255,255,255,.55)"}}>Leads du site</div>
+            <div style={{...klab,color:"rgba(255,255,255,.55)"}}>Leads site + formulaires</div>
             <div className="brand-font" style={{...kval,color:"#fff"}}>{totSite}</div>
           </div>
-          <div style={card}><div style={klab}>Clics sur le site</div><div className="brand-font" style={kval}>{totClics}</div></div>
-          <div style={card}><div style={klab}>Taux site</div><div className="brand-font" style={{...kval,color:"var(--accent)"}}>{totClics>0?Math.round(totSite/totClics*100)+" %":"—"}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>leads ÷ clics</div></div>
+          <div style={card}><div style={klab}>Clics site + formulaires</div><div className="brand-font" style={kval}>{totClics}</div></div>
+          <div style={card}><div style={klab}>Taux de conversion</div><div className="brand-font" style={{...kval,color:"var(--accent)"}}>{totClics>0?Math.round(totSite/totClics*100)+" %":"—"}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>leads ÷ clics</div></div>
           <div style={card}><div style={klab}>Tous les leads</div><div className="brand-font" style={kval}>{leadsP.length}</div><div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>tous canaux</div></div>
         </div>
         {clicsErr&&<div style={{fontSize:12,color:"var(--red)",fontWeight:700,marginTop:10}}>⚠ Compteur de clics illisible : vérifie les règles Firestore de la collection « clics ».</div>}
 
-        {titre("Par bouton du site")}
+        {titre("Par bouton (site + formulaires)")}
         <Table rows={parBouton} lib={libBouton} taux/>
         {titre("Par provenance")}
         <Table rows={parProv} lib={libProvenance} taux/>
@@ -2718,7 +2734,7 @@ function StatsPage({leads}){
           {parCanal.length===0&&<div style={{fontSize:12.5,color:"var(--text3)",fontStyle:"italic"}}>Aucun lead sur la période.</div>}
           {parCanal.map(([k,n])=>(
             <div key={k} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
-              <div style={{width:170,fontSize:12,color:"var(--text2)",fontWeight:600,flexShrink:0}}>{CANAUX[k]||k}</div>
+              <div style={{width:170,fontSize:12,color:"var(--text2)",fontWeight:600,flexShrink:0}}>{CANAUX[k]||(k.indexOf("formulaire:")===0?"📝 "+libBouton(k):k)}</div>
               <div style={{flex:1,background:"var(--surface2)",borderRadius:6,height:18,overflow:"hidden"}}><div style={{width:(n/Math.max(1,leadsP.length)*100)+"%",height:"100%",background:"var(--ardoise)",borderRadius:6}}/></div>
               <div style={{width:30,fontSize:12,fontWeight:800,textAlign:"right"}}>{n}</div>
             </div>
@@ -3307,17 +3323,19 @@ function App(){
       if(statut==="") notesArr.push("Statut déclaré : "+(cap.statut||"—")+" (à qualifier)");
       if(cap.dispos) notesArr.push("Disponibilités : "+cap.dispos);
       const who=assigneeFromDate(cap.createdAt||nowISO());
+      const prov=String(cap.provenance||cap.source||"tiktok").toLowerCase().replace(/[^a-z0-9]/g,"")||"tiktok";
       // Plusieurs navigateurs ouverts (Charles, Emmy, Aya) voient la même capture en même temps :
       // le lead a un identifiant fixe lié à la capture et n'est créé que s'il n'existe pas encore → jamais de doublon.
       const leadData={
         name:((cap.prenom||"")+" "+(cap.nom||"")).trim(), firstName:cap.prenom||"", lastName:cap.nom||"",
         phone:cap.phone||"", email:cap.email||"",
         criteria:{...blankCriteria, statutClient:statut},
-        assignedTo:[who], assignTouched:true, source:"tiktok",
+        assignedTo:[who], assignTouched:true, source:prov,
+        origine:{bouton:"formulaire", provenance:prov, campagne:""},
         column:"premier_contact", relanceCount:0, paid:false,
         notes:notesArr.join("\n"),
         createdAt:cap.createdAt||nowISO(), lastActivity:nowISO(),
-        history:[mkEvent("🌱","Lead créé — TikTok")]
+        history:[mkEvent("🌱","Lead créé — Formulaire "+libProvenance(prov))]
       };
       const leadRef=fsDocRef(db,"leads","tiktok_"+cap.id);
       const creer = fsRunTransaction
@@ -3325,7 +3343,7 @@ function App(){
         : fsAddDoc(fsCollection(db,"leads"),leadData).then(()=>true);
       creer.then(created=>{
         fsUpdateDoc(fsDocRef(db,"captures",cap.id),{traite:true,leadId:leadRef.id}).catch(()=>{});
-        if(created) addToast("✓ Nouveau lead TikTok : "+((cap.prenom||"")+" "+(cap.nom||"")).trim());
+        if(created) addToast("✓ Nouveau lead "+libProvenance(prov)+" : "+((cap.prenom||"")+" "+(cap.nom||"")).trim());
       }).catch(()=>captureRef.current.delete(cap.id));
     });
   },[captures,user]);

@@ -80,7 +80,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, doc, setDoc, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyBSU4Yc5q6e0q5UHxgmn7gq2AwWg7aFl3Q",
     authDomain: "soloc-crm.firebaseapp.com",
@@ -91,6 +91,19 @@
   };
   const db = getFirestore(initializeApp(firebaseConfig));
   const $=(id)=>document.getElementById(id);
+
+  // Provenance : ?src=instagram (par défaut tiktok) → statistiques du CRM « Formulaire TikTok / Instagram… »
+  const SRC=(new URLSearchParams(location.search).get("src")||"tiktok").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,30)||"tiktok";
+  // Compteur d'ouvertures (anonyme) : collection clics, 1 document par jour × formulaire × provenance, +1 par visite
+  try {
+    const d=new Date(), jour=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const cle="soloc-clic-"+jour+"-"+SRC;
+    let deja=false; try{ deja=sessionStorage.getItem(cle)==="1"; }catch(e){}
+    if(!deja){
+      setDoc(doc(db,"clics",jour+"_formulaire_"+SRC),{date:jour,bouton:"formulaire",provenance:SRC,n:increment(1)},{merge:true})
+        .then(()=>{ try{ sessionStorage.setItem(cle,"1"); }catch(e){} }).catch(()=>{});
+    }
+  } catch(e){}
 
   document.querySelectorAll("[data-single]").forEach(function(g){
     g.querySelectorAll("button").forEach(function(b){ b.onclick=function(){ g.querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); }; });
@@ -114,7 +127,7 @@
     try {
       await addDoc(collection(db,"captures"), {
         prenom:prenom, nom:nom, phone:phone, email:email, statut:statut,
-        dispos:$("dispos").value.trim(), source:"tiktok",
+        dispos:$("dispos").value.trim(), source:SRC, provenance:SRC,
         createdAt:new Date().toISOString(), traite:false
       });
       $("form").style.display="none"; $("done").style.display="block";
