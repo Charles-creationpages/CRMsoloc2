@@ -682,8 +682,7 @@ function LoginScreen(){
   return(
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <div className="login-logo">S</div>
-        <div className="login-title">soloc' CRM</div>
+        <img src="logo-soloc-couleur.svg" alt="Soloc'" style={{height:44,display:"block",margin:"0 auto 14px"}}/>
         <div className="login-sub">Connexion à l'espace pro</div>
         {error&&<div className="login-err">{error}</div>}
         <div className="fg">
@@ -3669,8 +3668,7 @@ function App(){
       <div className="app">
         <aside className="sb">
           <div className="sb-brand">
-            <div className="sb-logo">S</div>
-            <div><div className="sb-name">soloc'</div><div className="sb-sub">ESPACE PRO</div></div>
+            <img src="logo-soloc-inverse.svg" alt="Soloc'" style={{height:30,display:"block"}}/>
           </div>
           <div className="sb-nav">
             <div className={"nav-item"+(tab==="pipeline"?" active":"")} onClick={()=>setTab("pipeline")}><Ic n="trendUp" s={16}/>Pipeline</div>
