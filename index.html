@@ -2463,6 +2463,7 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
 function PilotagePage({user, leads}){
   const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
   const [funnelMode,setFunnelMode]=useState("total");
+  const [teamMode,setTeamMode]=useState("month");
   const mkOf=(iso)=>iso?String(iso).slice(0,7):"";
   const objOf=(mk)=>OBJECTIFS_MENSUELS[mk.slice(5,7)]||0;
   const mLabel=(mk)=>{ if(!mk) return "—"; const p=mk.split("-"); return MOIS_FR[(+p[1])-1]+" "+p[0]; };
@@ -2498,13 +2499,15 @@ function PilotagePage({user, leads}){
   const sigByMonth=months12.map(mk=>({mk,n:signesMois(mk),obj:objOf(mk)}));
   const maxSig=Math.max(1,...sigByMonth.map(s=>Math.max(s.n,s.obj)));
 
-  const perf=(role)=>({sig:valides.filter(l=>asArray(l.assignedTo).includes(role) && afterStart(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>asArray(l.assignedTo).includes(role) && afterStart(l.createdAt)).length});
+  // Performance équipe : mois sélectionné (« Ce mois ») ou depuis le début du cycle (« Total »)
+  const inTeam=(iso)=> teamMode==="month" ? mkOf(iso)===selMonth : afterStart(iso);
+  const perf=(role)=>({sig:valides.filter(l=>asArray(l.assignedTo).includes(role) && inTeam(l.validatedAt||l.lastActivity)).length, tot:leads.filter(l=>asArray(l.assignedTo).includes(role) && inTeam(l.createdAt)).length});
   const emmyP=perf("emmy"), ayaP=perf("aya");
-  const envoyesOf=(role)=>leads.filter(l=>asArray(l.assignedTo).includes(role) && l.envoyeAt && afterStart(l.envoyeAt)).length;
+  const envoyesOf=(role)=>leads.filter(l=>asArray(l.assignedTo).includes(role) && l.envoyeAt && inTeam(l.envoyeAt)).length;
   const emmyEnv=envoyesOf("emmy"), ayaEnv=envoyesOf("aya");
-  const totalEnv=leads.filter(l=>l.envoyeAt && afterStart(l.envoyeAt)).length;
+  const totalEnv=leads.filter(l=>l.envoyeAt && inTeam(l.envoyeAt)).length;
   const maxTeam=Math.max(1,emmyP.tot,ayaP.tot);
-  const durations=valides.filter(l=>afterStart(l.validatedAt)).map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
+  const durations=valides.filter(l=>l.validatedAt && inTeam(l.validatedAt)).map(l=>{ if(!l.createdAt||!l.validatedAt) return null; return (new Date(l.validatedAt)-new Date(l.createdAt))/86400000; }).filter(x=>x!=null&&x>=0);
   const avgDays=durations.length?Math.round(durations.reduce((s,x)=>s+x,0)/durations.length):null;
 
   const prevMonth=()=>{ const d=new Date(selMonth+"-01T12:00:00"); d.setMonth(d.getMonth()-1); setSelMonth(d.toISOString().slice(0,7)); };
@@ -2555,7 +2558,7 @@ function PilotagePage({user, leads}){
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,margin:"18px 0 10px"}}>
           <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase"}}>Entonnoir — {funnelMode==="month"?("leads reçus en "+mLabel(selMonth).split(" ")[0]):"où sont les leads"}</div>
           <div className="seg" style={{flexShrink:0}}>
-            <button type="button" className={"seg-btn"+(funnelMode==="month"?" active":"")} onClick={()=>setFunnelMode("month")}>Ce mois</button>
+            <button type="button" className={"seg-btn"+(funnelMode==="month"?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setFunnelMode("month")}>Ce mois</button>
             <button type="button" className={"seg-btn"+(funnelMode==="total"?" active":"")} onClick={()=>setFunnelMode("total")}>Total</button>
           </div>
         </div>
@@ -2587,7 +2590,13 @@ function PilotagePage({user, leads}){
             </div>
           </div>
           <div style={card}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:12}}>Performance équipe</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Performance équipe — {teamMode==="month"?mLabel(selMonth):"depuis sept. 2026"}</div>
+              <div className="seg" style={{flexShrink:0}}>
+                <button type="button" className={"seg-btn"+(teamMode==="month"?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setTeamMode("month")}>Ce mois</button>
+                <button type="button" className={"seg-btn"+(teamMode==="total"?" active":"")} style={{whiteSpace:"nowrap"}} onClick={()=>setTeamMode("total")}>Total</button>
+              </div>
+            </div>
             <div style={{marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,color:ASSIGNEES.emmy.color}}>Emmy</span><span style={{color:"var(--text2)"}}>{emmyP.sig} signés · {emmyEnv} envoyés · {emmyP.tot} leads</span></div>
               <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(emmyP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.emmy.color}}/></div>
@@ -2597,7 +2606,7 @@ function PilotagePage({user, leads}){
               <div style={{height:6,background:"var(--surface2)",borderRadius:20,overflow:"hidden"}}><div style={{width:(ayaP.tot/maxTeam*100)+"%",height:"100%",background:ASSIGNEES.aya.color}}/></div>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)"}}>
-              <span style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Dossiers envoyés (total)</span>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Dossiers envoyés {teamMode==="month"?"(mois)":"(total)"}</span>
               <span className="brand-font" style={{fontSize:16,fontWeight:800,color:"var(--accent)"}}>{totalEnv}</span>
             </div>
             <div style={{fontSize:10,color:"var(--text3)",marginTop:8}}>Temps moyen contact → signé : <b style={{color:"var(--text)"}}>{avgDays!=null?avgDays+" jours":"—"}</b></div>
