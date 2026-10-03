@@ -1,7 +1,7 @@
 // SOLOC' CRM — Service Worker
 // Stratégie : réseau d'abord (pour toujours avoir la dernière version en ligne),
 // cache uniquement en secours quand il n'y a pas de connexion.
-const CACHE = "soloc-crm-v2";
+const CACHE = "soloc-crm-v3";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
