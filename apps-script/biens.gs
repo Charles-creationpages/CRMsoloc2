@@ -63,7 +63,7 @@ function runSend(bienId, doNewsletter, doMission, senderKey) {
     getCollection(token, "newsletter").forEach(function(n) {
       if (arrIncludes(n.typologie, typo) && n.email) {
         var key = norm(n.email);
-        if (!seen[key]) { seen[key] = 1; recipients.push({ prenom:firstName(n), email:n.email, hono:honoForProfile(n.statutClient, n) }); }
+        if (!seen[key]) { seen[key] = 1; recipients.push({ prenom:firstName(n), nom:n.name||"", email:n.email, liste:"Newsletter", hono:honoForProfile(n.statutClient, n) }); }
       }
     });
   }
@@ -71,29 +71,51 @@ function runSend(bienId, doNewsletter, doMission, senderKey) {
     getCollection(token, "leads").forEach(function(l) {
       if (l.column === "en_recherche" && l.criteria && arrIncludes(l.criteria.typologie, typo) && l.email) {
         var key = norm(l.email);
-        if (!seen[key]) { seen[key] = 1; recipients.push({ prenom:firstName(l), email:l.email, hono:honoForProfile(l.criteria.statutClient, l.criteria) }); }
+        if (!seen[key]) { seen[key] = 1; recipients.push({ prenom:firstName(l), nom:l.name||"", email:l.email, liste:"Lettre de mission", hono:honoForProfile(l.criteria.statutClient, l.criteria) }); }
       }
     });
   }
 
   var sent = 0, viaGmail = 0, premiereErreur = "";
+  var envoyes = [], echecs = [];
   var etat = { brevoKO: false };
   recipients.forEach(function(r) {
     try {
       var canal = envoyerMail({ to: r.email, subject: suj, html: buildEmail(bien, r.prenom, r.hono, sign), name: "SOLOC'" }, etat);
       sent++;
+      envoyes.push({ nom: r.nom || r.prenom, email: r.email, liste: r.liste });
       if (canal === "gmail") viaGmail++;
       Utilities.sleep(100);
     } catch (err) {
       Logger.log("Echec " + r.email + " : " + err.message);
+      echecs.push({ nom: r.nom || r.prenom, email: r.email, liste: r.liste, erreur: err.message });
       if (!premiereErreur) premiereErreur = err.message;
     }
   });
   if (viaGmail) poseLibelle("subject:(" + suj + ")", senderKey); // libellés possibles seulement pour les envois Gmail
   var detail = sent + "/" + recipients.length + " mail(s) envoyé(s)" + (viaGmail ? " (dont " + viaGmail + " via Gmail)" : "");
-  if (recipients.length && sent === 0) return ContentService.createTextOutput("ERREUR : aucun mail envoyé — " + premiereErreur);
-  if (sent < recipients.length) return ContentService.createTextOutput("PARTIEL - " + detail + " — " + premiereErreur);
-  return ContentService.createTextOutput("OK - " + detail);
+  recapEnvoi(bien, typo, senderKey, envoyes, echecs);
+  // Après la 1re ligne (lue par le CRM), la liste détaillée des destinataires en JSON
+  var liste = "\n@@" + JSON.stringify({ envoyes: envoyes, echecs: echecs });
+  if (recipients.length && sent === 0) return ContentService.createTextOutput("ERREUR : aucun mail envoyé — " + premiereErreur + liste);
+  if (sent < recipients.length) return ContentService.createTextOutput("PARTIEL - " + detail + " — " + premiereErreur + liste);
+  return ContentService.createTextOutput("OK - " + detail + liste);
+}
+
+// ── RÉCAP DE L'ENVOI À hello@ (un mail par bien envoyé : à qui, et si ça a marché) ─
+function recapEnvoi(bien, typo, senderKey, envoyes, echecs) {
+  try {
+    var titre = [typo, bien.surface ? bien.surface + " m²" : "", bien.rue || "", bien.secteur || ""].filter(String).join(" · ");
+    var qui = { emmy: "Emmy", aya: "Aya" }[senderKey] || "L'équipe";
+    var ligne = function(r) { return "<tr><td style='padding:4px 10px 4px 0'>" + (r.nom || "—") + "</td><td style='padding:4px 10px 4px 0;color:#5A6B7B'>" + r.email + "</td><td style='padding:4px 0;color:#9AA7B2'>" + r.liste + (r.erreur ? " — <span style='color:#b91c1c'>" + r.erreur + "</span>" : "") + "</td></tr>"; };
+    var html = "<div style='font-family:Arial,sans-serif;font-size:13px;color:#2C3E50'>"
+      + "<p style='font-size:15px'><b>" + (echecs.length ? "⚠ " : "✓ ") + "Bien envoyé à " + envoyes.length + " destinataire(s)</b>" + (echecs.length ? " — " + echecs.length + " en erreur" : "") + "</p>"
+      + "<p>Bien : <b>" + titre + "</b> · " + (bien.loyerCC || bien.loyer || "?") + " € CC<br>Signature : " + qui + " · " + new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" }) + "</p>"
+      + (envoyes.length ? "<p style='margin-top:14px'><b>Envoyé à :</b></p><table style='border-collapse:collapse;font-size:12.5px'>" + envoyes.map(ligne).join("") + "</table>" : "")
+      + (echecs.length ? "<p style='margin-top:14px;color:#b91c1c'><b>Non envoyé :</b></p><table style='border-collapse:collapse;font-size:12.5px'>" + echecs.map(ligne).join("") + "</table>" : "")
+      + "</div>";
+    GmailApp.sendEmail(EXPEDITEUR, (echecs.length ? "⚠ " : "✓ ") + "Bien envoyé à " + envoyes.length + " pers. — " + titre, "", { htmlBody: html, name: "CRM SOLOC'" });
+  } catch (e) { Logger.log("Récap impossible : " + e.message); }
 }
 
 // ── ENVOI : Brevo d'abord, Gmail en secours ─────────────────────────────
