@@ -2694,11 +2694,12 @@ function StatsPage({leads}){
   const kval={fontSize:24,fontWeight:800,marginTop:3};
   const titre=(t)=><div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:".06em",textTransform:"uppercase",margin:"20px 0 10px"}}>{t}</div>;
   const Table=({rows,lib,taux})=>{
-    const max=Math.max(1,...rows.map(r=>taux?r.clics:r.leads));
+    // Barre = taux de conversion (leads ÷ clics), sur une échelle de 0 à 100 %
+    const barre=(r)=> r.clics>0 ? Math.min(100, r.leads/r.clics*100) : 0;
     return rows.length===0
       ? <div style={{...card,fontSize:12.5,color:"var(--text3)",fontStyle:"italic"}}>Aucune donnée sur la période.</div>
       : <div style={{overflowX:"auto"}}><table className="list-table">
-          <thead><tr><th></th><th style={{textAlign:"right"}}>Clics</th><th style={{textAlign:"right"}}>Leads</th><th style={{textAlign:"right"}}>Taux</th><th style={{width:"35%"}}></th></tr></thead>
+          <thead><tr><th></th><th style={{textAlign:"right"}}>Clics</th><th style={{textAlign:"right"}}>Leads</th><th style={{textAlign:"right"}}>Taux</th><th style={{width:"35%",fontSize:10,color:"var(--text3)",fontWeight:600,textAlign:"left"}}>taux de conversion (0 → 100 %)</th></tr></thead>
           <tbody>{rows.map(r=>{
             const sous = (r.sous && r.sous.formulaire) ? ["site","formulaire"].map(k=>r.sous[k]).filter(Boolean) : [];
             return <React.Fragment key={r.k}>
@@ -2707,7 +2708,7 @@ function StatsPage({leads}){
               <td style={{textAlign:"right"}}>{r.clics}</td>
               <td style={{textAlign:"right",fontWeight:700}}>{r.leads}</td>
               <td style={{textAlign:"right",fontWeight:700,color:"var(--accent)"}}>{pct(r)}</td>
-              <td><div style={{background:"var(--surface2)",borderRadius:6,height:10,overflow:"hidden"}}><div style={{width:((taux?r.clics:r.leads)/max*100)+"%",height:"100%",background:"var(--accent)",borderRadius:6}}/></div></td>
+              <td><div style={{background:"var(--surface2)",borderRadius:6,height:10,overflow:"hidden"}}><div style={{width:barre(r)+"%",height:"100%",background:"var(--accent)",borderRadius:6}}/></div></td>
             </tr>
             {sous.map((x,i)=>(
               <tr key={r.k+"_"+x.k} style={{background:"var(--surface2)"}}>
@@ -2715,7 +2716,7 @@ function StatsPage({leads}){
                 <td style={{textAlign:"right",fontSize:12}}>{x.clics}</td>
                 <td style={{textAlign:"right",fontSize:12,fontWeight:700}}>{x.leads}</td>
                 <td style={{textAlign:"right",fontSize:12,color:"var(--accent)"}}>{pct(x)}</td>
-                <td><div style={{background:"var(--surface)",borderRadius:6,height:6,overflow:"hidden"}}><div style={{width:((taux?x.clics:x.leads)/max*100)+"%",height:"100%",background:"var(--accent-l2)",borderRadius:6}}/></div></td>
+                <td><div style={{background:"var(--surface)",borderRadius:6,height:6,overflow:"hidden"}}><div style={{width:barre(x)+"%",height:"100%",background:"var(--accent-l2)",borderRadius:6}}/></div></td>
               </tr>))}
             </React.Fragment>;})}</tbody>
         </table></div>;
