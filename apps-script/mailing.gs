@@ -134,8 +134,12 @@ function getLeadsEnRecherche(token) {
       headers:{ Authorization:"Bearer " + token },
       payload: JSON.stringify({ structuredQuery: { from:[{ collectionId:"leads" }], where:{ fieldFilter:{ field:{ fieldPath:"column" }, op:"EQUAL", value:{ stringValue:"en_recherche" } } } } }) }
   );
-  return JSON.parse(res.getContentText())
-    .filter(function(r){ return r.document; })
+  // Une erreur de lecture (droits, réseau…) ne doit plus passer pour « aucune recherche »
+  var out = JSON.parse(res.getContentText());
+  if (res.getResponseCode() !== 200 || !Array.isArray(out)) throw new Error("Lecture des recherches impossible (" + res.getResponseCode() + ") : " + res.getContentText().slice(0, 200));
+  var err = out.filter(function(r){ return r.error; })[0];
+  if (err) throw new Error("Lecture des recherches refusée : " + JSON.stringify(err.error).slice(0, 200));
+  return out.filter(function(r){ return r.document; })
     .map(function(r){ return parseDoc(r.document.fields); });
 }
 
@@ -146,6 +150,7 @@ function getPartners(token) {
     { method:"get", contentType:"application/json", muteHttpExceptions:true, headers:{ Authorization:"Bearer " + token } }
   );
   const data = JSON.parse(res.getContentText());
+  if (res.getResponseCode() !== 200) throw new Error("Lecture des partenaires impossible (" + res.getResponseCode() + ") : " + res.getContentText().slice(0, 200));
   if (!data.documents) return [];
   return data.documents.map(function(d){ return parseDoc(d.fields); }).filter(function(p){ return p.email; });
 }
