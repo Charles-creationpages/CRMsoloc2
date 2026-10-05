@@ -2776,6 +2776,76 @@ function StatsPage({leads}){
   );
 }
 
+// ─── RELEVÉ PURPLE → SOLOC' (PDF, réservé à Charles) ─────────────────────
+// Tous les mouvements de l'onglet Finance, en HT : entrées encaissées par Purple pour Soloc',
+// sorties réglées par Purple pour le compte de Soloc', et solde dû par Purple à Soloc'.
+function generateRelevePurple(finance, leads){
+  try {
+    var A="#C1614F", D="#2C3E50", CR="#FBF7F0", BD="#E5D9C6", G="#9AA7B2", T2="#5A6B7B", VERT="#15803d", ROUGE="#b91c1c";
+    var esc=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+    var eur=function(n){ return (Math.round((n||0)*100)/100).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; };
+    var dte=function(iso){ if(!iso) return "—"; var d=new Date(iso); return isNaN(d)?"—":d.toLocaleDateString("fr-FR"); };
+    var mOf=function(f){ return f.monthKey||String(f.createdAt||"").slice(0,7); };
+    var byDate=function(a,b){ return String(a.createdAt||"").localeCompare(String(b.createdAt||"")); };
+    var leadById={}; (leads||[]).forEach(function(l){ leadById[l.id]=l; });
+    var ins=finance.filter(function(f){ return f.type==="in" && !f.pending; }).sort(byDate);
+    var outs=finance.filter(function(f){ return f.type==="out"; }).sort(byDate);
+    var pend=finance.filter(function(f){ return f.type==="in" && f.pending; }).sort(byDate);
+    var tIn=ins.reduce(function(s,f){return s+(f.amount||0);},0), tOut=outs.reduce(function(s,f){return s+(f.amount||0);},0), solde=tIn-tOut;
+    var months=Array.from(new Set(finance.map(mOf))).filter(Boolean).sort();
+    var first=months[0], last=months[months.length-1];
+    var today=new Date().toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
+    var origine=function(f){ return f.source==="auto" ? "Dossier validé (CRM)" : "Saisie manuelle"; };
+    var css="@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Poppins',Arial,sans-serif;color:"+D+";font-size:11px;background:#fff;}.page{max-width:800px;margin:0 auto;padding:28px 34px;}h2{font-size:13px;font-weight:800;color:"+A+";letter-spacing:.06em;text-transform:uppercase;margin:24px 0 8px;}table{width:100%;border-collapse:collapse;}th{background:"+CR+";color:"+T2+";font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:7px 8px;border-bottom:1.5px solid "+BD+";}td{padding:6px 8px;border-bottom:1px solid "+BD+";vertical-align:top;}td.r,th.r{text-align:right;white-space:nowrap;}tr.tot td{font-weight:800;background:"+CR+";border-top:1.5px solid "+D+";}.kpis{display:flex;gap:10px;margin-top:14px;}.kpi{flex:1;border:1px solid "+BD+";border-radius:10px;padding:10px 12px;}.kl{font-size:9px;font-weight:700;color:"+G+";text-transform:uppercase;letter-spacing:.06em;}.kv{font-size:18px;font-weight:800;margin-top:3px;}.due{background:"+D+";color:#fff;border-color:"+D+";}.due .kl{color:rgba(255,255,255,.6);}.note{font-size:10px;color:"+T2+";line-height:1.55;margin-top:8px;}.box{background:"+CR+";border:1px solid "+BD+";border-radius:10px;padding:12px 14px;line-height:1.6;font-size:11px;}tr{page-break-inside:avoid;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{padding:0;}}@page{margin:16mm 14mm;}";
+    var h='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Relevé Purple - Soloc\' - '+esc(today)+'</title><style>'+css+'</style></head><body><div class="page">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+A+';padding-bottom:14px;">'
+      +'<div><img src="'+CLIENT_BASE_URL+'logo-soloc-couleur.svg" style="height:34px;display:block" alt="Soloc\'"/>'
+      +'<div style="font-size:18px;font-weight:800;margin-top:12px;">Relevé des encaissements Soloc\' perçus par Purple</div>'
+      +'<div style="font-size:11px;color:'+T2+';margin-top:2px;">Période : '+esc(monthLabel(first))+(last&&last!==first?' → '+esc(monthLabel(last)):'')+' · Montants hors taxes (HT)</div></div>'
+      +'<div style="text-align:right;font-size:10.5px;color:'+T2+';line-height:1.6;">Établi le '+esc(today)+'<br/>À l\'attention de <b style="color:'+D+'">Rodolphe</b><br/>Directeur — Purple</div></div>';
+    h+='<div class="box" style="margin-top:16px;">Depuis le lancement de Soloc\', les règlements des clients Soloc\' ont été <b>encaissés par Purple</b>. Ce relevé reprend <b>tous les mouvements</b> enregistrés dans le CRM Soloc\' (onglet Finance) afin de rapatrier ces sommes : chaque <b>entrée</b> (honoraires encaissés pour Soloc\') et chaque <b>sortie</b> (dépense réglée pour le compte de Soloc\'), mois par mois. Le <b>solde dû par Purple à Soloc\'</b> = total des entrées − total des sorties.</div>';
+    h+='<div class="kpis"><div class="kpi"><div class="kl">Entrées encaissées (HT)</div><div class="kv" style="color:'+VERT+'">'+eur(tIn)+'</div><div class="note" style="margin-top:2px">'+ins.length+' encaissement'+(ins.length>1?'s':'')+'</div></div>'
+      +'<div class="kpi"><div class="kl">Sorties réglées (HT)</div><div class="kv" style="color:'+ROUGE+'">'+eur(tOut)+'</div><div class="note" style="margin-top:2px">'+outs.length+' dépense'+(outs.length>1?'s':'')+'</div></div>'
+      +'<div class="kpi due"><div class="kl">Solde dû par Purple à Soloc\' (HT)</div><div class="kv">'+eur(solde)+'</div><div class="note" style="margin-top:2px;color:rgba(255,255,255,.7)">entrées − sorties</div></div></div>';
+    // Récap mensuel
+    h+='<h2>1. Récapitulatif par mois</h2><table><thead><tr><th>Mois</th><th class="r">Entrées HT</th><th class="r">Sorties HT</th><th class="r">Solde du mois</th><th class="r">Cumul dû</th></tr></thead><tbody>';
+    var cumul=0;
+    months.forEach(function(mk){
+      var i=ins.filter(function(f){return mOf(f)===mk;}).reduce(function(s,f){return s+(f.amount||0);},0);
+      var o=outs.filter(function(f){return mOf(f)===mk;}).reduce(function(s,f){return s+(f.amount||0);},0);
+      cumul+=i-o;
+      h+='<tr><td><b>'+esc(monthLabel(mk))+'</b></td><td class="r" style="color:'+VERT+'">'+eur(i)+'</td><td class="r" style="color:'+ROUGE+'">'+eur(o)+'</td><td class="r"><b>'+eur(i-o)+'</b></td><td class="r">'+eur(cumul)+'</td></tr>';
+    });
+    h+='<tr class="tot"><td>TOTAL</td><td class="r">'+eur(tIn)+'</td><td class="r">'+eur(tOut)+'</td><td class="r">'+eur(solde)+'</td><td class="r">'+eur(solde)+'</td></tr></tbody></table>';
+    // Détail par mois
+    h+='<h2>2. Détail de tous les mouvements</h2>';
+    months.forEach(function(mk){
+      var mi=ins.filter(function(f){return mOf(f)===mk;}), mo=outs.filter(function(f){return mOf(f)===mk;});
+      if(!mi.length && !mo.length) return;
+      h+='<div style="font-size:12px;font-weight:800;margin:14px 0 6px;">'+esc(monthLabel(mk))+'</div>';
+      h+='<table><thead><tr><th style="width:70px">Date</th><th>Libellé</th><th>Nature</th><th class="r">Entrée HT</th><th class="r">Sortie HT</th><th class="r">TTC encaissé</th></tr></thead><tbody>';
+      mi.concat(mo).sort(byDate).forEach(function(f){
+        var l=f.leadId?leadById[f.leadId]:null;
+        var lib=esc(f.label||"—")+(l&&l.adresseBien?'<div style="font-size:9.5px;color:'+G+'">Bien : '+esc(l.adresseBien)+'</div>':'');
+        h+='<tr><td>'+dte(f.createdAt)+'</td><td>'+lib+'</td><td style="color:'+T2+'">'+(f.type==="in"?origine(f):'Dépense')+'</td>'
+          +'<td class="r" style="color:'+VERT+'">'+(f.type==="in"?eur(f.amount):'')+'</td><td class="r" style="color:'+ROUGE+'">'+(f.type==="out"?eur(f.amount):'')+'</td>'
+          +'<td class="r" style="color:'+G+'">'+(f.type==="in"&&f.ttc?eur(f.ttc):'')+'</td></tr>';
+      });
+      var si=mi.reduce(function(s,f){return s+(f.amount||0);},0), so=mo.reduce(function(s,f){return s+(f.amount||0);},0);
+      h+='<tr class="tot"><td colspan="3">Sous-total '+esc(monthLabel(mk))+' — solde '+eur(si-so)+'</td><td class="r">'+eur(si)+'</td><td class="r">'+eur(so)+'</td><td></td></tr></tbody></table>';
+    });
+    if(pend.length){
+      h+='<h2>3. Dossiers validés au montant non renseigné (non inclus)</h2><table><thead><tr><th style="width:70px">Date</th><th>Libellé</th></tr></thead><tbody>';
+      pend.forEach(function(f){ h+='<tr><td>'+dte(f.createdAt)+'</td><td>'+esc(f.label||"—")+'</td></tr>'; });
+      h+='</tbody></table><div class="note">Ces dossiers sont validés mais leur montant n\'est pas encore saisi dans le CRM : ils ne sont pas comptés dans le solde ci-dessus.</div>';
+    }
+    h+='<div class="note" style="margin-top:22px;border-top:1px solid '+BD+';padding-top:10px;">Tous les montants sont exprimés <b>hors taxes</b>. La colonne « TTC encaissé » est indicative (TVA 20 %). Les sorties sont des dépenses réglées pour le compte de Soloc\' et viennent en déduction des entrées. Document généré depuis le CRM Soloc\' le '+esc(today)+'.</div>';
+    h+='</div><script>window.onload=function(){setTimeout(function(){window.print();},700);}<\/script></body></html>';
+    var w=window.open("","_blank");
+    if(w){ w.document.write(h); w.document.close(); } else alert("Autorise les fenêtres pop-up pour générer le relevé.");
+  } catch(err){ alert("Erreur : "+err.message); }
+}
+
 // ─── FINANCE PAGE (réservée à Charles) ───────────────────────────────────
 function FinancePage({user, leads, addToast, isMobile}){
   const [finance,setFinance]=useState([]);
@@ -2901,7 +2971,10 @@ function FinancePage({user, leads, addToast, isMobile}){
           <div className="pt">Finance</div>
           <div className="ps">Montants en HT — entrées auto depuis les dossiers validés</div>
         </div>
-        <div className="tb-right"><button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button></div>
+        <div className="tb-right">
+          <button className="btn btn-g" disabled={loading} onClick={()=>generateRelevePurple(finance,leads)} title="Relevé détaillé HT de tout ce que Purple a encaissé pour Soloc'"><Ic n="fileText" s={13}/>Relevé Purple (PDF)</button>
+          <button className="mobile-logout" onClick={()=>fsSignOut(auth)} title="Se déconnecter"><Ic n="logout" s={18}/></button>
+        </div>
       </div>
       <div className="main">
         {loading?(
