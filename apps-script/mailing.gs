@@ -48,23 +48,47 @@ function nomExpediteur(signataires) {
 
 // ── PROD ─────────────────────────────────────────────────────────────────
 function sendWeeklyMailing() {
+  var ok = [], ko = [];
   try {
     const token    = getFirebaseToken();
     const leads    = getLeadsEnRecherche(token);
     const partners = getPartners(token);
-    if (leads.length === 0)    { Logger.log("Aucune recherche — mailing annule."); return; }
-    if (partners.length === 0) { Logger.log("Aucun partenaire — mailing annule."); return; }
+    if (leads.length === 0)    { Logger.log("Aucune recherche — mailing annule."); alerte("Mailing du lundi NON envoyé : aucune recherche « En recherche » dans le CRM."); return; }
+    if (partners.length === 0) { Logger.log("Aucun partenaire — mailing annule."); alerte("Mailing du lundi NON envoyé : aucun partenaire avec email dans le CRM."); return; }
     partners.forEach(function(p) {
       try {
         const sign = signatairesDe(ownerDe(p));
         const html = buildEmailHtml(p.prenom || p.nom || "toi", leads, sign);
         const sujet = (sign.length > 1 ? "Nos" : "Mes") + " recherches locatives du " + todayLabel();
         GmailApp.sendEmail(p.email, sujet, "", { htmlBody: html, name: nomExpediteur(sign), bcc: "hello@solocimmo.fr" });
+        ok.push(p.email);
         Logger.log("Mail envoye a : " + p.email + " (signature " + nomExpediteur(sign) + ")");
-      } catch(e) { Logger.log("Erreur pour " + p.email + " : " + e.message); }
+      } catch(e) { ko.push(p.email + " → " + e.message); Logger.log("Erreur pour " + p.email + " : " + e.message); }
     });
-    Logger.log("Mailing termine — " + partners.length + " destinataires.");
-  } catch(e) { Logger.log("Erreur sendWeeklyMailing : " + e.message); }
+    Logger.log("Mailing termine — " + ok.length + " envoyes, " + ko.length + " en erreur.");
+    // Compte rendu à Charles : succès (court) ou erreurs (détail)
+    if (ko.length) alerte("Mailing du lundi : " + ok.length + " envoyé(s), " + ko.length + " en ERREUR.\n\n" + ko.join("\n"));
+    else alerte("✓ Mailing du lundi envoyé à " + ok.length + " partenaire(s) (" + leads.length + " recherches).", true);
+  } catch(e) {
+    Logger.log("Erreur sendWeeklyMailing : " + e.message);
+    alerte("Mailing du lundi NON envoyé — erreur : " + e.message + (ok.length ? "\n\nDéjà envoyés : " + ok.join(", ") : ""));
+  }
+}
+
+// Prévient Charles par mail (succès ou échec) pour qu'une panne ne passe plus inaperçue
+function alerte(texte, succes) {
+  try {
+    MailApp.sendEmail(TEST_EMAIL, (succes ? "" : "⚠ ") + "SOLOC' — " + texte.split("\n")[0].slice(0, 90), texte + "\n\n(Script : mailing hebdo partenaires — onglet Exécutions pour le détail)");
+  } catch(e) { Logger.log("Alerte impossible : " + e.message); }
+}
+
+// Vérifie le déclencheur du lundi et le recrée s'il manque (à lancer une fois)
+function installerDeclencheurLundi() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === "sendWeeklyMailing") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("sendWeeklyMailing").timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(8).inTimezone("Europe/Paris").create();
+  Logger.log("OK : déclencheur installé — chaque lundi entre 8h et 9h (heure de Paris).");
 }
 
 // ── TEST : 3 mails (signature Aya, Emmy, puis Aya + Emmy pour les partenaires de Charles) ──
