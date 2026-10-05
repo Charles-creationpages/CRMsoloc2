@@ -1752,6 +1752,21 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
                 </div>
               </div>
             </div>
+            <div className="bc">
+              <div className="bc-label"><Ic n="mail" s={12}/>Historique des envois</div>
+              {asArray(bien.envois).length===0
+                ? <div style={{fontSize:12,color:"var(--text3)",fontStyle:"italic",marginTop:4}}>Pas encore envoyé depuis le CRM</div>
+                : asArray(bien.envois).slice().reverse().map((ev,i)=>(
+                  <details key={i} style={{marginTop:6,fontSize:12}}>
+                    <summary style={{cursor:"pointer",fontWeight:700,color:asArray(ev.echecs).length?"var(--red)":"var(--text)"}}>
+                      {fmtDate(ev.at)} {ev.at?new Date(ev.at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""} · {asArray(ev.envoyes).length} destinataire{asArray(ev.envoyes).length>1?"s":""}{asArray(ev.echecs).length?" · "+asArray(ev.echecs).length+" en erreur":""} · par {displayNameFromEmail(ev.by||"")}
+                    </summary>
+                    <div style={{padding:"4px 0 2px 12px",color:"var(--text2)",lineHeight:1.6}}>
+                      {asArray(ev.envoyes).map((r,k)=><div key={k}>✓ {r.nom||"—"} <span style={{color:"var(--text3)"}}>· {r.email} · {r.liste}</span></div>)}
+                      {asArray(ev.echecs).map((r,k)=><div key={"e"+k} style={{color:"var(--red)"}}>✗ {r.nom||"—"} · {r.email} — {r.erreur}</div>)}
+                    </div>
+                  </details>))}
+            </div>
           </div>
         </div>
       </div>
@@ -1773,6 +1788,7 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
   const creatorRole = bien.createdBy ? roleOfEmail(bien.createdBy) : myRole;
   const sender = (creatorRole==="emmy"||creatorRole==="aya") ? creatorRole : "equipe";
   const [sending,setSending]=useState(false);
+  const [result,setResult]=useState(null); // {statut, message, envoyes, echecs}
   const total = (sendNl?nlMatch.length:0)+(sendMi?missionMatch.length:0);
   const senderLabels={emmy:"Emmy",aya:"Aya",equipe:"Équipe SOLOC'"};
 
@@ -1785,11 +1801,20 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
     fetchTimeout(SEND_BIEN_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({bienId:bien.id, newsletter:sendNl, mission:sendMi, sender:sender})},90000)
       .then(r=>r.text())
       .then(txt=>{
-        const t=String(txt).trim();
+        const full=String(txt).trim();
+        const cut=full.indexOf("\n@@");
+        const t=cut>=0?full.slice(0,cut).trim():full;
+        let det={envoyes:[],echecs:[]};
+        if(cut>=0){ try{ det=JSON.parse(full.slice(cut+3)); }catch(e){} }
         setSending(false);
-        if(/^ERREUR/i.test(t)){ addToast("✗ Bien NON envoyé — "+t.replace(/^ERREUR\s*:?\s*/i,""),"error"); return; }
-        if(/^PARTIEL/i.test(t)){ addToast("⚠ Envoi partiel : "+t.replace(/^PARTIEL\s*-\s*/i,""),"error"); onClose(); return; }
-        if(/^OK/i.test(t)){ addToast("✓ Bien envoyé : "+t.replace(/^OK\s*-\s*/i,"")); onClose(); return; }
+        // Historique des envois sur le bien (qui a reçu quoi, quand, par qui)
+        if(asArray(det.envoyes).length||asArray(det.echecs).length){
+          const entry={at:nowISO(), by:user.email, envoyes:asArray(det.envoyes), echecs:asArray(det.echecs)};
+          fsUpdateDoc(fsDocRef(db,"biens",bien.id),{envois:[...asArray(bien.envois),entry]}).catch(()=>{});
+        }
+        if(/^ERREUR/i.test(t)){ setResult({statut:"ko",message:t.replace(/^ERREUR\s*:?\s*/i,""),...det}); return; }
+        if(/^PARTIEL/i.test(t)){ setResult({statut:"partiel",message:t.replace(/^PARTIEL\s*-\s*/i,""),...det}); return; }
+        if(/^OK/i.test(t)){ setResult({statut:"ok",message:t.replace(/^OK\s*-\s*/i,""),...det}); return; }
         addToast("⚠ Réponse inattendue du script d'envoi — vérifie que le bien est bien parti","error"); onClose();
       })
       .catch(e=>{ setSending(false); addToast(e&&e.message==="timeout"
@@ -1803,6 +1828,28 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
       <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{title}</div><div style={{fontSize:11,color:"var(--text3)"}}>{sub}</div></div>
     </label>
   );
+
+  if(result){
+    const env=asArray(result.envoyes), ech=asArray(result.echecs);
+    return(
+      <div className="overlay" onClick={onClose}>
+        <div className="modal" onClick={e=>e.stopPropagation()}>
+          <div className="modal-title" style={{color:result.statut==="ok"?"var(--green)":"var(--red)"}}>
+            {result.statut==="ok"?"✓ Bien envoyé à "+env.length+" personne"+(env.length>1?"s":""):result.statut==="partiel"?"⚠ Envoi partiel":"✗ Bien NON envoyé"}
+          </div>
+          <div className="modal-sub">{bienTitre(bien)} · {result.message}</div>
+          {env.length>0&&<><div className="modal-section">Envoyé à</div>
+            <div style={{maxHeight:260,overflowY:"auto",fontSize:12.5,lineHeight:1.7}}>
+              {env.map((r,i)=><div key={i}>✓ <b>{r.nom||"—"}</b> <span style={{color:"var(--text3)"}}>· {r.email} · {r.liste}</span></div>)}
+            </div></>}
+          {ech.length>0&&<><div className="modal-section" style={{color:"var(--red)"}}>Non envoyé</div>
+            <div style={{fontSize:12.5,lineHeight:1.7,color:"var(--red)"}}>{ech.map((r,i)=><div key={i}>✗ {r.nom||"—"} · {r.email} — {r.erreur}</div>)}</div></>}
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Un récapitulatif a aussi été envoyé à hello@solocimmo.fr. L'envoi est gardé dans l'historique de la fiche du bien.</div>
+          <div className="fa"><button className="btn btn-p" onClick={onClose}>Fermer</button></div>
+        </div>
+      </div>
+    );
+  }
 
   return(
     <div className="overlay" onClick={onClose}>
