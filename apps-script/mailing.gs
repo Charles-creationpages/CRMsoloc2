@@ -60,25 +60,28 @@ function sendWeeklyMailing() {
         const sign = signatairesDe(ownerDe(p));
         const html = buildEmailHtml(p.prenom || p.nom || "toi", leads, sign);
         const sujet = (sign.length > 1 ? "Nos" : "Mes") + " recherches locatives du " + todayLabel();
-        GmailApp.sendEmail(p.email, sujet, "", { htmlBody: html, name: nomExpediteur(sign), bcc: "hello@solocimmo.fr" });
+        GmailApp.sendEmail(p.email, sujet, "", { htmlBody: html, name: nomExpediteur(sign) });
         ok.push(p.email);
         Logger.log("Mail envoye a : " + p.email + " (signature " + nomExpediteur(sign) + ")");
       } catch(e) { ko.push(p.email + " → " + e.message); Logger.log("Erreur pour " + p.email + " : " + e.message); }
     });
     Logger.log("Mailing termine — " + ok.length + " envoyes, " + ko.length + " en erreur.");
     // Compte rendu à Charles : succès (court) ou erreurs (détail)
-    if (ko.length) alerte("Mailing du lundi : " + ok.length + " envoyé(s), " + ko.length + " en ERREUR.\n\n" + ko.join("\n"));
-    else alerte("✓ Mailing du lundi envoyé à " + ok.length + " partenaire(s) (" + leads.length + " recherches).", true);
+    var recap = ok.length + " mail(s) envoyé(s) · " + leads.length + " recherche(s) en cours\n\nEnvoyés à :\n" + (ok.length ? ok.map(function(e){ return "  ✓ " + e; }).join("\n") : "  (aucun)");
+    if (ko.length) alerte("Mailing du lundi : " + ok.length + " envoyé(s), " + ko.length + " en ERREUR\n\n" + recap + "\n\nEn erreur :\n" + ko.map(function(e){ return "  ✗ " + e; }).join("\n"));
+    else alerte("✓ Mailing du lundi : " + ok.length + " envoyé(s), " + leads.length + " recherche(s)\n\n" + recap, true);
   } catch(e) {
     Logger.log("Erreur sendWeeklyMailing : " + e.message);
     alerte("Mailing du lundi NON envoyé — erreur : " + e.message + (ok.length ? "\n\nDéjà envoyés : " + ok.join(", ") : ""));
   }
 }
 
+// Récap / alerte envoyé à hello@ (un seul mail par lundi, plus de copie de chaque envoi)
+const RECAP_EMAIL = "hello@solocimmo.fr";
 // Prévient Charles par mail (succès ou échec) pour qu'une panne ne passe plus inaperçue
 function alerte(texte, succes) {
   try {
-    MailApp.sendEmail(TEST_EMAIL, (succes ? "" : "⚠ ") + "SOLOC' — " + texte.split("\n")[0].slice(0, 90), texte + "\n\n(Script : mailing hebdo partenaires — onglet Exécutions pour le détail)");
+    MailApp.sendEmail(RECAP_EMAIL, (succes ? "" : "⚠ ") + "SOLOC' — " + texte.split("\n")[0].slice(0, 90), texte + "\n\n(Script : mailing hebdo partenaires — onglet Exécutions pour le détail)");
   } catch(e) { Logger.log("Alerte impossible : " + e.message); }
 }
 
