@@ -1600,56 +1600,61 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
 
   const generateFiche=()=>{
     try {
-    var allPhotos=bien.photos||[];
-    var cover=allPhotos[0]||"";
-    var thumbs=allPhotos.slice(1,5);
-    var extra=allPhotos.length>5?(allPhotos.length-5):0;
-    var rue=bienRue(bien);
-    var loc=bienLoc(bien);
-    var badge=dispoLabel||"Bien disponible";
-
-    var photoHtml="";
-    if(cover){
-      photoHtml='<div class="hero"><img src="'+cover+'" referrerpolicy="no-referrer" alt="photo"/></div>';
-      if(thumbs.length){
-        photoHtml+='<div class="thumbs">';
-        thumbs.forEach(function(u,i){
-          var more=(i===thumbs.length-1 && extra>0)?'<div class="thumb-more">+'+extra+'</div>':'';
-          photoHtml+='<div class="thumb"><img src="'+u+'" referrerpolicy="no-referrer" alt="photo"/>'+more+'</div>';
-        });
-        photoHtml+='</div>';
+    // Fiche bien PDF — nouvelle DA Soloc' (Poppins, ardoise / terracotta / crème)
+    var esc=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); };
+    var eur=function(n){ return Math.round(n||0).toLocaleString("fr-FR")+" €"; };
+    var allPhotos=(bien.photos||[]).filter(Boolean);
+    var rue=bienRue(bien), loc=bienLoc(bien);
+    var agents={
+      emmy:{prenom:"Emmy",name:"Emmy MARIET",role:"Responsable recherche locative",phone:"06 12 89 64 15",photo:CLIENT_BASE_URL+"emmy.jpg"},
+      aya:{prenom:"Aya",name:"Aya BELKEBIR",role:"Responsable recherche locative",phone:"07 84 69 80 44",photo:CLIENT_BASE_URL+"aya-placeholder.png"}
+    };
+    var creator=bien.createdBy?roleOfEmail(bien.createdBy):"";
+    var who=agents[creator]?[agents[creator]]:[agents.aya,agents.emmy];
+    var logo=CLIENT_BASE_URL+"logo-soloc-couleur.svg", logoInv=CLIENT_BASE_URL+"logo-soloc-inverse.svg";
+    var pin='<svg width="13" height="13" viewBox="0 0 24 24" fill="#C1614F" style="vertical-align:-2px;margin-right:4px"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>';
+    var chk='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C1614F" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;flex-shrink:0"><path d="M5 12l5 5L20 7"/></svg>';
+    var img=function(u){ return '<img src="'+esc(u)+'" referrerpolicy="no-referrer" alt=""/>'; };
+    var chipTxt=[bien.typologie, bien.surface?bien.surface+" m²":"", bien.meuble?"Meublé":""].filter(Boolean).join(" · ");
+    var gal="";
+    if(allPhotos.length){
+      var chip=chipTxt?'<div class="chipimg">'+esc(chipTxt)+'</div>':'';
+      if(allPhotos.length===1) gal='<div class="gal one"><div class="ph">'+img(allPhotos[0])+chip+'</div></div>';
+      else {
+        var side=allPhotos.slice(1,3), extra=allPhotos.length-3;
+        gal='<div class="gal'+(side.length===1?' two':'')+'"><div class="ph main">'+img(allPhotos[0])+chip+'</div>';
+        side.forEach(function(u,i){ gal+='<div class="ph">'+img(u)+(i===side.length-1&&extra>0?'<div class="more">+'+extra+'</div>':'')+'</div>'; });
+        gal+='</div>';
       }
     }
-    var atoutsHtml="";
-    atouts.forEach(function(a){ atoutsHtml+='<span class="pill">'+a+'</span>'; });
-    if(!atoutsHtml)atoutsHtml='<span style="color:#aaa;font-size:12px;">—</span>';
-    var pin='<svg width="12" height="12" viewBox="0 0 24 24" fill="#C1614F" style="vertical-align:-1px;margin-right:3px;"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>';
-    var statsHtml='<div class="stats-bar">'
-      +'<div class="stat statfirst"><div class="stat-label">Typologie</div><div class="stat-val" style="color:#C1614F;">'+(bien.typologie||"—")+'</div></div>'
-      +'<div class="stat"><div class="stat-label">Surface</div><div class="stat-val">'+(bien.surface?bien.surface+' m2':"—")+'</div></div>'
-      +'<div class="stat"><div class="stat-label">Meuble</div><div class="stat-val">'+(bien.meuble?"Oui":"Non")+'</div></div>'
-      +'<div class="stat"><div class="stat-label">Etage</div><div class="stat-val">'+(bien.etage||"—")+'</div></div>'
-      +'</div>';
-    var honoHtml='<div class="hono"><div class="sec" style="margin-top:0;">Honoraires &amp; depot</div><div class="hono-grid">'
-      +'<div class="hono-box"><div class="hb-label">Honoraires SOLOC</div><div class="hb-val" style="color:#C1614F;">'+soloc+' EUR</div></div>'
-      +'<div class="hono-box"><div class="hb-label">Frais agence ('+(bien.surface||"?")+' m2 x 13,2)</div><div class="hb-val">'+agence+' EUR</div></div>'
-      +'<div class="hono-box"><div class="hb-label">Depot de garantie</div><div class="hb-val">'+depot+' EUR</div></div>'
-      +'</div><div class="hono-note">Paiement au resultat - Zero frais avant signature du bail</div></div>';
-
-    var css="@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Sora:wght@700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#fff;color:#2C3E50;font-size:14px;}.page{max-width:800px;margin:0 auto;border:1px solid #E5D9C6;}.header{background:#2C3E50;padding:18px 30px;display:flex;align-items:center;justify-content:space-between;}.hleft{display:flex;align-items:center;gap:12px;}.logo{width:40px;height:40px;background:#C1614F;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:19px;font-family:'Sora',sans-serif;}.brand{color:#fff;font-size:18px;font-weight:800;font-family:'Sora',sans-serif;}.brand-sub{color:rgba(255,255,255,.5);font-size:9px;letter-spacing:.08em;}.hbadge{background:rgba(255,255,255,.12);color:#fff;border-radius:20px;padding:5px 13px;font-size:11px;font-weight:700;}.hero{width:100%;height:300px;overflow:hidden;background:#E7E0D4;}.hero img{width:100%;height:100%;object-fit:cover;display:block;}.thumbs{display:flex;gap:3px;}.thumb{flex:1;height:96px;overflow:hidden;background:#E7E0D4;position:relative;}.thumb img{width:100%;height:100%;object-fit:cover;display:block;}.thumb-more{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(44,62,80,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;font-family:'Sora',sans-serif;}.body{padding:20px 30px;}.title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}.t-rue{font-family:'Sora',sans-serif;font-size:24px;font-weight:800;color:#2C3E50;line-height:1.1;}.t-loc{font-size:13px;color:#9AA7B2;font-weight:600;margin-top:4px;}.t-loyer{font-family:'Sora',sans-serif;font-size:28px;font-weight:800;color:#C1614F;line-height:1;text-align:right;white-space:nowrap;}.t-loyer-sub{font-size:11px;color:#9AA7B2;font-weight:600;margin-top:3px;text-align:right;}.stats-bar{display:flex;border:1px solid #E5D9C6;border-radius:12px;overflow:hidden;margin-top:16px;}.stat{flex:1;padding:12px 8px;text-align:center;border-right:1px solid #E5D9C6;}.stat:last-child{border-right:none;}.statfirst{background:#FBF7F0;}.stat-label{font-size:9px;color:#9AA7B2;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}.stat-val{font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#2C3E50;}.sec{font-size:10px;font-weight:800;color:#C1614F;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 7px;}.pill{display:inline-block;background:#F2E8DA;color:#5A6B7B;border:1px solid #E5D9C6;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;margin:3px 4px 0 0;}.desc{font-size:13px;color:#5A6B7B;line-height:1.65;}.hono{margin-top:16px;background:#FBF7F0;border:1px solid #E5D9C6;border-radius:12px;padding:14px;}.hono-grid{display:flex;gap:8px;}.hono-box{flex:1;background:#fff;border:1px solid #E5D9C6;border-radius:9px;padding:9px;text-align:center;}.hb-label{font-size:9px;color:#9AA7B2;margin-bottom:3px;}.hb-val{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:#2C3E50;}.hono-note{font-size:10px;color:#9AA7B2;text-align:center;margin-top:9px;}.footer{background:#2C3E50;padding:13px 30px;display:flex;align-items:center;justify-content:space-between;}.footer-brand{color:#fff;font-weight:700;font-size:12px;}.footer-contact{color:rgba(255,255,255,.6);font-size:10px;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.page{max-width:100%;border:none;}}";
-    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+titre+'</title><style>'+css+'</style></head><body><div class="page">';
-    html+='<div class="header"><div class="hleft"><div class="logo">S</div><div><div class="brand">soloc\'</div><div class="brand-sub">CHASSEUR LOCATIF LYON</div></div></div><div class="hbadge">'+badge+'</div></div>';
-    html+=photoHtml;
-    html+='<div class="body"><div class="title-row"><div><div class="t-rue">'+(rue||loc||"Bien")+'</div>'+(loc?'<div class="t-loc">'+pin+loc+'</div>':'')+'</div><div><div class="t-loyer">'+(loyerCC||"?")+' EUR</div><div class="t-loyer-sub">charges comprises / mois</div></div></div>';
-    html+=statsHtml;
-    html+='<div class="sec">Atouts</div><div>'+atoutsHtml+'</div>';
-    if(bien.description)html+='<div class="sec">Description</div><div class="desc">'+bien.description+'</div>';
-    if(bien.video)html+='<div class="sec">Visite video</div><div class="desc"><a href="'+bien.video+'" style="color:#C1614F;font-weight:700;">Voir la video commentee</a></div>';
-    html+=honoHtml;
-    html+='</div>';
-    html+='<div class="footer"><div class="footer-brand">SOLOC\' - Chasseur locatif Lyon</div><div class="footer-contact">solocimmo.fr - contact@solocimmo.fr</div></div></div>';
-    html+='<script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script>';
-    html+='</body></html>';
+    var facts=[["Typologie",bien.typologie||"—"],["Surface",bien.surface?bien.surface+" m²":"—"],["Meublé",bien.meuble?"Oui":"Non"],["Étage",bien.etage||"—"],["Dispo",dispoLabel||"—"]];
+    var factsHtml=facts.map(function(f,i){ return '<div class="fact'+(i===0?' first':'')+'"><div class="l">'+f[0]+'</div><div class="v">'+esc(f[1])+'</div></div>'; }).join("");
+    var atoutsHtml=atouts.map(function(a){ return '<div class="at">'+chk+esc(a)+'</div>'; }).join("");
+    var depotMois=bien.meuble?2:1;
+    var prevoir='<div class="prevoir"><b>À prévoir :</b> un dépôt de garantie sera demandé à la signature du bail, en plus du premier loyer'+(depot>0?' (ici '+depotMois+' mois hors charges, soit '+eur(depot)+')':'')+'.</div>';
+    var agentHtml='<div class="agents">'+who.map(function(a){
+      return '<div class="agent"><img class="av" src="'+esc(a.photo)+'" alt=""/><div class="ai"><div class="al">'+(who.length>1?'Vos interlocutrices':'Votre interlocutrice pour ce bien')+'</div><div class="an">'+esc(a.name)+'</div><div class="ar">'+esc(a.role)+' · Soloc\'</div></div><div class="ac"><div class="tel">'+esc(a.phone)+'</div><div class="mail">hello@solocimmo.fr</div></div></div>';
+    }).join("")+'</div>';
+    var badge=bien.dispoAsap?"Disponible dès maintenant":(bien.dateDisponibilite?"Disponible le "+fmtDate(bien.dateDisponibilite):"Bien disponible");
+    var css="@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:Poppins,Arial,sans-serif;color:#2C3E50;background:#FBF7F0}.page{width:210mm;min-height:297mm;margin:0 auto;background:#FBF7F0;display:flex;flex-direction:column}.top{display:flex;justify-content:space-between;align-items:center;padding:18px 26px 14px}.top img{height:34px;display:block}.ref{text-align:right;font-size:9.5px;color:#9AA7B2;font-weight:500;line-height:1.5}.badge{display:inline-block;background:#C1614F;color:#fff;font-weight:700;font-size:10.5px;padding:5px 12px;border-radius:30px;margin-top:3px}.gal{display:grid;grid-template-columns:2.1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;height:330px;margin:0 26px}.gal .main{grid-row:1/3}.gal.two{grid-template-rows:1fr}.gal.two .main{grid-row:auto}.gal.one{grid-template-columns:1fr;grid-template-rows:1fr}.ph{border-radius:14px;position:relative;overflow:hidden;background:#E7E0D4}.ph img{width:100%;height:100%;object-fit:cover;display:block}.more{position:absolute;inset:0;background:rgba(44,62,80,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px}.chipimg{position:absolute;top:12px;left:12px;background:rgba(251,247,240,.95);color:#2C3E50;font-weight:700;font-size:11px;padding:5px 11px;border-radius:30px}.head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;padding:20px 26px 0}.rue{font-size:25px;font-weight:800;line-height:1.1}.loc{font-size:12.5px;color:#5A6B7B;font-weight:500;margin-top:6px}.prix{text-align:right;white-space:nowrap}.prix .v{font-size:30px;font-weight:800;color:#C1614F;line-height:1}.prix .s{font-size:10px;color:#9AA7B2;font-weight:600;margin-top:4px}.facts{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:16px 26px 0}.fact{background:#fff;border:1px solid #E5D9C6;border-radius:12px;padding:10px 6px;text-align:center}.fact .l{font-size:8.5px;color:#9AA7B2;font-weight:700;text-transform:uppercase;letter-spacing:.07em}.fact .v{font-size:14px;font-weight:800;margin-top:2px}.fact.first{background:#2C3E50;border-color:#2C3E50}.fact.first .l{color:rgba(255,255,255,.55)}.fact.first .v{color:#E9937F}.cols{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;padding:18px 26px 0}.h{font-size:10px;font-weight:800;color:#C1614F;letter-spacing:.09em;text-transform:uppercase;margin-bottom:8px}.atouts{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-bottom:16px}.at{display:flex;align-items:center;font-size:11.5px;font-weight:600}.desc{font-size:11px;color:#5A6B7B;line-height:1.7;white-space:pre-line}.video{display:inline-flex;align-items:center;margin-top:12px;font-size:11px;font-weight:700;color:#C1614F;border:1.5px solid #E9937F;border-radius:30px;padding:5px 12px;text-decoration:none}.prevoir{margin-top:14px;font-size:11px;color:#5A6B7B;line-height:1.6}.prevoir b{color:#2C3E50}.budget{background:#2C3E50;color:#fff;border-radius:16px;padding:16px 16px 14px}.budget .h{color:#E9937F}.row{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.1)}.row span{color:rgba(255,255,255,.75)}.row small{display:block;font-size:9px;color:rgba(255,255,255,.5)}.row b{font-weight:700}.row.soloc{border-bottom:none}.row.soloc b{color:#E9937F}.note{margin-top:10px;background:rgba(233,147,127,.15);border-radius:10px;padding:8px 10px;font-size:9.5px;color:#FBF7F0;line-height:1.5}.agents{margin:18px 26px 0;display:flex;flex-direction:column;gap:8px}.agent{background:#fff;border:1px solid #E5D9C6;border-radius:18px;padding:14px 22px;display:flex;align-items:center;gap:18px}.av{width:60px;height:60px;border-radius:50%;object-fit:cover;flex-shrink:0;border:3px solid #F5E2DD;background:#E9937F}.ai{flex:1}.al{font-size:9.5px;color:#C1614F;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.an{font-size:19px;font-weight:800;margin-top:2px}.ar{font-size:11px;color:#9AA7B2;font-weight:500}.ac{text-align:right}.tel{font-size:23px;font-weight:800;color:#C1614F;white-space:nowrap}.mail{font-size:11.5px;color:#5A6B7B;font-weight:600;margin-top:2px}.spacer{flex:1;min-height:18px}.foot{background:#2C3E50;padding:12px 26px;display:flex;justify-content:space-between;align-items:center}.foot img{height:22px;display:block}.foot .c{font-size:9.5px;color:rgba(255,255,255,.65)}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:0}}";
+    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Fiche - '+esc(titre)+'</title><style>'+css+'</style></head><body><div class="page">';
+    html+='<div class="top"><img src="'+logo+'" alt="Soloc\'"/><div class="ref">Fiche bien · '+esc(new Date().toLocaleDateString("fr-FR"))+'<br/><span class="badge">'+esc(badge)+'</span></div></div>';
+    html+=gal;
+    html+='<div class="head"><div><div class="rue">'+esc(rue||loc||"Bien")+'</div>'+(loc&&rue?'<div class="loc">'+pin+esc(loc)+'</div>':'')+'</div><div class="prix"><div class="v">'+(loyerCC?eur(loyerCC):"—")+'</div><div class="s">charges comprises / mois</div></div></div>';
+    html+='<div class="facts">'+factsHtml+'</div>';
+    html+='<div class="cols"><div>';
+    if(atoutsHtml) html+='<div class="h">Les atouts</div><div class="atouts">'+atoutsHtml+'</div>';
+    if(bien.description) html+='<div class="h">Description</div><div class="desc">'+esc(bien.description)+'</div>';
+    if(bien.video) html+='<a class="video" href="'+esc(bien.video)+'">▶&nbsp;Voir la visite vidéo</a>';
+    html+=prevoir+'</div><div>';
+    html+='<div class="budget"><div class="h">Honoraires · à titre d\'information</div>'
+      +'<div class="row"><span>Honoraires d\'agence<small>'+esc(bien.surface||"?")+' m² × '+String(HONO_AGENCE_M2).replace(".",",")+' €</small></span><b>'+eur(agence)+'</b></div>'
+      +'<div class="row soloc"><span>Honoraires Soloc\'</span><b>'+eur(soloc)+'</b></div>'
+      +'<div class="note">Honoraires Soloc\' payés <b>uniquement au résultat</b> : zéro frais avant la signature du bail.</div></div>';
+    html+='</div></div>';
+    html+=agentHtml;
+    html+='<div class="spacer"></div><div class="foot"><img src="'+logoInv+'" alt="Soloc\'"/><div class="c">Chasseur locatif à Lyon · solocimmo.fr · hello@solocimmo.fr</div></div>';
+    html+='</div><script>window.onload=function(){setTimeout(function(){window.print();},900);}<\/script></body></html>';
     var blob=new Blob([html],{type:"text/html;charset=utf-8"});
     var url=URL.createObjectURL(blob);
     var w=window.open(url,"_blank");
@@ -1661,7 +1666,7 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
     } else {
       addToast("✓ Fiche ouverte — choisis Enregistrer en PDF dans l'impression");
     }
-    setTimeout(function(){URL.revokeObjectURL(url);},5000);
+    setTimeout(function(){URL.revokeObjectURL(url);},60000);
     } catch(err){ alert("Erreur : "+err.message); }
   };
 
