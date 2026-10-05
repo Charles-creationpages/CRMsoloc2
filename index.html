@@ -1790,9 +1790,11 @@ function SendBienModal({bien, newsletter, leads, user, onClose, addToast}){
         if(/^ERREUR/i.test(t)){ addToast("✗ Bien NON envoyé — "+t.replace(/^ERREUR\s*:?\s*/i,""),"error"); return; }
         if(/^PARTIEL/i.test(t)){ addToast("⚠ Envoi partiel : "+t.replace(/^PARTIEL\s*-\s*/i,""),"error"); onClose(); return; }
         if(/^OK/i.test(t)){ addToast("✓ Bien envoyé : "+t.replace(/^OK\s*-\s*/i,"")); onClose(); return; }
-        addToast("Bien transmis à "+total+" destinataire"+(total>1?"s":"")+" (confirmation indisponible)"); onClose();
+        addToast("⚠ Réponse inattendue du script d'envoi — vérifie que le bien est bien parti","error"); onClose();
       })
-      .catch(()=>{ setSending(false); addToast("Bien transmis à "+total+" destinataire"+(total>1?"s":"")+" (confirmation indisponible)"); onClose(); });
+      .catch(e=>{ setSending(false); addToast(e&&e.message==="timeout"
+        ? "⚠ Pas de réponse du script d'envoi après 90 s — le bien n'est peut-être PAS parti (script à redéployer ?)"
+        : "✗ Bien NON envoyé — script d'envoi injoignable","error"); });
   };
 
   const box=(checked,setF,title,sub)=>(
