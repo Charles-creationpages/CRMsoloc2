@@ -3023,7 +3023,9 @@ function FinancePage({user, leads, addToast, isMobile}){
   // Franchise en base de TVA (prestations de services) : 37 500 € (seuil), 41 250 € (seuil majoré)
   const SEUIL_TVA=37500, SEUIL_TVA_MAJ=41250;
   const annee=String(new Date().getFullYear());
-  const caAnnee=solocMouv.filter(f=>f.type==="in"&&!f.pending&&String(f.createdAt||"").slice(0,4)===annee).reduce((x,f)=>x+cash(f),0);
+  // Le paiement de Purple compte dans le seuil de franchise (l'année où il est reçu)
+  const purpleDansSeuil = creance.recu && String(creance.recuLe||"").slice(0,4)===annee ? (parseFloat(creance.montant)||0) : 0;
+  const caAnnee=solocMouv.filter(f=>f.type==="in"&&!f.pending&&String(f.createdAt||"").slice(0,4)===annee).reduce((x,f)=>x+cash(f),0) + purpleDansSeuil;
   const pctTva=Math.min(100,caAnnee/SEUIL_TVA_MAJ*100);
   const chargesActives=asArray(P.chargesFixes).filter(c=>!c.fin||c.fin>=curMK);
   const totalFixes=chargesActives.reduce((x,c)=>x+(parseFloat(c.ttc)||0),0);
@@ -3138,7 +3140,7 @@ function FinancePage({user, leads, addToast, isMobile}){
                   <div style={{marginTop:12,background:"rgba(255,255,255,.08)",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
                     <div>
                       <div style={{fontSize:11,fontWeight:700}}>Paiement de Purple : {eurFmt(creance.montant||0)} TTC</div>
-                      <div style={{fontSize:10.5,color:creance.recu?"#86efac":"#fcd34d",marginTop:2}}>{creance.recu?"✓ Reçu le "+fmtDate(creance.recuLe):"⏳ En attente de paiement — non compté dans la trésorerie"}</div>
+                      <div style={{fontSize:10.5,color:creance.recu?"#86efac":"#fcd34d",marginTop:2}}>{creance.recu?"✓ Reçu le "+fmtDate(creance.recuLe):"⏳ En attente de paiement — pas encore compté (trésorerie et franchise TVA)"}</div>
                     </div>
                     {!creance.recu&&<button className="btn btn-p btn-sm" onClick={recevoirPurple}>Marquer reçu</button>}
                   </div>
@@ -3162,7 +3164,8 @@ function FinancePage({user, leads, addToast, isMobile}){
                       ? <><b>Seuil de 37 500 € dépassé</b> : franchise conservée cette année tant que tu restes sous 41 250 €, TVA à facturer à partir du 1er janvier.</>
                       : <><b style={{color:"var(--red)"}}>41 250 € dépassés</b> : TVA à facturer dès le jour du dépassement.</>}
                   </div>
-                  <div style={{fontSize:9.5,color:"var(--text3)",marginTop:6}}>Prestations de services · seuils impots.gouv.fr / service-public.fr en vigueur en 2026. Compte : encaissements Soloc' de l'année civile (hors paiement de Purple).</div>
+                  <div style={{fontSize:9.5,color:"var(--text3)",marginTop:6}}>Prestations de services · seuils impots.gouv.fr / service-public.fr en vigueur en 2026. Compte : encaissements Soloc' de l'année civile{creance.recu?", paiement de Purple inclus":""}.</div>
+                  {!creance.recu&&<div style={{fontSize:10.5,color:"#c2410c",marginTop:4}}>⚠ Le paiement de Purple ({eurFmt(creance.montant||0)}) sera ajouté à ce compteur à sa réception → {eurFmt(caAnnee+(parseFloat(creance.montant)||0))} / 37 500 €.</div>}
                   {enFranchise(nowISO())&&caAnnee>=SEUIL_TVA&&<button className="btn btn-g btn-sm" style={{marginTop:8}} onClick={passerTva}>Passer à la TVA</button>}
                 </div>
                 {/* Charges fixes */}
