@@ -3020,9 +3020,15 @@ function FinancePage({user, leads, addToast, isMobile}){
     + solocMouv.filter(f=>f.type==="in"&&!f.pending).reduce((x,f)=>x+cash(f),0)
     - solocMouv.filter(f=>f.type==="out").reduce((x,f)=>x+cash(f),0)
     - chargesVirtuelles.reduce((x,f)=>x+f.ttc,0);
-  // Franchise en base de TVA (prestations de services) : 37 500 € (seuil), 41 250 € (seuil majoré)
-  const SEUIL_TVA=37500, SEUIL_TVA_MAJ=41250;
+  // Franchise en base de TVA (prestations de services) : 37 500 € (seuil), 41 250 € (seuil majoré).
+  // L'année de création de Soloc' (29/09/2026), les deux seuils sont ramenés au prorata des jours d'activité.
+  const SEUIL_TVA_BASE=37500, SEUIL_TVA_MAJ_BASE=41250;
   const annee=String(new Date().getFullYear());
+  const creationSoloc=P.dateCreation||"2026-09-29";
+  const anneeCreation=creationSoloc.slice(0,4)===annee;
+  const joursAn=(Date.UTC(+annee+1,0,1)-Date.UTC(+annee,0,1))/864e5;
+  const joursActivite=anneeCreation ? Math.round((Date.UTC(+annee+1,0,1)-Date.UTC(+annee,+creationSoloc.slice(5,7)-1,+creationSoloc.slice(8,10)))/864e5) : joursAn;
+  const SEUIL_TVA=Math.round(SEUIL_TVA_BASE*joursActivite/joursAn), SEUIL_TVA_MAJ=Math.round(SEUIL_TVA_MAJ_BASE*joursActivite/joursAn);
   // Le paiement de Purple compte dans le seuil de franchise (l'année où il est reçu)
   const purpleDansSeuil = creance.recu && String(creance.recuLe||"").slice(0,4)===annee ? (parseFloat(creance.montant)||0) : 0;
   const caAnnee=solocMouv.filter(f=>f.type==="in"&&!f.pending&&String(f.createdAt||"").slice(0,4)===annee).reduce((x,f)=>x+cash(f),0) + purpleDansSeuil;
@@ -3154,18 +3160,19 @@ function FinancePage({user, leads, addToast, isMobile}){
                   <div className="brand-font" style={{fontSize:22,fontWeight:800,marginTop:4,color:caAnnee>=SEUIL_TVA_MAJ?"var(--red)":caAnnee>=SEUIL_TVA?"#c2410c":"var(--text)"}}>{eurFmt(caAnnee)} <span style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>/ {eurFmt(SEUIL_TVA)}</span></div>
                   <div style={{position:"relative",height:12,background:"var(--surface2)",borderRadius:20,marginTop:8,overflow:"hidden"}}>
                     <div style={{width:pctTva+"%",height:"100%",borderRadius:20,background:caAnnee>=SEUIL_TVA_MAJ?"var(--red)":caAnnee>=SEUIL_TVA*0.8?"#f59e0b":"var(--green)"}}/>
-                    <div style={{position:"absolute",top:0,bottom:0,left:(SEUIL_TVA/SEUIL_TVA_MAJ*100)+"%",width:2,background:"var(--ardoise)"}} title="Seuil 37 500 €"/>
+                    <div style={{position:"absolute",top:0,bottom:0,left:(SEUIL_TVA/SEUIL_TVA_MAJ*100)+"%",width:2,background:"var(--ardoise)"}} title={"Seuil "+eurFmt(SEUIL_TVA)}/>
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9.5,color:"var(--text3)",marginTop:3}}><span>0 €</span><span>seuil 37 500 €</span><span>41 250 €</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9.5,color:"var(--text3)",marginTop:3}}><span>0 €</span><span>seuil {eurFmt(SEUIL_TVA)}</span><span>{eurFmt(SEUIL_TVA_MAJ)}</span></div>
                   <div style={{fontSize:11,color:"var(--text2)",marginTop:8,lineHeight:1.5}}>
                     {caAnnee<SEUIL_TVA
                       ? <>Encore <b>{eurFmt(SEUIL_TVA-caAnnee)}</b> d'encaissements avant le seuil. Pas de TVA à facturer.</>
                       : caAnnee<SEUIL_TVA_MAJ
-                      ? <><b>Seuil de 37 500 € dépassé</b> : franchise conservée cette année tant que tu restes sous 41 250 €, TVA à facturer à partir du 1er janvier.</>
-                      : <><b style={{color:"var(--red)"}}>41 250 € dépassés</b> : TVA à facturer dès le jour du dépassement.</>}
+                      ? <><b>Seuil de {eurFmt(SEUIL_TVA)} dépassé</b> : franchise conservée cette année tant que tu restes sous {eurFmt(SEUIL_TVA_MAJ)}, TVA à facturer à partir du 1er janvier.</>
+                      : <><b style={{color:"var(--red)"}}>{eurFmt(SEUIL_TVA_MAJ)} dépassés</b> : TVA à facturer dès le jour du dépassement.</>}
                   </div>
+                  {anneeCreation&&<div style={{fontSize:10.5,color:"var(--text2)",marginTop:6,background:"var(--surface2)",borderRadius:8,padding:"6px 8px",lineHeight:1.5}}>📅 <b>Année de création : seuils au prorata</b> — {joursActivite} jours d'activité (du {fmtDate(creationSoloc)} au 31/12) sur {joursAn} : {eurFmt(SEUIL_TVA_BASE)} → <b>{eurFmt(SEUIL_TVA)}</b>, {eurFmt(SEUIL_TVA_MAJ_BASE)} → <b>{eurFmt(SEUIL_TVA_MAJ)}</b>. Seuils pleins à partir du 1er janvier {+annee+1}.</div>}
                   <div style={{fontSize:9.5,color:"var(--text3)",marginTop:6}}>Prestations de services · seuils impots.gouv.fr / service-public.fr en vigueur en 2026. Compte : encaissements Soloc' de l'année civile{creance.recu?", paiement de Purple inclus":""}.</div>
-                  {!creance.recu&&<div style={{fontSize:10.5,color:"#c2410c",marginTop:4}}>⚠ Le paiement de Purple ({eurFmt(creance.montant||0)}) sera ajouté à ce compteur à sa réception → {eurFmt(caAnnee+(parseFloat(creance.montant)||0))} / 37 500 €.</div>}
+                  {!creance.recu&&<div style={{fontSize:10.5,color:"#c2410c",marginTop:4}}>⚠ Le paiement de Purple ({eurFmt(creance.montant||0)}) sera ajouté à ce compteur à sa réception → {eurFmt(caAnnee+(parseFloat(creance.montant)||0))} / {eurFmt(SEUIL_TVA)}{caAnnee+(parseFloat(creance.montant)||0)>=SEUIL_TVA_MAJ?" — au-delà du seuil majoré de "+eurFmt(SEUIL_TVA_MAJ)+" : TVA due dès sa réception":""}.</div>}
                   {enFranchise(nowISO())&&caAnnee>=SEUIL_TVA&&<button className="btn btn-g btn-sm" style={{marginTop:8}} onClick={passerTva}>Passer à la TVA</button>}
                 </div>
                 {/* Charges fixes */}
