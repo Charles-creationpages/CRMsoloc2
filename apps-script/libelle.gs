@@ -1,7 +1,8 @@
 // ─── SOLOC' — Libellé auto des mails reçus (dossiers, réponses clients) ───
 // Compte hello@solocimmo.fr. Pas de déploiement web : déclencheur temporel (toutes les 15 min).
 // Retrouve le client dans le CRM via son email et pose le libellé Emmy / Aya de la personne qui le suit
-// (les deux si le client est suivi par les deux).
+// (les deux si le client est suivi par les deux). Pose aussi le libellé « Charles » sur les mails
+// Papernest, Qonto, factures, récap Papernest du CRM, et ceux où Charles est en copie (REGLES_CHARLES).
 //
 // Réglage (Paramètres du projet ⚙️ → Propriétés du script) :
 //   • SCRIPT_PASSWORD : mot de passe du compte Firebase script@solocimmo.fr
@@ -16,6 +17,18 @@ const SCRIPT_EMAIL     = "script@solocimmo.fr";
 const SCRIPT_PASSWORD  = PropertiesService.getScriptProperties().getProperty("SCRIPT_PASSWORD") || "";
 const ASSIGNEE_LABEL   = { emmy: "Emmy", aya: "Aya" };
 const MAX_THREADS      = 100;
+
+// ── Libellé « Charles » : mails à traiter par Charles (modifiable) ─────────
+// Recherche Gmail : chaque ligne est une condition, il suffit qu'une seule soit vraie.
+const LABEL_CHARLES = "Charles";
+const REGLES_CHARLES = [
+  'subject:("AJOUT PAPERNEST")',          // récap « URGENT - AJOUT PAPERNEST » envoyé par le CRM
+  'from:papernest',                       // tout ce qui vient de Papernest (pas les mails clients qui en parlent)
+  'from:qonto.com',                       // banque Qonto
+  'subject:facture', 'subject:factures', 'subject:invoice', // envois / réceptions de factures
+  'cc:charlesblyopro@gmail.com', 'cc:charlespurpleimmobilier@gmail.com',
+  'bcc:charlesblyopro@gmail.com', 'bcc:charlespurpleimmobilier@gmail.com' // Charles en copie
+];
 
 // ── Déclencheur (toutes les 15 min) ──────────────────────────────────────
 function libellerReponses() {
@@ -34,8 +47,12 @@ function executer() {
   // 1er passage : 3 derniers jours ; ensuite : depuis le dernier passage, avec 1 h de marge
   var apres = depuis ? depuis - 3600 : maintenant - 3 * 24 * 3600;
 
+  // 1) Libellé Charles (y compris les mails envoyés depuis hello@ vers hello@, comme le récap Papernest)
+  var nbCharles = libellerCharles(apres);
+
+  // 2) Libellés Emmy / Aya selon le client
   var threads = GmailApp.search("after:" + apres + " -in:sent -in:drafts -in:spam -in:trash", 0, MAX_THREADS);
-  if (!threads.length) { props.setProperty("dernierPassage", String(maintenant)); Logger.log("Aucun nouveau mail."); return; }
+  if (!threads.length) { props.setProperty("dernierPassage", String(maintenant)); Logger.log("Aucun nouveau mail client. Libellé Charles : " + nbCharles); return; }
 
   var map = carteClients();
   var labels = {};
@@ -58,7 +75,17 @@ function executer() {
     } catch (e) { Logger.log("Conversation ignorée : " + e.message); }
   });
   props.setProperty("dernierPassage", String(maintenant));
-  Logger.log(threads.length + " conversation(s) relue(s), " + poses + " libellé(s) posé(s).");
+  Logger.log(threads.length + " conversation(s) relue(s), " + poses + " libellé(s) Emmy/Aya posé(s), " + nbCharles + " libellé(s) Charles.");
+}
+
+function libellerCharles(apres) {
+  var q = "after:" + apres + " -in:drafts -in:spam -in:trash -label:" + LABEL_CHARLES + " {" + REGLES_CHARLES.join(" ") + "}";
+  var threads = GmailApp.search(q, 0, MAX_THREADS);
+  if (!threads.length) return 0;
+  var label = GmailApp.getUserLabelByName(LABEL_CHARLES) || GmailApp.createLabel(LABEL_CHARLES);
+  var n = 0;
+  threads.forEach(function(t) { try { t.addLabel(label); n++; } catch (e) { Logger.log("Charles : " + e.message); } });
+  return n;
 }
 
 // Email client (et emails des colocataires / garants) → ["emmy"], ["aya"] ou les deux
