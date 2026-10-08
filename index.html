@@ -3009,10 +3009,15 @@ function FinancePage({user, leads, addToast, isMobile}){
         amount:enFranchise(iso)?ttc:round2(ttc/(1+(parseFloat(c.taux)||0)/100)), createdAt:iso, monthKey:mk, source:"fixe", virtual:true});
     }
   });
-  const solocMouv = mouvements.filter(f=>entiteOf(f)==="soloc");
+  // Dossier validé pas encore marqué payé (case « Marquer payé » dans Validé) : visible mais pas compté côté Soloc'
+  const attentePaiement=(f)=>{ if(f.type!=="in"||!f.leadId) return false; const l=leads.find(x=>x.id===f.leadId); return !!l && !l.paid && !l.archived; };
+  const solocMouv = mouvements.filter(f=>entiteOf(f)==="soloc" && !attentePaiement(f));
+  const solocAttente = mouvements.filter(f=>entiteOf(f)==="soloc" && attentePaiement(f));
   const finance = espace==="purple"
     ? mouvements.filter(f=>entiteOf(f)==="purple")
-    : solocMouv.map(f=>({...f, amount:valeurSoloc(f)})).concat(chargesVirtuelles);
+    : solocMouv.map(f=>({...f, amount:valeurSoloc(f)}))
+        .concat(solocAttente.map(f=>({...f, amount:0, attente:true, montantAttente:f.pending?null:valeurSoloc(f)})))
+        .concat(chargesVirtuelles);
   const unite = espace==="soloc" && enFranchise(nowISO()) ? "" : " HT";
   // Trésorerie Soloc' : créance Purple reçue + encaissements − dépenses − charges fixes (montants réellement payés)
   const creance=P.creancePurple||{};
@@ -3171,8 +3176,6 @@ function FinancePage({user, leads, addToast, isMobile}){
                       : <><b style={{color:"var(--red)"}}>{eurFmt(SEUIL_TVA_MAJ)} dépassés</b> : TVA à facturer dès le jour du dépassement.</>}
                   </div>
                   {anneeCreation&&<div style={{fontSize:10.5,color:"var(--text2)",marginTop:6,background:"var(--surface2)",borderRadius:8,padding:"6px 8px",lineHeight:1.5}}>📅 <b>Année de création : seuils au prorata</b> — {joursActivite} jours d'activité (du {fmtDate(creationSoloc)} au 31/12) sur {joursAn} : {eurFmt(SEUIL_TVA_BASE)} → <b>{eurFmt(SEUIL_TVA)}</b>, {eurFmt(SEUIL_TVA_MAJ_BASE)} → <b>{eurFmt(SEUIL_TVA_MAJ)}</b>. Seuils pleins à partir du 1er janvier {+annee+1}.</div>}
-                  <div style={{fontSize:9.5,color:"var(--text3)",marginTop:6}}>Prestations de services · seuils impots.gouv.fr / service-public.fr en vigueur en 2026. Compte : encaissements Soloc' de l'année civile{creance.recu?", paiement de Purple inclus":""}.</div>
-                  {!creance.recu&&<div style={{fontSize:10.5,color:"#c2410c",marginTop:4}}>⚠ Le paiement de Purple ({eurFmt(creance.montant||0)}) sera ajouté à ce compteur à sa réception → {eurFmt(caAnnee+(parseFloat(creance.montant)||0))} / {eurFmt(SEUIL_TVA)}{caAnnee+(parseFloat(creance.montant)||0)>=SEUIL_TVA_MAJ?" — au-delà du seuil majoré de "+eurFmt(SEUIL_TVA_MAJ)+" : TVA due dès sa réception":""}.</div>}
                   {enFranchise(nowISO())&&caAnnee>=SEUIL_TVA&&<button className="btn btn-g btn-sm" style={{marginTop:8}} onClick={passerTva}>Passer à la TVA</button>}
                 </div>
                 {/* Charges fixes */}
@@ -3297,10 +3300,13 @@ function FinancePage({user, leads, addToast, isMobile}){
                             ?<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#EFF6FF",color:"#1d4ed8"}}>AUTO · validé</span>
                             :<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}}>MANUEL</span>}
                           {f.pending&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e"}}>à compléter</span>}
+                          {f.attente&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}} title="Compté dès que tu coches « Marquer payé » dans la colonne Validé">⏳ pas encore payé · non compté</span>}
                         </div>
                       </div>
                       {f.pending
                         ?<button className="btn btn-g btn-sm" onClick={()=>complete(f)}>Compléter</button>
+                        :f.attente
+                        ?<div className="brand-font" style={{fontSize:15,fontWeight:800,color:"var(--text3)",whiteSpace:"nowrap",textDecoration:"line-through"}}>{"+"+eurFmt(f.montantAttente||0)}</div>
                         :<div className="brand-font" style={{fontSize:15,fontWeight:800,color:isIn?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>{(isIn?"+":"−")+eurFmt(f.amount||0)}</div>}
                       {!f.virtual&&<button className="ib" onClick={()=>openEdit(f)} title="Modifier"><Ic n="edit" s={14}/></button>}
                       {!f.virtual&&<button className="ib" style={{color:"var(--text3)"}} onClick={()=>del(f)} title="Supprimer"><Ic n="trash" s={14}/></button>}
