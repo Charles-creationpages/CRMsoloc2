@@ -2987,6 +2987,17 @@ function FinancePage({user, leads, addToast, isMobile}){
       ]
     }).catch(()=>{paramsSeedRef.current=false;});
   },[loading,params,financeRaw,leads]);
+  // Ajout ponctuel (une seule fois) : partenariat Papernest dû par Purple à Soloc' — 65 € HT, dans l'espace Purple / relevé
+  const papernestRef=useRef(false);
+  useEffect(()=>{
+    if(loading || !params || params.seedPapernest65 || papernestRef.current) return;
+    papernestRef.current=true;
+    fsSetDoc(fsDocRef(db,"finance","purple_papernest_65"),{
+      type:"in", label:"Partenariat Papernest", amount:65, ttc:null, pending:false, source:"manuel", leadId:null,
+      entite:"purple", createdAt:"2026-10-08T12:00:00.000Z", monthKey:"2026-10"
+    }).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{seedPapernest65:true}))
+      .catch(()=>{papernestRef.current=false;});
+  },[loading,params]);
   const P = params || {debutSoloc:"2026-10-06", creancePurple:{montant:10818.34,recu:false}, tva:{regime:"franchise"}, chargesFixes:[]};
   const saveParams=(upd)=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd).then(()=>addToast("✓ Enregistré")).catch(()=>addToast("Erreur","error"));
   const mouvements = financeRaw.filter(f=>f.type==="in"||f.type==="out");
@@ -3099,7 +3110,7 @@ function FinancePage({user, leads, addToast, isMobile}){
         .then(()=>{ closeForm(); addToast("✓ Mouvement modifié"); })
         .catch(()=>addToast("Erreur","error"));
     } else {
-      fsAddDoc(fsCollection(db,"finance"), {...payload, source:"manuel", leadId:null})
+      fsAddDoc(fsCollection(db,"finance"), {...payload, source:"manuel", leadId:null, entite:espace})
         .then(()=>{ closeForm(); addToast("✓ Mouvement ajouté"); })
         .catch(()=>addToast("Erreur d'ajout","error"));
     }
