@@ -3017,6 +3017,21 @@ function FinancePage({user, leads, addToast, isMobile}){
     if(!charges.some(c=>c.id==="paie_aya")) upd.chargesFixes=[...charges,{id:"paie_aya", label:"Honoraires cabinet de paie – bulletin Aya", ttc:16.8, taux:0, debut:"2026-09", fin:null, categorie:"salaires"}];
     Promise.all(ops).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd)).catch(()=>{ayaRef.current=false;});
   },[loading,params,financeRaw]);
+  // Correction ponctuelle (validée par Charles) : charges patronales sur les commissions d'Emmy à 1 % après allègement, au lieu de 41 %
+  // Juillet : 320 € × 1 % = 3,20 € (au lieu de 131,20 €) · Septembre : 120 € × 1 % = 1,20 € (au lieu de 49,20 €)
+  const chargesEmmyRef=useRef(false);
+  useEffect(()=>{
+    if(loading || !params || params.fixChargesEmmy1pct || chargesEmmyRef.current) return;
+    const cible=(mk,ancien)=>financeRaw.find(f=>f.type==="out" && /charges.*comm.*emmy/i.test(f.label||"")
+      && (f.monthKey||String(f.createdAt||"").slice(0,7))===mk && Math.abs((f.amount||0)-ancien)<0.01);
+    const corr=[[cible("2026-07",131.2),3.2],[cible("2026-09",49.2),1.2]].filter(x=>x[0]);
+    if(!corr.length) return;
+    chargesEmmyRef.current=true;
+    Promise.all(corr.map(([f,v])=>fsUpdateDoc(fsDocRef(db,"finance",f.id),{
+      amount:v, ...(f.ttc!=null?{ttc:v}:{}), label:String(f.label).replace(/\s*\(1 % après allègement\)$/,"")+" (1 % après allègement)"
+    }))).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{fixChargesEmmy1pct:true}))
+      .catch(()=>{chargesEmmyRef.current=false;});
+  },[loading,params,financeRaw]);
   const P = params || {debutSoloc:"2026-10-06", creancePurple:{montant:10818.34,recu:false}, tva:{regime:"franchise"}, chargesFixes:[]};
   const saveParams=(upd)=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd).then(()=>addToast("✓ Enregistré")).catch(()=>addToast("Erreur","error"));
   const mouvements = financeRaw.filter(f=>f.type==="in"||f.type==="out");
