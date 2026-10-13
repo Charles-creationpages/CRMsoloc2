@@ -2912,6 +2912,8 @@ function FinancePage({user, leads, addToast, isMobile}){
   const [fAmount,setFAmount]=useState("");
   const [fTtc,setFTtc]=useState(false);
   const [fDate,setFDate]=useState("");
+  const [fNote,setFNote]=useState("");
+  const [fCat,setFCat]=useState(null);
   const [editId,setEditId]=useState(null);
   const creatingRef=useRef(new Set());
   const seededRef=useRef(false);
@@ -2998,6 +3000,23 @@ function FinancePage({user, leads, addToast, isMobile}){
     }).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{seedPapernest65:true}))
       .catch(()=>{papernestRef.current=false;});
   },[loading,params]);
+  // Mise en place (une seule fois) du coût d'Aya (alternante), côté Soloc' :
+  // salaire de septembre (coût global du bulletin) + honoraires du cabinet de paie en charge fixe mensuelle dès septembre
+  const ayaRef=useRef(false);
+  useEffect(()=>{
+    if(loading || !params || params.seedAya || ayaRef.current) return;
+    ayaRef.current=true;
+    const ops=[];
+    const dejaSalaire=financeRaw.some(f=>f.type==="out" && (f.monthKey||String(f.createdAt||"").slice(0,7))==="2026-09" && /salaire/i.test(f.label||"") && /aya/i.test(f.label||""));
+    if(!dejaSalaire) ops.push(fsSetDoc(fsDocRef(db,"finance","aya_salaire_2026-09"),{
+      type:"out", label:"Salaire Aya – coût global", amount:849.74, ttc:849.74, pending:false, source:"manuel", leadId:null,
+      entite:"soloc", categorie:"salaires", createdAt:"2026-09-09T12:00:00.000Z", monthKey:"2026-09"
+    }));
+    const charges=asArray(params.chargesFixes);
+    const upd={seedAya:true};
+    if(!charges.some(c=>c.id==="paie_aya")) upd.chargesFixes=[...charges,{id:"paie_aya", label:"Honoraires cabinet de paie – bulletin Aya", ttc:16.8, taux:0, debut:"2026-09", fin:null, categorie:"salaires"}];
+    Promise.all(ops).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd)).catch(()=>{ayaRef.current=false;});
+  },[loading,params,financeRaw]);
   const P = params || {debutSoloc:"2026-10-06", creancePurple:{montant:10818.34,recu:false}, tva:{regime:"franchise"}, chargesFixes:[]};
   const saveParams=(upd)=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd).then(()=>addToast("✓ Enregistré")).catch(()=>addToast("Erreur","error"));
   const mouvements = financeRaw.filter(f=>f.type==="in"||f.type==="out");
@@ -3017,7 +3036,7 @@ function FinancePage({user, leads, addToast, isMobile}){
       const iso=mk+"-01T08:00:00.000Z";
       const ttc=parseFloat(c.ttc)||0;
       chargesVirtuelles.push({id:"fx_"+c.id+"_"+mk, type:"out", label:c.label+" — charge fixe", ttc:ttc,
-        amount:enFranchise(iso)?ttc:round2(ttc/(1+(parseFloat(c.taux)||0)/100)), createdAt:iso, monthKey:mk, source:"fixe", virtual:true});
+        amount:enFranchise(iso)?ttc:round2(ttc/(1+(parseFloat(c.taux)||0)/100)), createdAt:iso, monthKey:mk, source:"fixe", virtual:true, categorie:c.categorie||null});
     }
   });
   // Dossier validé pas encore marqué payé (case « Marquer payé » dans Validé) : visible mais pas compté côté Soloc'
@@ -3096,15 +3115,17 @@ function FinancePage({user, leads, addToast, isMobile}){
   const prevMonth=()=>{ const i=months.indexOf(activeMonth); if(i>0){setGlobalView(false);setCurMonth(months[i-1]);} };
   const nextMonth=()=>{ const i=months.indexOf(activeMonth); if(i<months.length-1){setGlobalView(false);setCurMonth(months[i+1]);} };
 
-  const openForm=(type)=>{ setEditId(null); setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); setFDate(""); };
-  const openEdit=(f)=>{ setEditId(f.id); setFormType(f.type); setFLabel(f.label||""); setFAmount(String(f.amount||0)); setFTtc(false); setFDate(f.createdAt?String(f.createdAt).slice(0,10):""); };
+  const openForm=(type)=>{ setEditId(null); setFormType(type); setFTtc(type==="in"); setFLabel(""); setFAmount(""); setFDate(""); setFNote(""); setFCat(null); };
+  const openEdit=(f)=>{ setEditId(f.id); setFormType(f.type); setFLabel(f.label||""); setFAmount(String(f.amount||0)); setFTtc(false); setFDate(f.createdAt?String(f.createdAt).slice(0,10):""); setFNote(f.note||""); setFCat(f.categorie||null); };
+  // Salaire d'Aya du mois affiché : formulaire pré-rempli, il ne reste que le « Coût global » du bulletin à saisir
+  const openSalaireAya=()=>{ setEditId(null); setFormType("out"); setFTtc(false); setFLabel("Salaire Aya – coût global"); setFAmount(""); setFDate(activeMonth===currentMK?"":activeMonth+"-01"); setFNote(""); setFCat("salaires"); };
   const closeForm=()=>{ setFormType(null); setEditId(null); };
   const save=()=>{
     const lbl=fLabel.trim(); const v=parseFloat(fAmount)||0;
     if(!lbl||!v){ addToast("Renseigne un libellé et un montant","error"); return; }
     const amountHT = fTtc ? round2(v/1.2) : round2(v);
     const iso = fDate ? new Date(fDate+"T12:00:00").toISOString() : nowISO();
-    const payload = { type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null, pending:false, createdAt:iso, monthKey:monthKeyFromISO(iso) };
+    const payload = { type:formType, label:lbl, amount:amountHT, ttc:fTtc?v:null, pending:false, createdAt:iso, monthKey:monthKeyFromISO(iso), note:fNote.trim()||null, categorie:fCat||null };
     if(editId){
       fsUpdateDoc(fsDocRef(db,"finance",editId), payload)
         .then(()=>{ closeForm(); addToast("✓ Mouvement modifié"); })
@@ -3129,6 +3150,14 @@ function FinancePage({user, leads, addToast, isMobile}){
   };
 
   const cardStyle={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  // Coût d'Aya du mois = coût global (bulletin) + honoraires du cabinet de paie
+  const estAya=(f)=>f.type==="out" && f.categorie==="salaires" && /aya/i.test(f.label||"");
+  const ayaMois=espace==="soloc"&&!globalView ? view.filter(estAya) : [];
+  const ayaSalaire=ayaMois.filter(f=>!f.virtual).reduce((x,f)=>x+(f.amount||0),0);
+  const ayaPaie=ayaMois.filter(f=>f.virtual).reduce((x,f)=>x+(f.amount||0),0);
+  const chargeAya=asArray(P.chargesFixes).find(c=>c.id==="paie_aya");
+  const contratAya=!!chargeAya && activeMonth>=(chargeAya.debut||"2026-09") && (!chargeAya.fin||activeMonth<=chargeAya.fin);
+  const manqueSalaireAya=espace==="soloc" && !globalView && contratAya && activeMonth<=currentMK && !ayaMois.some(f=>!f.virtual);
   const htPreview = (fTtc&&fAmount) ? ("= "+eurFmt((parseFloat(fAmount)||0)/1.2)+" HT") : "";
 
   return(
@@ -3262,6 +3291,9 @@ function FinancePage({user, leads, addToast, isMobile}){
               <button className="btn btn-block" style={{background:"var(--green)",color:"#fff"}} onClick={()=>openForm("in")}><Ic n="plus" s={13}/>Entrée</button>
               <button className="btn btn-block" style={{background:"var(--red)",color:"#fff"}} onClick={()=>openForm("out")}><Ic n="minus" s={13}/>Dépense</button>
             </div>
+            {manqueSalaireAya&&!formType&&(
+              <button className="btn btn-g btn-block" style={{marginBottom:8,borderStyle:"dashed"}} onClick={openSalaireAya}><Ic n="plus" s={13}/>Salaire Aya – coût global ({monthLabel(activeMonth)})</button>
+            )}
 
             {formType&&(
               <div style={{background:"var(--surface)",border:"1.5px solid var(--border)",borderRadius:12,padding:14,marginBottom:16}}>
@@ -3280,6 +3312,8 @@ function FinancePage({user, leads, addToast, isMobile}){
                   <input className="fi" style={{flex:1}} type="date" value={fDate} onChange={e=>setFDate(e.target.value)}/>
                   <span style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>vide = aujourd'hui</span>
                 </div>
+                <input className="fi" style={{marginBottom:10}} placeholder="Note (facultatif)" value={fNote} onChange={e=>setFNote(e.target.value)}/>
+                {fCat==="salaires"&&/aya/i.test(fLabel)&&<div style={{fontSize:11,color:"var(--text2)",background:"var(--surface2)",borderRadius:8,padding:"7px 9px",marginBottom:10,lineHeight:1.5}}>Saisis la case <b>« Coût global »</b> du bulletin de paie. Elle inclut déjà le brut, les cotisations, l'Urssaf, Malakoff et GAN : ne les ajoute pas en plus. Transport, notes de frais ou rattrapage de prévoyance : sur une ligne à part.</div>}
                 <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"var(--text2)",marginBottom:10,cursor:"pointer"}}>
                   <input type="checkbox" checked={fTtc} onChange={e=>setFTtc(e.target.checked)}/> C'est un montant TTC → convertir en HT (÷1,2)
                   <span style={{marginLeft:"auto",fontWeight:700,color:"var(--accent)"}}>{htPreview}</span>
@@ -3291,6 +3325,15 @@ function FinancePage({user, leads, addToast, isMobile}){
               </div>
             )}
 
+            {ayaMois.length>0&&(
+              <div style={{...cardStyle,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".06em"}}>Coût Aya du mois</div>
+                  <div style={{fontSize:11,color:"var(--text2)",marginTop:2}}>Coût global {ayaSalaire?eurFmt(ayaSalaire):"à saisir"} + honoraires paie {eurFmt(ayaPaie)}</div>
+                </div>
+                <div className="brand-font" style={{fontSize:20,fontWeight:800,color:"var(--red)"}}>{eurFmt(ayaSalaire+ayaPaie)}</div>
+              </div>
+            )}
             <div style={{fontSize:10,fontWeight:800,color:"var(--accent)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:8}}>{globalView?"Mouvements — tout l'historique":"Mouvements — "+monthLabel(activeMonth)}</div>
             <div style={{...cardStyle,padding:0}}>
               {view.length===0?(
@@ -3303,6 +3346,7 @@ function FinancePage({user, leads, addToast, isMobile}){
                       <div style={{width:30,height:30,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isIn?"var(--green-bg)":"var(--red-bg)",color:isIn?"var(--green)":"var(--red)"}}><Ic n={isIn?"arrowUp":"arrowDown"} s={15}/></div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:600}}>{f.label}</div>
+                        {f.note&&<div style={{fontSize:11,color:"var(--text2)",marginTop:2,fontStyle:"italic"}}>{f.note}</div>}
                         <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(f.createdAt)}</span>
                           {f.source==="fixe"
@@ -3310,6 +3354,7 @@ function FinancePage({user, leads, addToast, isMobile}){
                             :f.source==="auto"
                             ?<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#EFF6FF",color:"#1d4ed8"}}>AUTO · validé</span>
                             :<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}}>MANUEL</span>}
+                          {f.categorie==="salaires"&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#F3E8FF",color:"#6b21a8"}}>SALAIRES</span>}
                           {f.pending&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e"}}>à compléter</span>}
                           {f.attente&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}} title="Compté dès que tu coches « Marquer payé » dans la colonne Validé">⏳ pas encore payé · non compté</span>}
                         </div>
