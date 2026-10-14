@@ -252,7 +252,7 @@ function buildEmail(bien, prenom, honoSoloc, sign) {
   +     '<div style="background:' + CR + ';border:1px solid ' + BD + ';border-radius:10px;padding:12px;margin-top:14px;">'
   +       '<div style="font-size:9px;font-weight:800;color:' + A + ';text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Honoraires &amp; dépôt</div>'
   +       '<table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>'
-  +         honoBox("Honoraires SOLOC'", honoSoloc, true) + honoBox("Frais agence", agence) + honoBox("Dépôt", depot)
+  +         honoBox("Honoraires SOLOC'", honoSoloc, true) + honoBox("Frais agence", agence) + honoBox(bien.loyerHCEstime ? "Dépôt (environ)" : "Dépôt", (bien.loyerHCEstime ? "≈ " : "") + depot)
   +       '</tr></table>'
   +       '<div style="font-size:10px;color:' + G + ';text-align:center;margin-top:8px;">Paiement au résultat — zéro frais avant signature du bail</div>'
   +     '</div>'

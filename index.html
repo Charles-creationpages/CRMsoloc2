@@ -1427,7 +1427,7 @@ function HonorairesCalc({surface, onSelect}){
 }
 
 // ─── BIEN FORM MODAL ─────────────────────────────────────────────────────
-const blankBien = {typologie:"",surface:"",loyerCC:"",loyerHC:"",rue:"",secteur:"",etage:"",dispoAsap:true,dateDisponibilite:"",meuble:false,atouts:[],description:"",honoSoloc:"890",photos:[],video:""};
+const blankBien = {typologie:"",surface:"",loyerCC:"",loyerHC:"",loyerHCEstime:false,rue:"",secteur:"",etage:"",dispoAsap:null,dateDisponibilite:"",meuble:null,atouts:[],description:"",honoSoloc:"890",photos:[],video:""};
 
 function BienFormModal({bien, onSave, onClose, onDelete}){
   const editing=!!bien;
@@ -1472,9 +1472,16 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
   const depot=Math.round(hc*(form.meuble?2:1));
 
   const submit=()=>{
-    if(!form.typologie){setErr("Choisis une typologie.");return;}
-    if(!form.loyerCC){setErr("Le loyer charges comprises est obligatoire.");return;}
-    if(!(form.secteur||"").trim()){setErr("Renseigne l'arrondissement / ville.");return;}
+    const manque=[];
+    if(!form.typologie) manque.push("la typologie");
+    if(!(parseFloat(form.surface)>0)) manque.push("la surface");
+    if(!form.loyerCC) manque.push("le loyer charges comprises");
+    if(!(parseFloat(form.loyerHC)>0)) manque.push(form.loyerHCEstime?"le loyer hors charges estimé":"le loyer hors charges (ou coche « estimation »)");
+    if(form.meuble!==true&&form.meuble!==false) manque.push("vide ou meublé");
+    if(!(form.rue||"").trim()) manque.push("la rue");
+    if(!(form.secteur||"").trim()) manque.push("l'arrondissement / ville");
+    if(form.dispoAsap!==true&&!(form.dispoAsap===false&&form.dateDisponibilite)) manque.push(form.dispoAsap===false?"la date de disponibilité":"la disponibilité");
+    if(manque.length){setErr("À renseigner : "+manque.join(", ")+".");return;}
     setErr("");
     onSave(form);
   };
@@ -1498,30 +1505,32 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
           </div>
         </div>
         <div className="fr">
-          <div className="fg"><label className="fl">Surface (m²)</label><input className="fi" type="number" value={form.surface} onChange={e=>set("surface",e.target.value)}/></div>
+          <div className="fg"><label className="fl">Surface (m²) *</label><input className="fi" type="number" value={form.surface} onChange={e=>set("surface",e.target.value)}/></div>
           <div className="fg"><label className="fl">Loyer charges comprises (€) *</label><input className="fi" type="number" value={form.loyerCC} onChange={e=>set("loyerCC",e.target.value)}/></div>
         </div>
         <div className="fr">
-          <div className="fg"><label className="fl">Loyer HORS charges (€) — interne</label><input className="fi" type="number" value={form.loyerHC} onChange={e=>set("loyerHC",e.target.value)}/></div>
+          <div className="fg"><label className="fl">{form.loyerHCEstime?"Loyer HORS charges ESTIMÉ (€) *":"Loyer HORS charges (€) *"}</label><input className="fi" type="number" value={form.loyerHC} onChange={e=>set("loyerHC",e.target.value)} placeholder={form.loyerHCEstime?"Ton estimation":""}/>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11.5,color:"var(--text2)",marginTop:6,cursor:"pointer"}}><input type="checkbox" checked={!!form.loyerHCEstime} onChange={e=>set("loyerHCEstime",e.target.checked)}/> Je n'ai pas le montant exact → estimation (dépôt affiché « environ »)</label></div>
           <div className="fg"><label className="fl">Étage</label><input className="fi" value={form.etage} onChange={e=>set("etage",e.target.value)} placeholder="3e"/></div>
         </div>
         <div className="fr">
-          <div className="fg"><label className="fl">Rue (sans numéro) — proposée</label><input className="fi" value={form.rue} onChange={e=>set("rue",e.target.value)} placeholder="rue Béchevelin"/></div>
+          <div className="fg"><label className="fl">Rue (sans numéro) *</label><input className="fi" value={form.rue} onChange={e=>set("rue",e.target.value)} placeholder="rue Béchevelin"/></div>
           <div className="fg"><label className="fl">Arrondissement / Ville *</label><input className="fi" value={form.secteur} onChange={e=>set("secteur",e.target.value)} placeholder="Lyon 7 · Villeurbanne"/></div>
         </div>
         <div className="fr">
           <div className="fg">
-            <label className="fl">Disponibilité</label>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <button type="button" style={atoutStyle(form.dispoAsap)} onClick={()=>set("dispoAsap",!form.dispoAsap)}>⚡ Dès maintenant</button>
-              {!form.dispoAsap&&<input className="fi" type="date" style={{flex:1}} value={form.dateDisponibilite} onChange={e=>set("dateDisponibilite",e.target.value)}/>}
+            <label className="fl">Disponibilité *</label>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <button type="button" style={atoutStyle(form.dispoAsap===true)} onClick={()=>set("dispoAsap",true)}>⚡ Dès maintenant</button>
+              <button type="button" style={atoutStyle(form.dispoAsap===false)} onClick={()=>set("dispoAsap",false)}>📅 À partir du…</button>
+              {form.dispoAsap===false&&<input className="fi" type="date" style={{flex:1,minWidth:140}} value={form.dateDisponibilite} onChange={e=>set("dateDisponibilite",e.target.value)}/>}
             </div>
           </div>
           <div className="fg">
-            <label className="fl">État</label>
+            <label className="fl">État *</label>
             <div className="seg">
-              <button type="button" className={"seg-btn"+(!form.meuble?" active":"")} onClick={()=>set("meuble",false)}>Vide</button>
-              <button type="button" className={"seg-btn"+(form.meuble?" active":"")} onClick={()=>set("meuble",true)}>Meublé</button>
+              <button type="button" className={"seg-btn"+(form.meuble===false?" active":"")} onClick={()=>set("meuble",false)}>Vide</button>
+              <button type="button" className={"seg-btn"+(form.meuble===true?" active":"")} onClick={()=>set("meuble",true)}>Meublé</button>
             </div>
           </div>
         </div>
@@ -1544,8 +1553,8 @@ function BienFormModal({bien, onSave, onClose, onDelete}){
             <input className="fi" type="number" value={form.honoSoloc} onChange={e=>set("honoSoloc",e.target.value)} style={{width:110,textAlign:"right",fontWeight:800}}/>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",fontSize:13}}>
-            <span>Dépôt de garantie <span style={{color:"var(--text3)",fontWeight:600}}>{form.meuble?"(2× loyer HC — meublé)":"(1× loyer HC — vide)"}</span></span>
-            <span className="brand-font" style={{fontWeight:800,color:"var(--accent)"}}>{hc>0?eur(depot):"—"}</span>
+            <span>Dépôt de garantie <span style={{color:"var(--text3)",fontWeight:600}}>{form.meuble===true?"(2× loyer HC — meublé)":form.meuble===false?"(1× loyer HC — vide)":"(choisis vide ou meublé)"}</span></span>
+            <span className="brand-font" style={{fontWeight:800,color:"var(--accent)"}}>{hc>0&&form.meuble!=null?(form.loyerHCEstime?"environ ":"")+eur(depot):"—"}</span>
           </div>
         </div>
 
@@ -1631,7 +1640,7 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
     var factsHtml=facts.map(function(f,i){ return '<div class="fact'+(i===0?' first':'')+'"><div class="l">'+f[0]+'</div><div class="v">'+esc(f[1])+'</div></div>'; }).join("");
     var atoutsHtml=atouts.map(function(a){ return '<div class="at">'+chk+esc(a)+'</div>'; }).join("");
     var depotMois=bien.meuble?2:1;
-    var prevoir='<div class="prevoir"><b>À prévoir :</b> un dépôt de garantie sera demandé à la signature du bail, en plus du premier loyer'+(depot>0?' (ici '+depotMois+' mois hors charges, soit '+eur(depot)+')':'')+'.</div>';
+    var prevoir='<div class="prevoir"><b>À prévoir :</b> un dépôt de garantie sera demandé à la signature du bail, en plus du premier loyer'+(depot>0?' (ici '+depotMois+' mois hors charges, soit '+(bien.loyerHCEstime?'environ ':'')+eur(depot)+')':'')+'.</div>';
     var agentHtml='<div class="agents">'+who.map(function(a){
       return '<div class="agent"><img class="av" src="'+esc(a.photo)+'" alt=""/><div class="ai"><div class="al">'+(who.length>1?'Vos interlocutrices':'Votre interlocutrice pour ce bien')+'</div><div class="an">'+esc(a.name)+'</div><div class="ar">'+esc(a.role)+' · Soloc\'</div></div><div class="ac"><div class="tel">'+esc(a.phone)+'</div><div class="mail">hello@solocimmo.fr</div></div></div>';
     }).join("")+'</div>';
@@ -1714,7 +1723,7 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
                 <div className="bc-label"><Ic n="plus" s={12}/>Loyer</div>
                 <div className="bc-val">{loyerCC} €</div>
                 <div className="bc-sub">Charges comprises</div>
-                <div className="bc-sub" style={{marginTop:4}}>Dépôt de garantie : {depot} €</div>
+                <div className="bc-sub" style={{marginTop:4}}>Dépôt de garantie : {bien.loyerHCEstime?"environ ":""}{depot} €</div>
               </div>
               <div className="bc">
                 <div className="bc-label"><Ic n="building" s={12}/>Atouts</div>
@@ -1747,8 +1756,8 @@ function BienDetailModal({bien, onClose, onEdit, onSend, addToast}){
                   <div className="brand-font" style={{fontSize:16,fontWeight:800}}>{agence} €</div>
                 </div>
                 <div style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:"9px 10px",textAlign:"center"}}>
-                  <div style={{fontSize:9,color:"var(--text3)",marginBottom:3}}>Dépôt</div>
-                  <div className="brand-font" style={{fontSize:16,fontWeight:800}}>{depot} €</div>
+                  <div style={{fontSize:9,color:"var(--text3)",marginBottom:3}}>Dépôt{bien.loyerHCEstime?" (environ)":""}</div>
+                  <div className="brand-font" style={{fontSize:16,fontWeight:800}}>{bien.loyerHCEstime?"≈ ":""}{depot} €</div>
                 </div>
               </div>
             </div>
