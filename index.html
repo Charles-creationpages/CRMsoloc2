@@ -3041,6 +3041,24 @@ function FinancePage({user, leads, addToast, isMobile}){
     }))).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{fixChargesEmmy1pct:true}))
       .catch(()=>{chargesEmmyRef.current=false;});
   },[loading,params,financeRaw]);
+  // Frais ponctuels de création de Soloc' (une seule fois, côté Soloc', datés du 29/09/2026 — modifiables ensuite)
+  const creationRef=useRef(false);
+  useEffect(()=>{
+    if(loading || !params || params.seedCreation || creationRef.current) return;
+    creationRef.current=true;
+    const items=[
+      ["rcpro","RC Pro (jusqu'au 31/12/2027)",570.41],
+      ["annonces","Annonces légales — création",353.76],
+      ["capital","Frais de dépôt de capital",82.80],
+      ["social_aya","Création dossier social Aya",90],
+      ["prevoyance_aya","Création dossier prévoyance Aya",60]
+    ].filter(([,,v])=>!financeRaw.some(f=>f.type==="out" && entiteOf(f)==="soloc" && Math.abs((f.ttc!=null?f.ttc:f.amount||0)-v)<0.01));
+    Promise.all(items.map(([id,label,v])=>fsSetDoc(fsDocRef(db,"finance","creation_"+id),{
+      type:"out", label, amount:v, ttc:v, pending:false, source:"manuel", leadId:null,
+      entite:"soloc", categorie:"creation", createdAt:"2026-09-29T12:00:00.000Z", monthKey:"2026-09"
+    }))).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{seedCreation:true}))
+      .catch(()=>{creationRef.current=false;});
+  },[loading,params,financeRaw]);
   const P = params || {debutSoloc:"2026-10-06", creancePurple:{montant:10818.34,recu:false}, tva:{regime:"franchise"}, chargesFixes:[]};
   const saveParams=(upd)=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd).then(()=>addToast("✓ Enregistré")).catch(()=>addToast("Erreur","error"));
   const mouvements = financeRaw.filter(f=>f.type==="in"||f.type==="out");
@@ -3378,6 +3396,7 @@ function FinancePage({user, leads, addToast, isMobile}){
                             :f.source==="auto"
                             ?<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#EFF6FF",color:"#1d4ed8"}}>AUTO · validé</span>
                             :<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}}>MANUEL</span>}
+                          {f.categorie==="creation"&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#E0F2FE",color:"#075985"}}>CRÉATION</span>}
                           {f.categorie==="salaires"&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"#F3E8FF",color:"#6b21a8"}}>SALAIRES</span>}
                           {f.pending&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--orange-bg)",color:"#92400e"}}>à compléter</span>}
                           {f.attente&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:20,background:"var(--surface2)",color:"var(--text2)"}} title="Compté dès que tu coches « Marquer payé » dans la colonne Validé">⏳ pas encore payé · non compté</span>}
