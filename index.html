@@ -209,6 +209,8 @@ const docProfil = (statut) => {
   return "salarie"; // CDI, CDD, Colocation, défaut
 };
 const prestationFromLead = (l) => {
+  // Tarif exceptionnel (fixé par Charles sur la fiche) : remplace le tarif du profil partout
+  if(Number(l.tarifExceptionnel)>0) return {ttc:Number(l.tarifExceptionnel), pending:false};
   const c = l.criteria||{};
   if(!c.statutClient) return {ttc:null,pending:true};
   return {ttc:honoForProfile(c.statutClient,c), pending:false};
@@ -792,6 +794,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {isDupe&&<span style={chip("#FEF3C7","#92400e")}>⚠ Doublon</span>}
         {lead.column==="relance"&&lead.relanceCount>0&&<span className="badge relance">Relance {lead.relanceCount}/3</span>}
         {isAdmin&&lead.column==="valide"&&lead.paid&&<span className="badge green">✓ Payé</span>}
+        {Number(lead.tarifExceptionnel)>0&&<span className="badge" style={{background:"#FEF3C7",color:"#92400e"}}>⭐ Tarif exceptionnel {lead.tarifExceptionnel} €</span>}
         {lead.formulaireRempli&&<span style={chip("#DBEAFE","#1d4ed8")}>📋 Formulaire</span>}
         {lead.lettreSignee&&<span style={chip("#DCFCE7","#15803d")}>📄 Signée</span>}
         {lead.relanceAutoCount>0&&<span style={chip("#FFE4E6","#be123c")} title={"Dernière relance auto le "+fmtDate(lead.relanceAutoAt)}>🔁 {lead.relanceAutoCount}/3</span>}
@@ -1056,7 +1059,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
     const nm=splitName(lead);
     return { name:lead.name, firstName:nm.prenom, lastName:nm.nom,
       phone:lead.phone||"", email:lead.email||"",
-      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"",
+      notes:lead.notes||"", column:gateTarget?"en_recherche":lead.column, assignedTo:asArray(lead.assignedTo), criteria:c, adresseBien:lead.adresseBien||"", tarifExceptionnel:lead.tarifExceptionnel!=null?String(lead.tarifExceptionnel):"",
       personnes:asArray(lead.personnes).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})), garants:asArray(lead.garants).map(o=>({nom:"",tel:"",mail:"",lien:"",...o})) };
   });
   const [err,setErr]=useState("");
@@ -1147,6 +1150,7 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         </div>
         <PeopleEditor title="Autres personnes du dossier" addLabel="+ Ajouter une personne" withLien lienOptions={LIENS_PERSONNE} list={form.personnes} onChange={v=>setForm(p=>({...p,personnes:v}))}/>
         <PeopleEditor title="Garants" addLabel="+ Ajouter un garant" withLien list={form.garants} onChange={v=>setForm(p=>({...p,garants:v}))}/>
+        {isAdmin&&<div className="fg"><label className="fl">Tarif exceptionnel (€ TTC) — remplace le tarif du profil, vide = tarif normal</label><input className="fi" type="number" placeholder="ex. 500" value={form.tarifExceptionnel} onChange={e=>setForm(p=>({...p,tarifExceptionnel:e.target.value}))}/></div>}
         {lead.column==="valide"&&<div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={form.adresseBien} onChange={e=>setForm(p=>({...p,adresseBien:e.target.value}))}/></div>}
 
         {lead.calendlyRdv&&(
@@ -2176,7 +2180,8 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
   const cur = PROFILS.find(p=>p.key===profilKey);
   const statut = cur?cur.statut:"";
   const essai = cur?cur.essai:null;
-  const montant = statut ? honoForProfile(statut,{periodeEssaiValidee:essai,nbColoc:nbColoc}) : null;
+  const montantProfil = statut ? honoForProfile(statut,{periodeEssaiValidee:essai,nbColoc:nbColoc}) : null;
+  const montant = Number(lead.tarifExceptionnel)>0 ? Number(lead.tarifExceptionnel) : montantProfil;
   const titre = statut ? letterTitre(statut, essai) : "";
   const profil = docProfil(statut);
   const B = CLIENT_BASE_URL;
@@ -2197,7 +2202,7 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     const markSent=()=>{
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:cleanEmail, criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:cleanEmail,criteria:critMaj}); }).catch(()=>{});
       // Config de la lettre (montant fixé côté base = non modifiable par le client)
-      fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, profil:profil, nom:lead.name||"", email:cleanEmail, createdAt:nowISO() }).catch(()=>{});
+      fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, ...(montantProfil&&montant<montantProfil?{montantBase:montantProfil}:{}), profil:profil, nom:lead.name||"", email:cleanEmail, createdAt:nowISO() }).catch(()=>{});
     };
     // Envoi du mail des 3 liens : on lit la réponse du script ("OK …" ou "ERREUR : …")
     fetchTimeout(ENVOI_WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({ email:cleanEmail, prenom:prenom, sender:sender, linkForm:linkForm, linkLettre:linkLettre, linkDocs:linkDocs })},20000)
@@ -2935,6 +2940,18 @@ function FinancePage({user, leads, addToast, isMobile}){
     return unsub;
   },[]);
 
+  // Tarif exceptionnel posé après coup : on aligne la ligne auto du dossier (tant que le montant diffère)
+  useEffect(()=>{
+    if(loading) return;
+    financeRaw.forEach(f=>{
+      if(f.type!=="in"||f.source!=="auto"||!f.leadId) return;
+      const l=leads.find(x=>x.id===f.leadId); const t=l?Number(l.tarifExceptionnel):0;
+      if(t>0 && f.ttc!==t && !creatingRef.current.has("t_"+f.id)){
+        creatingRef.current.add("t_"+f.id);
+        fsUpdateDoc(fsDocRef(db,"finance",f.id),{ttc:t, amount:round2(t/1.2), pending:false}).catch(()=>creatingRef.current.delete("t_"+f.id));
+      }
+    });
+  },[leads,financeRaw,loading]);
   // Import auto des dossiers validés (une seule fois par lead via financeLogged)
   useEffect(()=>{
     if(loading) return;
@@ -4016,6 +4033,7 @@ function App(){
     }
     fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
       name:newName, firstName:newFirst, lastName:newLast, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
+      tarifExceptionnel:Number(form.tarifExceptionnel)>0?Number(form.tarifExceptionnel):null,
       personnes:cleanPeople(form.personnes), garants:cleanPeople(form.garants),
       criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist

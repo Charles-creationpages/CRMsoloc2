@@ -167,6 +167,8 @@
     if(cfg.status==="signe"){ show("already"); return; }
     $("profil").textContent = (cfg.titre||"").toUpperCase();
     $("montant").textContent = (cfg.montant||"—")+" € TTC";
+    if(cfg.montantBase && cfg.montant && Number(cfg.montantBase)>Number(cfg.montant))
+      $("montant").insertAdjacentHTML("afterend", " (tarif de "+cfg.montantBase+" € TTC, avec une remise exceptionnelle de "+(Number(cfg.montantBase)-Number(cfg.montant))+" €)");
     $("nom").value = cfg.nom||"";
     var d=new Date(); $("date").value = String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();
     show("doc"); initCanvas();
