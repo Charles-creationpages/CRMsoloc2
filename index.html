@@ -1151,7 +1151,6 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
         </div>
         <PeopleEditor title="Autres personnes du dossier" addLabel="+ Ajouter une personne" withLien lienOptions={LIENS_PERSONNE} list={form.personnes} onChange={v=>setForm(p=>({...p,personnes:v}))}/>
         <PeopleEditor title="Garants" addLabel="+ Ajouter un garant" withLien list={form.garants} onChange={v=>setForm(p=>({...p,garants:v}))}/>
-        {isAdmin&&<div className="fg"><label className="fl">Tarif exceptionnel (€ TTC) — remplace le tarif du profil, vide = tarif normal</label><input className="fi" type="number" placeholder="ex. 500" value={form.tarifExceptionnel} onChange={e=>setForm(p=>({...p,tarifExceptionnel:e.target.value}))}/></div>}
         {lead.column==="valide"&&<div className="fg"><label className="fl">Adresse du bien loué</label><input className="fi" placeholder="N°, rue, code postal, ville" value={form.adresseBien} onChange={e=>setForm(p=>({...p,adresseBien:e.target.value}))}/></div>}
 
         {lead.calendlyRdv&&(
