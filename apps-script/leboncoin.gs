@@ -11,7 +11,7 @@
 //
 // Mise en route (une seule fois) : choisir installerLeboncoin dans la liste des fonctions → Exécuter.
 
-var LBC_RECHERCHE = 'is:unread from:(purpleimmobilier.fr OR sabatini) subject:leboncoin -label:"CRM Leboncoin à vérifier"';
+var LBC_RECHERCHE = 'is:unread from:(purpleimmobilier.fr OR sabatini) leboncoin -label:"CRM Leboncoin à vérifier"'; // l'objet peut être vide : on cherche « leboncoin » dans tout le mail
 var LBC_LABEL = "CRM Leboncoin";
 var LBC_LABEL_VERIF = "CRM Leboncoin à vérifier";
 var LBC_MAX = 50;
@@ -48,17 +48,23 @@ function executerLeboncoin() {
   threads.forEach(function(t) {
     var ok = true, vus = 0;
     t.getMessages().forEach(function(msg) {
-      if (!msg.isUnread() || !/leboncoin/i.test(msg.getSubject())) return; // déjà ouvert = déjà traité
-      var c = lbcLire(msg);
-      if (!c.email && !c.tel) { illisibles++; ok = false; return; } // reste non lu, libellé « à vérifier »
-      var cm = (c.email || "").toLowerCase(), ct = lbcCleTel(c.tel);
-      if ((cm && mails[cm]) || (ct && tels[ct])) deja++;
-      else {
-        lbcCreer(token, msg, c);
-        if (cm) mails[cm] = 1; if (ct) tels[ct] = 1;
-        crees++;
-      }
-      msg.markRead(); vus++;
+      if (!msg.isUnread()) return; // déjà ouvert = déjà traité
+      var blocs = lbcBlocs(msg.getPlainBody() || ""); // un transfert peut regrouper plusieurs contacts
+      if (!blocs.length) return;
+      var lus = 0;
+      blocs.forEach(function(texte, i) {
+        var c = lbcLireTexte(texte); c.idx = i;
+        if (!c.email && !c.tel) { illisibles++; ok = false; return; }
+        var cm = (c.email || "").toLowerCase(), ct = lbcCleTel(c.tel);
+        if ((cm && mails[cm]) || (ct && tels[ct])) deja++;
+        else {
+          lbcCreer(token, msg, c);
+          if (cm) mails[cm] = 1; if (ct) tels[ct] = 1;
+          crees++;
+        }
+        lus++;
+      });
+      if (lus) { msg.markRead(); vus++; } // tout illisible : reste non lu, libellé « à vérifier »
     });
     if (vus) t.addLabel(label);
     if (!ok) t.addLabel(labelVerif);
@@ -67,8 +73,14 @@ function executerLeboncoin() {
 }
 
 // ── Lecture d'un mail transféré ──────────────────────────────────────────
-function lbcLire(msg) {
-  var brut = msg.getPlainBody() || "";
+// Découpe un transfert en contacts (un bloc par « Début du message réexpédié / transféré » parlant de leboncoin)
+function lbcBlocs(brut) {
+  var parts = brut.split(/D[ée]but du message (?:r[ée]exp[ée]di[ée]|transf[ée]r[ée])/i);
+  var blocs = (parts.length > 1 ? parts.slice(1) : parts).filter(function(p) { return /leboncoin/i.test(p); });
+  return blocs;
+}
+function lbcLire(msg) { return lbcLireTexte(msg.getPlainBody() || ""); }
+function lbcLireTexte(brut) {
   var txt = brut.replace(/^\s*>+ ?/gm, "").replace(/\*/g, "").replace(/\|/g, " ").replace(/\s+/g, " ");
   var pick = function(re) { var m = re.exec(txt); return m ? m[1].trim() : ""; };
   // « Prénom : … Nom : … » quand la personne a rempli les deux, sinon « Nom : … » seul
@@ -108,9 +120,9 @@ function lbcCreer(token, msg, c) {
                 prestationsSupp: "", dateEntreeSouhaitee: "", dateAsap: false, etatLogement: [], etatBien: [] },
     leboncoin: { annonce: c.annonce || "", mailId: msg.getId() },
     createdAt: quand, lastActivity: quand,
-    history: [{ id: "lbc-" + msg.getId(), at: quand, text: c.appel ? "🧡 Appel manqué Leboncoin (transféré par Purple) — nom à demander" : "🧡 Lead créé depuis un contact Leboncoin transféré par Purple" }]
+    history: [{ id: "lbc-" + msg.getId() + "-" + (c.idx || 0), at: quand, text: c.appel ? "🧡 Appel manqué Leboncoin (transféré par Purple) — nom à demander" : "🧡 Lead créé depuis un contact Leboncoin transféré par Purple" }]
   };
-  var url = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT + "/databases/(default)/documents/leads?documentId=lbc_" + msg.getId();
+  var url = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT + "/databases/(default)/documents/leads?documentId=lbc_" + msg.getId() + (c.idx ? "_" + c.idx : "");
   var res = UrlFetchApp.fetch(url, { method: "post", contentType: "application/json", headers: { Authorization: "Bearer " + token },
     payload: JSON.stringify({ fields: lbcChamps(lead) }), muteHttpExceptions: true });
   var code = res.getResponseCode();
@@ -136,8 +148,7 @@ function lbcVal(v) {
 
 // Test manuel : affiche ce qui serait lu dans les 5 derniers mails, sans rien créer
 function testLeboncoin() {
-  GmailApp.search('from:(purpleimmobilier.fr OR sabatini) subject:leboncoin', 0, 5).forEach(function(t) {
-    var c = lbcLire(t.getMessages()[t.getMessageCount() - 1]);
-    Logger.log(JSON.stringify(c));
+  GmailApp.search('from:(purpleimmobilier.fr OR sabatini) leboncoin', 0, 5).forEach(function(t) {
+    lbcBlocs(t.getMessages()[t.getMessageCount() - 1].getPlainBody() || "").forEach(function(b) { Logger.log(JSON.stringify(lbcLireTexte(b))); });
   });
 }
