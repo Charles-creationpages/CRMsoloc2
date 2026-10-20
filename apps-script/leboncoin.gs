@@ -83,8 +83,11 @@ function lbcLire(msg) {
   var prix = pick(/m²"?\s*\)?\s*(\d[\d\s]*)\s*€/i);
   var lien = pick(/Lien\s*:\s*(https?:\/\/www\.leboncoin\.fr\/ad\/\S+)/i);
   var relais = pick(/([a-z0-9]+@messagerie\.leboncoin\.fr)/i);
-  if (!nom) nom = pick(/De:\s*"?(.+?)\s+via leboncoin/i);
-  return { nom: nom, prenomLu: prenomLu, nomLu: prenomLu ? nomLu : "", email: email, tel: lbcFormatTel(tel), ville: ville, message: message, annonce: annonce, prix: prix, lien: lien, relais: relais };
+  // Mail « Vous avez un appel manqué » : seulement un numéro, le nom sera demandé au téléphone
+  var appel = /appel manqu/i.test(txt);
+  if (appel && !tel) tel = pick(/appel manqu[ée][\s\S]*?(\+?\d[\d .]{8,}\d)/i);
+  if (!nom && !appel) nom = pick(/De:\s*"?(.+?)\s+via leboncoin/i);
+  return { appel: appel, nom: appel ? "" : nom, prenomLu: prenomLu, nomLu: prenomLu ? nomLu : "", email: email, tel: lbcFormatTel(tel), ville: ville, message: message, annonce: annonce, prix: prix, lien: lien, relais: relais };
 }
 
 function lbcCreer(token, msg, c) {
@@ -96,7 +99,7 @@ function lbcCreer(token, msg, c) {
   var statut = /[ée]tudiant/.test(m) ? "Étudiant" : /\bcdi\b/.test(m) ? "CDI" : /\bcdd\b/.test(m) ? "CDD"
     : /(ind[ée]pendant|auto-?entrepreneur|freelance)/.test(m) ? "Indépendant" : "";
   var lead = {
-    firstName: prenom, lastName: nom, name: c.nom || c.email || c.tel,
+    firstName: prenom, lastName: nom, name: c.appel ? "" : (c.nom || c.email || c.tel),
     phone: c.tel || "", email: c.email || "",
     column: "premier_contact", relanceCount: 0, paid: false,
     assignedTo: ["aya", "emmy"], assignTouched: true,
@@ -105,7 +108,7 @@ function lbcCreer(token, msg, c) {
                 prestationsSupp: "", dateEntreeSouhaitee: "", dateAsap: false, etatLogement: [], etatBien: [] },
     leboncoin: { annonce: c.annonce || "", mailId: msg.getId() },
     createdAt: quand, lastActivity: quand,
-    history: [{ id: "lbc-" + msg.getId(), at: quand, text: "🧡 Lead créé depuis un contact Leboncoin transféré par Purple" }]
+    history: [{ id: "lbc-" + msg.getId(), at: quand, text: c.appel ? "🧡 Appel manqué Leboncoin (transféré par Purple) — nom à demander" : "🧡 Lead créé depuis un contact Leboncoin transféré par Purple" }]
   };
   var url = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT + "/databases/(default)/documents/leads?documentId=lbc_" + msg.getId();
   var res = UrlFetchApp.fetch(url, { method: "post", contentType: "application/json", headers: { Authorization: "Bearer " + token },

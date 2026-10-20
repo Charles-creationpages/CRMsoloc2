@@ -771,7 +771,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
   return(
     <div className={cls.join(" ")} draggable onDragStart={e=>onDragStart(e,lead.id)} onClick={()=>onOpen(lead)}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:critSummary?4:5}}>
-        <div className="kb-card-name" style={{margin:0}}>{lead.name}</div>
+        <div className="kb-card-name" style={{margin:0}}>{lead.name||<span style={{color:"var(--text3)",fontStyle:"italic"}}>Nom à demander</span>}</div>
         {asArray(lead.assignedTo).length>0
           ? <span style={{display:"flex",gap:3,flexShrink:0}}>{asArray(lead.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>
           : <span className="badge" style={{background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border2)",flexShrink:0}}>Non assigné</span>}
