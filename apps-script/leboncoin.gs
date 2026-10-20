@@ -71,7 +71,10 @@ function lbcLire(msg) {
   var brut = msg.getPlainBody() || "";
   var txt = brut.replace(/^\s*>+ ?/gm, "").replace(/\*/g, "").replace(/\|/g, " ").replace(/\s+/g, " ");
   var pick = function(re) { var m = re.exec(txt); return m ? m[1].trim() : ""; };
-  var nom = pick(/Nom\s*:\s*(.+?)\s+E-?mail\s*:/i);
+  // « Prénom : … Nom : … » quand la personne a rempli les deux, sinon « Nom : … » seul
+  var prenomLu = pick(/Pr[ée]nom\s*:\s*(.+?)\s+Nom\s*:/i);
+  var nomLu = pick(/(?:^|[^A-Za-zÀ-ÿ])Nom\s*:\s*(.+?)\s+E-?mail\s*:/);
+  var nom = prenomLu ? (prenomLu + " " + nomLu).trim() : nomLu;
   var email = pick(/E-?mail\s*:\s*([^\s<>()\[\]]+@[^\s<>()\[\]]+\.[a-z]{2,})/i).toLowerCase();
   var tel = pick(/T[ée]l[ée]phone\s*:\s*(\+?[\d][\d .]{7,}\d)/i);
   var ville = pick(/Ville\s*:\s*(.+?)\s*(?:«|Voir le profil|$)/i);
@@ -81,13 +84,13 @@ function lbcLire(msg) {
   var lien = pick(/Lien\s*:\s*(https?:\/\/www\.leboncoin\.fr\/ad\/\S+)/i);
   var relais = pick(/([a-z0-9]+@messagerie\.leboncoin\.fr)/i);
   if (!nom) nom = pick(/De:\s*"?(.+?)\s+via leboncoin/i);
-  return { nom: nom, email: email, tel: lbcFormatTel(tel), ville: ville, message: message, annonce: annonce, prix: prix, lien: lien, relais: relais };
+  return { nom: nom, prenomLu: prenomLu, nomLu: prenomLu ? nomLu : "", email: email, tel: lbcFormatTel(tel), ville: ville, message: message, annonce: annonce, prix: prix, lien: lien, relais: relais };
 }
 
 function lbcCreer(token, msg, c) {
   var parts = c.nom.split(/\s+/).filter(Boolean);
-  var prenom = parts.length ? parts[0] : "";
-  var nom = parts.slice(1).join(" ");
+  var prenom = c.prenomLu || (parts.length ? parts[0] : "");
+  var nom = c.prenomLu ? c.nomLu : parts.slice(1).join(" ");
   var quand = msg.getDate().toISOString();
   var m = (c.message || "").toLowerCase();
   var statut = /[ée]tudiant/.test(m) ? "Étudiant" : /\bcdi\b/.test(m) ? "CDI" : /\bcdd\b/.test(m) ? "CDD"
