@@ -2,15 +2,16 @@
 // Compte hello@solocimmo.fr. À coller comme NOUVEAU FICHIER dans le même projet Apps Script que libelle.gs :
 // il réutilise sa connexion au CRM (getFirebaseToken, getCollection, mot de passe SCRIPT_PASSWORD des propriétés).
 //
-// Toutes les 15 min : lit les mails « Nouveau message pour … sur leboncoin » transférés par Purple Immobilier
-// (Rodolphe Sabatini), récupère nom / e-mail / téléphone / ville / message, et crée le client dans le CRM
+// Toutes les 15 min : lit les mails NON LUS « Nouveau message pour … sur leboncoin » transférés par Purple Immobilier
+// (Rodolphe Sabatini), récupère nom / e-mail / téléphone / ville, et crée le client dans le CRM
 // en Premier contact, source « Leboncoin », attribué à Aya ET Emmy.
-// Chaque conversation traitée reçoit le libellé Gmail « CRM Leboncoin » (elle n'est plus relue ensuite).
+// Un mail déjà ouvert est considéré comme déjà traité : il est ignoré.
+// Chaque mail analysé est marqué comme lu et la conversation reçoit le libellé Gmail « CRM Leboncoin ».
 // Un contact déjà présent dans le CRM (même e-mail ou même téléphone) n'est pas recréé.
 //
 // Mise en route (une seule fois) : choisir installerLeboncoin dans la liste des fonctions → Exécuter.
 
-var LBC_RECHERCHE = 'from:(purpleimmobilier.fr OR sabatini) subject:leboncoin -label:"CRM Leboncoin"';
+var LBC_RECHERCHE = 'is:unread from:(purpleimmobilier.fr OR sabatini) subject:leboncoin -label:"CRM Leboncoin à vérifier"';
 var LBC_LABEL = "CRM Leboncoin";
 var LBC_LABEL_VERIF = "CRM Leboncoin à vérifier";
 var LBC_MAX = 50;
@@ -32,7 +33,7 @@ function importerLeboncoin() {
 
 function executerLeboncoin() {
   var threads = GmailApp.search(LBC_RECHERCHE, 0, LBC_MAX);
-  if (!threads.length) { Logger.log("Leboncoin : aucun nouveau mail."); return; }
+  if (!threads.length) { Logger.log("Leboncoin : aucun nouveau mail non lu."); return; }
   var token = getFirebaseToken();
   var leads = getCollection(token, "leads");
   var mails = {}, tels = {};
@@ -45,18 +46,22 @@ function executerLeboncoin() {
   var crees = 0, deja = 0, illisibles = 0;
 
   threads.forEach(function(t) {
-    var ok = true;
+    var ok = true, vus = 0;
     t.getMessages().forEach(function(msg) {
-      if (!/leboncoin/i.test(msg.getSubject())) return;
+      if (!msg.isUnread() || !/leboncoin/i.test(msg.getSubject())) return; // déjà ouvert = déjà traité
       var c = lbcLire(msg);
-      if (!c.email && !c.tel) { illisibles++; ok = false; return; }
+      if (!c.email && !c.tel) { illisibles++; ok = false; return; } // reste non lu, libellé « à vérifier »
       var cm = (c.email || "").toLowerCase(), ct = lbcCleTel(c.tel);
-      if ((cm && mails[cm]) || (ct && tels[ct])) { deja++; return; }
-      lbcCreer(token, msg, c);
-      if (cm) mails[cm] = 1; if (ct) tels[ct] = 1;
-      crees++;
+      if ((cm && mails[cm]) || (ct && tels[ct])) deja++;
+      else {
+        lbcCreer(token, msg, c);
+        if (cm) mails[cm] = 1; if (ct) tels[ct] = 1;
+        crees++;
+      }
+      msg.markRead(); vus++;
     });
-    t.addLabel(ok ? label : labelVerif);
+    if (vus) t.addLabel(label);
+    if (!ok) t.addLabel(labelVerif);
   });
   Logger.log("Leboncoin : " + crees + " client(s) créé(s), " + deja + " déjà dans le CRM, " + illisibles + " mail(s) illisible(s) (libellé « " + LBC_LABEL_VERIF + " »).");
 }
@@ -87,20 +92,15 @@ function lbcCreer(token, msg, c) {
   var m = (c.message || "").toLowerCase();
   var statut = /[ée]tudiant/.test(m) ? "Étudiant" : /\bcdi\b/.test(m) ? "CDI" : /\bcdd\b/.test(m) ? "CDD"
     : /(ind[ée]pendant|auto-?entrepreneur|freelance)/.test(m) ? "Indépendant" : "";
-  var notes = "Contact Leboncoin transféré par Purple" + (c.annonce ? " — annonce « " + c.annonce + " »" + (c.prix ? " (" + c.prix + " €)" : "") : "") + "."
-    + (c.message ? "\nMessage : « " + c.message + " »" : "")
-    + (c.ville ? "\nVille : " + c.ville : "")
-    + (c.lien ? "\nAnnonce : " + c.lien : "")
-    + (c.relais ? "\nRépondre via la messagerie Leboncoin : " + c.relais : "");
   var lead = {
     firstName: prenom, lastName: nom, name: c.nom || c.email || c.tel,
     phone: c.tel || "", email: c.email || "",
     column: "premier_contact", relanceCount: 0, paid: false,
     assignedTo: ["aya", "emmy"], assignTouched: true,
-    source: "leboncoin", notes: notes,
+    source: "leboncoin", notes: "",
     criteria: { statutClient: statut, periodeEssaiValidee: null, typologie: [], surface: "", loyer: "", secteur: c.ville || "",
                 prestationsSupp: "", dateEntreeSouhaitee: "", dateAsap: false, etatLogement: [], etatBien: [] },
-    leboncoin: { annonce: c.annonce || "", prix: c.prix || "", lien: c.lien || "", relais: c.relais || "", mailId: msg.getId() },
+    leboncoin: { annonce: c.annonce || "", mailId: msg.getId() },
     createdAt: quand, lastActivity: quand,
     history: [{ id: "lbc-" + msg.getId(), at: quand, text: "🧡 Lead créé depuis un contact Leboncoin transféré par Purple" }]
   };
