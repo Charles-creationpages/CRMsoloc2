@@ -176,7 +176,7 @@ const assigneeFromDate = (iso) => {
   if(d===3||d===4||d===5) return "aya";      // mer/jeu/ven
   return "emmy";                             // lun/mar/sam/dim
 };
-const SOURCE_LABEL = { tiktok:"📱 TikTok", instagram:"📸 Instagram", whatsapp:"💬 WhatsApp", calendly:"📅 Calendly", manuel:"✍️ Manuel", site:"🌐 Site" };
+const SOURCE_LABEL = { tiktok:"📱 TikTok", instagram:"📸 Instagram", whatsapp:"💬 WhatsApp", calendly:"📅 Calendly", manuel:"✍️ Manuel", site:"🌐 Site", leboncoin:"🧡 Leboncoin" };
 const sourceLabel = (s) => SOURCE_LABEL[s] || (s ? s : "");
 const round2 = (x) => Math.round((x||0)*100)/100;
 const eurFmt = (n) => round2(n).toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
@@ -783,6 +783,7 @@ function LeadCard({lead, onOpen, onDragStart, onRelanceAction, onTogglePaid, isD
         {lead.whatsappContact&&<span style={chip("#DCFCE7","#15803d")}>💬 {lead.whatsappContact.dateLabel||"WhatsApp"}</span>}
         {lead.source==="tiktok"&&<span style={chip("#F1F1F2","#111")}><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{verticalAlign:"-1px",marginRight:3}}><path d="M16.6 5.82a4.28 4.28 0 0 1-1.05-2.82h-3.11v12.16a2.43 2.43 0 0 1-2.42 2.32 2.43 2.43 0 0 1 0-4.86c.25 0 .5.04.72.11V9.6a5.6 5.6 0 0 0-.72-.05 5.54 5.54 0 1 0 5.54 5.54V8.9a7.14 7.14 0 0 0 4.17 1.33V7.12a4.28 4.28 0 0 1-3.13-1.3z"/></svg>TikTok</span>}
         {lead.source==="instagram"&&<span style={chip("#FCE7F3","#be185d")}>📸 Instagram</span>}
+        {lead.source==="leboncoin"&&<span style={chip("#FFEDD5","#c2410c")} title="Contact Leboncoin transféré par Purple">🧡 Leboncoin</span>}
         {(()=>{ // Venu du site solocimmo.fr (lien en bio) : réseau reconnu par le site
           const o=origineOf(lead); if(!o||o.bouton==="formulaire") return null;
           if(o.bouton==="quiz") return <span style={chip("#EDE9FE","#6d28d9")} title="Questionnaire « Lancer ma recherche en 30 s » du site">🧩 Site quizz{o.provenance&&o.provenance!=="direct"?" · "+libProvenance(o.provenance):""}</span>;
