@@ -2538,6 +2538,368 @@ function ArchivesPage({leads, lettres, addToast, isMobile}){
 }
 
 // ─── PILOTAGE (réservé à Charles) ────────────────────────────────────────
+// ─── REPORTING (Aya → Charles) ─────────────────────────────────────────────
+// Une fiche par semaine dans la collection « reporting » (id aya_<lundi>). Appels et relances sont calculés
+// depuis le pipeline (événements « appel » / « relance » de l'historique des fiches, faits par Aya) ;
+// le reste (suivi de dossiers, dossiers reçus, contacts d'agence, visites, remarques) est saisi ici
+// et écrit aussi dans le CRM (Partenaires, historique des fiches).
+const REPORTING_ROLE = "aya";
+const REPORTING_EMAIL = ASSIGNEES.aya.email;
+const JOURS_FR = ["dim.","lun.","mar.","mer.","jeu.","ven.","sam."];
+const repDayKey = (d) => { const x=new Date(d); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); };
+const repLundi = (d) => { const x=new Date(d||Date.now()); x.setHours(12,0,0,0); const k=(x.getDay()+6)%7; x.setDate(x.getDate()-k); return repDayKey(x); };
+const repAddDays = (key,n) => { const x=new Date(key+"T12:00:00"); x.setDate(x.getDate()+n); return repDayKey(x); };
+const repJourLabel = (key) => { const x=new Date(key+"T12:00:00"); return JOURS_FR[x.getDay()]+" "+x.getDate(); };
+const MOIS_REP = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const repPeriode = (rep) => { const j=asArray(rep.objectifs&&rep.objectifs.jours); const a=new Date((j[0]||rep.lundi)+"T12:00:00"), z=new Date((j[j.length-1]||repAddDays(rep.lundi,4))+"T12:00:00");
+  return "semaine du "+a.getDate()+(a.getMonth()!==z.getMonth()?" "+MOIS_REP[a.getMonth()]:"")+" au "+z.getDate()+" "+MOIS_REP[z.getMonth()]; };
+const repDeadline = (rep) => { const j=asArray(rep.objectifs&&rep.objectifs.jours); const last=j.length?j[j.length-1]:repAddDays(rep.lundi,4); return new Date(last+"T18:00:00"); };
+const repDefaultObjectifs = (lundi, prev) => {
+  const o = prev ? JSON.parse(JSON.stringify(prev)) : { appelsParJour:10, contactsCible:10, dossiersCible:2 };
+  o.jours = [2,3,4].map(i=>repAddDays(lundi,i)); // mercredi → vendredi
+  return o;
+};
+const COLS_APPEL = [["relance","Relance"],["envoye","Envoyé"],["en_attente","En attente"],["sans_suite","Sans suite"]];
+const MAILS_GENERIQUES = /^(contact|accueil|agence|info|infos|information|bonjour|hello|location|locations|gestion|secretariat|secr[ée]tariat|admin|office|reception|direction|commercial|transaction|transactions|syndic|noreply|no-reply|immobilier|immo|service|support)[._-]?\d*@/i;
+const telPortable = (t) => { let d=String(t||"").replace(/\D/g,""); if(d.indexOf("33")===0&&d.length===11) d="0"+d.slice(2); return /^0[67]\d{8}$/.test(d) ? d.replace(/(\d{2})(?=\d)/g,"$1 ") : ""; };
+
+// Calcule tout le reporting (en direct, ou figé au moment de l'envoi)
+function bilanReporting(rep, leads){
+  const o=rep.objectifs||{}; const jours=asArray(o.jours);
+  const debut=rep.lundi, fin=repAddDays(rep.lundi,6);
+  const dansSemaine=(at)=>{ const k=repDayKey(at); return k>=debut && k<=fin; };
+  const evs=[]; // événements d'Aya cette semaine
+  leads.forEach(l=>asArray(l.history).forEach(h=>{ if(h&&h.by===REPORTING_ROLE&&h.at&&dansSemaine(h.at)) evs.push({lead:l,h}); }));
+  const appelsListe=evs.filter(e=>e.h.kind==="appel").sort((a,b)=>new Date(a.h.at)-new Date(b.h.at))
+    .map(e=>({leadId:e.lead.id,name:e.lead.name||e.lead.phone||"—",resume:e.h.resume||"",to:e.h.to||"",at:e.h.at}));
+  const parJour=jours.map(j=>({jour:j, n:appelsListe.filter(a=>repDayKey(a.at)===j).length}));
+  const snap=asArray(rep.relancesSnap);
+  const relancesListe=snap.map(s=>{
+    const l=leads.find(x=>x.id===s.id); const mine=evs.filter(e=>e.lead.id===s.id && (e.h.kind==="relance"||e.h.kind==="relance_ok"));
+    const ok=mine.find(e=>e.h.kind==="relance_ok"); const nr=mine.filter(e=>e.h.kind==="relance").length;
+    let statut="À faire", fait=false;
+    if(!l){ statut="Fiche supprimée"; fait=true; }
+    else if(ok){ statut="A répondu → "+((PIPELINE_COLS.find(c=>c.id===ok.h.to)||{}).label||ok.h.to); fait=true; }
+    else if(l.column==="sans_suite"&&nr){ statut="Sans suite (3 relances sans réponse)"; fait=true; }
+    else if(nr){ statut="Pas de réponse (relance "+(l.relanceCount||nr)+"/3)"; fait=true; }
+    else if(l.column!=="relance"){ statut="Déplacé en "+((PIPELINE_COLS.find(c=>c.id===l.column)||{}).label||l.column); fait=true; }
+    return {id:s.id,name:(l&&l.name)||s.name,statut,fait,resume:ok?ok.h.resume:""};
+  });
+  const suivis=asArray(rep.suivis), dossiers=asArray(rep.dossiers), contacts=asArray(rep.contacts), visites=asArray(rep.visites);
+  const dossiersFaits=dossiers.filter(d=>d.faisable&&(d.profil||d.revenus||d.recherche));
+  const atteint=[], nonAtteint=[];
+  parJour.forEach(p=>{ (p.n>=(o.appelsParJour||0)?atteint:nonAtteint).push("Appels "+repJourLabel(p.jour)+" : "+p.n+" / "+(o.appelsParJour||0)); });
+  const relFaites=relancesListe.filter(r=>r.fait).length;
+  if(snap.length) (relFaites>=snap.length?atteint:nonAtteint).push("Relances : "+relFaites+" / "+snap.length+(relFaites<snap.length?" — pas faites : "+relancesListe.filter(r=>!r.fait).map(r=>r.name).join(", "):""));
+  suivis.forEach(s=>{ (s.statut==="finalise"?atteint:nonAtteint).push((s.titre||"Dossier")+" : "+(s.statut==="finalise"?"finalisé":s.statut==="bloque"?"bloqué":"en cours")+(s.texte?"":" — aucun point écrit")); });
+  if(o.dossiersCible) (dossiersFaits.length>=o.dossiersCible?atteint:nonAtteint).push("Dossiers reçus analysés : "+dossiersFaits.length+" / "+o.dossiersCible);
+  if(o.contactsCible) (contacts.length>=o.contactsCible?atteint:nonAtteint).push("Nouveaux contacts d'agence : "+contacts.length+" / "+o.contactsCible+(contacts.length<o.contactsCible?" (manque "+(o.contactsCible-contacts.length)+")":""));
+  if(visites.length) atteint.push("Visites : "+visites.length);
+  return { lundi:rep.lundi, jours, appelsParJour:o.appelsParJour||0, parJour, appelsTotal:appelsListe.length, appelsCible:(o.appelsParJour||0)*jours.length, appelsListe,
+    relancesListe, relancesFaites:relFaites, suivis, dossiers, dossiersCible:o.dossiersCible||0, contacts, contactsCible:o.contactsCible||0, visites,
+    remarques:rep.remarques||"", atteint, nonAtteint };
+}
+
+function BilanView({b, rep}){
+  const H=({children})=><div style={{fontSize:11,fontWeight:800,color:"var(--accent)",textTransform:"uppercase",letterSpacing:".06em",margin:"16px 0 6px",borderBottom:"1.5px solid var(--border)",paddingBottom:3}}>{children}</div>;
+  const R=({a,b:bb,c})=><div style={{display:"flex",gap:10,padding:"5px 0",borderTop:"1px solid var(--border)",fontSize:12}}><b style={{minWidth:130}}>{a}</b><span style={{flex:1,color:"var(--text2)"}}>{bb}</span>{c&&<span style={{fontSize:10.5,fontWeight:700,color:"var(--text3)"}}>{c}</span>}</div>;
+  const enRetard = rep.sentAt && new Date(rep.sentAt)>repDeadline(rep);
+  return(
+    <div>
+      {rep.status==="envoye"&&<div style={{fontSize:11.5,fontWeight:700,color:enRetard?"var(--red)":"var(--green)",marginBottom:8}}>Envoyé le {fmtDateTime(rep.sentAt)} — {enRetard?"en retard (après vendredi 18h)":"dans les temps ✓"}</div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{background:"var(--green-bg)",border:"1px solid #bbf7d0",borderRadius:12,padding:"11px 13px"}}>
+          <div style={{fontWeight:800,color:"#166534",marginBottom:6}}>✅ Atteint / fait ({b.atteint.length})</div>
+          {b.atteint.length?b.atteint.map((t,i)=><div key={i} style={{fontSize:12,padding:"2px 0"}}>• {t}</div>):<div style={{fontSize:12,color:"var(--text3)"}}>—</div>}
+        </div>
+        <div style={{background:"var(--red-bg)",border:"1px solid #fecaca",borderRadius:12,padding:"11px 13px"}}>
+          <div style={{fontWeight:800,color:"#991b1b",marginBottom:6}}>❌ Non atteint / pas fait ({b.nonAtteint.length})</div>
+          {b.nonAtteint.length?b.nonAtteint.map((t,i)=><div key={i} style={{fontSize:12,padding:"2px 0"}}>• {t}</div>):<div style={{fontSize:12,color:"var(--text3)"}}>Tout est atteint 👏</div>}
+        </div>
+      </div>
+      <H>📞 Appels — {b.appelsTotal} / {b.appelsCible} ({b.parJour.map(p=>repJourLabel(p.jour)+" "+p.n).join(" · ")})</H>
+      {b.appelsListe.length?b.appelsListe.map((a,i)=><R key={i} a={a.name} b={a.resume} c={repJourLabel(repDayKey(a.at))+" → "+((PIPELINE_COLS.find(c=>c.id===a.to)||{}).label||a.to)}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucun appel enregistré.</div>}
+      <H>🔁 Relances — {b.relancesFaites} / {b.relancesListe.length}</H>
+      {b.relancesListe.map((r,i)=><R key={i} a={r.name} b={(r.resume?r.resume+" — ":"")+r.statut} c={r.fait?"✓":"✗"}/>)}
+      {b.suivis.map((s,i)=><div key={i}><H>📁 {s.titre||"Dossier"} — {s.statut==="finalise"?"finalisé":s.statut==="bloque"?"bloqué":"en cours"}</H><div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{s.leadName?<b>{s.leadName} · </b>:null}{s.texte||"—"}</div></div>)}
+      <H>📄 Dossiers reçus — {b.dossiers.length} / {b.dossiersCible}</H>
+      {b.dossiers.length?b.dossiers.map((d,i)=><R key={i} a={d.name} b={"Profil : "+(d.profil||"—")+" · Revenus : "+(d.revenus||"—")+" · Recherche : "+(d.recherche||"—")+(d.note?" · "+d.note:"")} c={d.faisable==="oui"?"Faisable":d.faisable==="non"?"Pas faisable":"?"}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucun.</div>}
+      <H>🤝 Nouveaux contacts d'agence — {b.contacts.length} / {b.contactsCible}</H>
+      {b.contacts.length?b.contacts.map((c,i)=><R key={i} a={[c.prenom,c.nom].filter(Boolean).join(" ")} b={c.agence+" · "+c.phone+" · "+c.email}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucun.</div>}
+      <H>🏠 Visites — {b.visites.length}</H>
+      {b.visites.length?b.visites.map((v,i)=><R key={i} a={v.name} b={(v.bien||"")+(v.retour?" — "+v.retour:"")} c={v.date?fmtDate(v.date):""}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucune.</div>}
+      <H>💬 Remarques, questions, demandes</H>
+      <div style={{fontSize:12,whiteSpace:"pre-wrap"}}>{b.remarques||"—"}</div>
+    </div>
+  );
+}
+
+function ReportingPage({user, leads, addToast, onMove, onRelance, onOpen}){
+  const isCharles = user.email===FINANCE_EMAIL;
+  const [reps,setReps]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+  const [sel,setSel]=useState(null);
+  useEffect(()=>{
+    const unsub=fsOnSnapshot(fsCollection(db,"reporting"),snap=>{ setReps(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoaded(true); },()=>{ setLoaded(true); addToast("Reporting : accès refusé (règles Firebase à mettre à jour)","error"); });
+    return unsub;
+  },[]);
+  const lundi=repLundi();
+  const curId=REPORTING_ROLE+"_"+lundi;
+  const cur=reps.find(r=>r.id===curId);
+  const ayaLeads=leads.filter(l=>!l.archived&&asArray(l.assignedTo).includes(REPORTING_ROLE));
+  // Création de la semaine (objectifs de la semaine précédente, mer → ven) + photo de la colonne Relance
+  const creating=useRef(false);
+  useEffect(()=>{
+    if(!loaded||cur||creating.current) return;
+    creating.current=true;
+    const prev=reps.filter(r=>r.user===REPORTING_ROLE&&r.lundi<lundi).sort((a,b)=>b.lundi.localeCompare(a.lundi))[0];
+    const tristan=leads.find(l=>/tristan/i.test(l.name||""));
+    const suivis = prev ? asArray(prev.suivis).filter(s=>s.statut!=="finalise").map(s=>({...s})) : [{id:"s1",titre:"Dossier Tristan",leadId:tristan?tristan.id:"",leadName:tristan?tristan.name:"",texte:"",statut:"en_cours"}];
+    fsSetDoc(fsDocRef(db,"reporting",curId),{ user:REPORTING_ROLE, lundi, status:"brouillon", createdAt:nowISO(),
+      objectifs:repDefaultObjectifs(lundi, prev&&prev.objectifs), suivis, dossiers:[], contacts:[], visites:[], remarques:"",
+      relancesSnap:ayaLeads.filter(l=>l.column==="relance").map(l=>({id:l.id,name:l.name||l.phone||""})), relancesSnapAt:nowISO()
+    }).catch(()=>{ creating.current=false; });
+  },[loaded,cur]);
+
+  if(!loaded) return <div className="topbar"><div className="pt">Reporting</div></div>;
+  const save=(rep,upd,msg)=>fsUpdateDoc(fsDocRef(db,"reporting",rep.id),upd).then(()=>msg&&addToast(msg)).catch(()=>addToast("Erreur d'enregistrement","error"));
+
+  if(isCharles){
+    const liste=reps.filter(r=>r.user===REPORTING_ROLE).sort((a,b)=>b.lundi.localeCompare(a.lundi));
+    const r=liste.find(x=>x.id===sel)||liste.find(x=>x.status==="envoye"&&!x.lu)||cur||liste[0];
+    return(<>
+      <div className="topbar"><div><div className="pt">Reporting d'Aya</div><div className="ps">Reportings reçus et objectifs de la semaine</div></div></div>
+      <div className="main" style={{display:"grid",gridTemplateColumns:"230px 1fr",gap:16,alignItems:"start"}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+          {liste.map(x=>(
+            <div key={x.id} onClick={()=>{ setSel(x.id); if(x.status==="envoye"&&!x.lu) save(x,{lu:true}); }} style={{padding:"10px 12px",borderBottom:"1px solid var(--border)",cursor:"pointer",background:r&&x.id===r.id?"var(--accent-l)":"transparent"}}>
+              <div style={{fontWeight:700,fontSize:12.5}}>Semaine du {fmtDate(x.lundi+"T12:00:00")}{x.status==="envoye"&&!x.lu&&<span className="badge" style={{marginLeft:6,background:"var(--accent)",color:"#fff"}}>nouveau</span>}</div>
+              <div style={{fontSize:10.5,marginTop:2,color:x.status==="envoye"?(new Date(x.sentAt)>repDeadline(x)?"var(--red)":"var(--green)"):"var(--text3)"}}>{x.status==="envoye"?("Reçu le "+fmtDateTime(x.sentAt)+(new Date(x.sentAt)>repDeadline(x)?" · en retard":"")):"En cours (pas encore envoyé)"}</div>
+            </div>))}
+        </div>
+        {r?<div>
+          <ObjectifsEditor rep={r} save={save} ayaLeads={ayaLeads} leads={leads}/>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px",marginTop:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{fontWeight:800,fontSize:15}}>{r.status==="envoye"?"Reporting reçu":"Aperçu en direct (pas encore envoyé)"} — semaine du {fmtDate(r.lundi+"T12:00:00")}</div>
+              {r.status==="envoye"&&<button className="btn btn-g btn-sm" onClick={()=>{ if(confirm("Rouvrir ce reporting pour qu'Aya puisse le modifier et le renvoyer ?")) save(r,{status:"brouillon",lu:false},"Reporting rouvert"); }}>Rouvrir</button>}
+            </div>
+            <BilanView b={r.status==="envoye"&&r.envoi?r.envoi:bilanReporting(r,leads)} rep={r}/>
+          </div>
+        </div>:<div style={{color:"var(--text3)"}}>Aucun reporting pour l'instant.</div>}
+      </div>
+    </>);
+  }
+
+  // ── Vue d'Aya ──
+  if(!cur) return <div className="topbar"><div className="pt">Mon reporting</div><div className="ps">Préparation de la semaine…</div></div>;
+  return <ReportingAya rep={cur} leads={leads} ayaLeads={ayaLeads} save={save} addToast={addToast} user={user} onMove={onMove} onRelance={onRelance} onOpen={onOpen}/>;
+}
+
+function ObjectifsEditor({rep, save, ayaLeads, leads}){
+  const o=rep.objectifs||{};
+  const [titre,setTitre]=useState("");
+  const jours=[0,1,2,3,4].map(i=>repAddDays(rep.lundi,i));
+  const setO=(k,v)=>save(rep,{["objectifs."+k]:v});
+  const num=(k,label)=>(<label style={{fontSize:12,display:"flex",alignItems:"center",gap:6}}>{label}<input className="fi" type="number" style={{width:64,padding:"5px 7px"}} defaultValue={o[k]} onBlur={e=>setO(k,parseInt(e.target.value)||0)}/></label>);
+  return(
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 16px"}}>
+      <div style={{fontWeight:800,marginBottom:8}}>🎯 Objectifs d'Aya — semaine du {fmtDate(rep.lundi+"T12:00:00")} <span style={{fontWeight:600,fontSize:11,color:"var(--text3)"}}>(modifiables)</span></div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:14,alignItems:"center"}}>
+        <div style={{display:"flex",gap:5,alignItems:"center",fontSize:12}}>Jours :{jours.map(j=>{ const on=asArray(o.jours).includes(j); return <button key={j} type="button" className="btn btn-sm" style={{padding:"4px 8px",background:on?"var(--accent)":"var(--surface2)",color:on?"#fff":"var(--text2)",border:"none"}} onClick={()=>setO("jours",(on?asArray(o.jours).filter(x=>x!==j):[...asArray(o.jours),j]).sort())}>{repJourLabel(j)}</button>; })}</div>
+        {num("appelsParJour","Appels / jour")}{num("dossiersCible","Dossiers reçus")}{num("contactsCible","Contacts agence")}
+      </div>
+      <div style={{fontSize:12,marginTop:10}}>🔁 Relances : <b>{asArray(rep.relancesSnap).length}</b> clients (photo de la colonne Relance du {fmtDateTime(rep.relancesSnapAt)}) <button className="btn btn-g btn-sm" style={{marginLeft:6}} onClick={()=>{ if(confirm("Reprendre la liste des relances à partir de la colonne Relance d'Aya maintenant ?")) save(rep,{relancesSnap:ayaLeads.filter(l=>l.column==="relance").map(l=>({id:l.id,name:l.name||l.phone||""})),relancesSnapAt:nowISO()},"Liste des relances mise à jour"); }}>Reprendre la liste</button></div>
+      <div style={{fontSize:12,marginTop:8}}>📁 Dossiers à suivre : {asArray(rep.suivis).map(s=><span key={s.id} className="badge" style={{marginRight:5,background:"var(--surface2)",color:"var(--text2)"}}>{s.titre} <span style={{cursor:"pointer",marginLeft:4}} onClick={()=>save(rep,{suivis:asArray(rep.suivis).filter(x=>x.id!==s.id)})}>✕</span></span>)}
+        <input className="fi" style={{width:180,padding:"5px 7px",display:"inline-block",marginLeft:6}} placeholder="ex. Dossier Martin" value={titre} onChange={e=>setTitre(e.target.value)}/>
+        <button className="btn btn-g btn-sm" style={{marginLeft:6}} onClick={()=>{ if(!titre.trim()) return; const m=leads.find(l=>titre.toLowerCase().split(/\s+/).some(w=>w.length>2&&w!=="dossier"&&(l.name||"").toLowerCase().includes(w))); save(rep,{suivis:[...asArray(rep.suivis),{id:"s"+Date.now(),titre:titre.trim(),leadId:m?m.id:"",leadName:m?m.name:"",texte:"",statut:"en_cours"}]}); setTitre(""); }}>Ajouter</button></div>
+    </div>
+  );
+}
+
+function ReportingAya({rep, leads, ayaLeads, save, addToast, user, onMove, onRelance, onOpen}){
+  const b=bilanReporting(rep,leads);
+  const envoye=rep.status==="envoye";
+  const [apercu,setApercu]=useState(false);
+  const [ct,setCt]=useState({prenom:"",nom:"",agence:"",phone:"",email:""});
+  const [ctErr,setCtErr]=useState("");
+  const [dos,setDos]=useState({leadId:"",profil:"",revenus:"",recherche:"",faisable:"",note:""});
+  const [vis,setVis]=useState({leadId:"",date:todayKey(),bien:"",retour:""});
+  const [suiviTxt,setSuiviTxt]=useState({});
+  const dl=repDeadline(rep); const reste=dl-Date.now();
+  const resteTxt = reste<=0 ? "délai dépassé" : (Math.floor(reste/864e5)>0?Math.floor(reste/864e5)+" j ":"")+Math.floor(reste%864e5/36e5)+" h";
+  const objs=[b.appelsCible?Math.min(1,b.appelsTotal/b.appelsCible):null, b.relancesListe.length?b.relancesFaites/b.relancesListe.length:null, b.dossiersCible?Math.min(1,b.dossiers.filter(d=>d.faisable).length/b.dossiersCible):null, b.contactsCible?Math.min(1,b.contacts.length/b.contactsCible):null].filter(x=>x!=null);
+  const pct=objs.length?Math.round(objs.reduce((a,x)=>a+x,0)/objs.length*100):0;
+  const card={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"13px 15px"};
+  const Head=({t,n,auto})=><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontWeight:800,fontSize:13.5}}>{t}{auto&&<span style={{fontSize:9.5,fontWeight:700,color:"#1d4ed8",background:"#EFF6FF",padding:"2px 7px",borderRadius:20,marginLeft:6}}>AUTO · pipeline</span>}</div>{n&&<span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:20,background:n[0]>=n[1]&&n[1]>0?"#DCFCE7":"#FEF3C7",color:n[0]>=n[1]&&n[1]>0?"#15803d":"#92400e"}}>{n[0]} / {n[1]}</span>}</div>;
+  const leadOpt=(list)=>list.slice().sort((a,c)=>(a.name||"").localeCompare(c.name||"")).map(l=><option key={l.id} value={l.id}>{l.name||l.phone} — {(PIPELINE_COLS.find(c=>c.id===l.column)||{}).label||l.column}</option>);
+  const addHist=(leadId,emoji,text)=>{ const l=leads.find(x=>x.id===leadId); if(!l) return; fsUpdateDoc(fsDocRef(db,"leads",l.id),{lastActivity:nowISO(),history:[...asArray(l.history),{...mkEvent(emoji,text),by:REPORTING_ROLE}]}).catch(()=>{}); };
+  const premiers=ayaLeads.filter(l=>l.column==="premier_contact").sort((a,c)=>new Date(entreeColonne(c)||0)-new Date(entreeColonne(a)||0));
+  const relLeads=asArray(rep.relancesSnap).map(s=>leads.find(l=>l.id===s.id)).filter(l=>l&&l.column==="relance");
+
+  const ajouterContact=()=>{
+    const tel=telPortable(ct.phone), em=String(ct.email||"").trim().toLowerCase();
+    if(!ct.prenom.trim()||!ct.nom.trim()||!ct.agence.trim()) return setCtErr("Prénom, nom et agence sont obligatoires.");
+    if(!tel) return setCtErr("Il faut un numéro de portable direct (06 ou 07), pas un fixe d'agence.");
+    if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(em)) return setCtErr("Email invalide.");
+    if(MAILS_GENERIQUES.test(em)) return setCtErr("Il faut l'email direct de la personne, pas un email général (contact@, accueil@, agence@…).");
+    setCtErr("");
+    fsAddDoc(fsCollection(db,"partenaires"),{agence:ct.agence.trim(),prenom:ct.prenom.trim(),nom:ct.nom.trim(),phone:tel,email:em,owner:REPORTING_ROLE,createdBy:user.email,createdAt:nowISO(),source:"reporting"})
+      .then(ref=>{ save(rep,{contacts:[...asArray(rep.contacts),{id:ref.id,prenom:ct.prenom.trim(),nom:ct.nom.trim(),agence:ct.agence.trim(),phone:tel,email:em,at:nowISO()}]},"✓ Contact ajouté (aussi dans Partenaires)"); setCt({prenom:"",nom:"",agence:"",phone:"",email:""}); })
+      .catch(()=>addToast("Erreur d'ajout","error"));
+  };
+  const ajouterDossier=()=>{
+    const l=leads.find(x=>x.id===dos.leadId); if(!l) return addToast("Choisis le client","error");
+    if(!dos.faisable) return addToast("Indique si c'est faisable (oui / non)","error");
+    save(rep,{dossiers:[...asArray(rep.dossiers).filter(d=>d.leadId!==l.id),{...dos,name:l.name||l.phone,at:nowISO()}]},"✓ Dossier enregistré");
+    addHist(l.id,"📄","Analyse du dossier — profil : "+(dos.profil||"—")+" · revenus : "+(dos.revenus||"—")+" · recherche : "+(dos.recherche||"—")+" · "+(dos.faisable==="oui"?"faisable":"pas faisable")+(dos.note?" · "+dos.note:""));
+    setDos({leadId:"",profil:"",revenus:"",recherche:"",faisable:"",note:""});
+  };
+  const ajouterVisite=()=>{
+    const l=leads.find(x=>x.id===vis.leadId); if(!l) return addToast("Choisis le client","error");
+    save(rep,{visites:[...asArray(rep.visites),{...vis,name:l.name||l.phone,id:"v"+Date.now()}]},"✓ Visite enregistrée");
+    addHist(l.id,"🏠","Visite le "+fmtDate(vis.date+"T12:00:00")+(vis.bien?" — "+vis.bien:"")+(vis.retour?" : "+vis.retour:""));
+    setVis({leadId:"",date:todayKey(),bien:"",retour:""});
+  };
+  const majSuivi=(s,upd,hist)=>{
+    save(rep,{suivis:asArray(rep.suivis).map(x=>x.id===s.id?{...x,...upd}:x)},hist?"✓ Point enregistré":null);
+    if(hist&&s.leadId) addHist(s.leadId,"📁","Point dossier : "+hist);
+  };
+  const envoyer=()=>{
+    if(!confirm("Envoyer ton reporting à Charles ? Tu ne pourras plus le modifier ensuite.")) return;
+    save(rep,{status:"envoye",sentAt:nowISO(),lu:false,envoi:bilanReporting(rep,leads)},"✓ Reporting envoyé à Charles");
+  };
+
+  return(<>
+    <div className="topbar">
+      <div><div className="pt">Mon reporting — {repPeriode(rep)}</div>
+        <div className="ps">{asArray(rep.objectifs&&rep.objectifs.jours).map(repJourLabel).join(" · ")} · objectifs fixés par Charles</div>
+        <div style={{width:360,height:9,background:"var(--surface2)",borderRadius:20,overflow:"hidden",marginTop:6}}><div style={{width:pct+"%",height:"100%",background:"var(--accent)"}}/></div>
+        <div style={{fontSize:10.5,color:"var(--text3)",marginTop:2}}>Avancement : {pct} %</div></div>
+      <div style={{background:"var(--ardoise)",color:"#fff",borderRadius:12,padding:"9px 14px",textAlign:"right"}}>
+        {envoye?<><div style={{fontSize:10,opacity:.7}}>Reporting</div><b style={{color:"#86efac"}}>envoyé ✓</b><div style={{fontSize:10,opacity:.7}}>{fmtDateTime(rep.sentAt)}</div></>
+          :<><div style={{fontSize:10,opacity:.7}}>À envoyer avant</div><b style={{color:"#E9937F",fontSize:15}}>{repJourLabel(repDayKey(dl))} 18h</b><div style={{fontSize:10,opacity:.7}}>{reste>0?"il reste "+resteTxt:resteTxt}</div></>}
+      </div>
+    </div>
+    <div className="main">
+      {(envoye||apercu)?(
+        <div style={card}>
+          {!envoye&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><b>Aperçu de ton reporting</b><button className="btn btn-g btn-sm" onClick={()=>setApercu(false)}>← Revenir</button></div>}
+          {envoye&&<div style={{marginBottom:8,fontSize:12,color:"var(--text2)"}}>Ton reporting est envoyé. Charles peut le rouvrir si une modification est nécessaire.</div>}
+          <BilanView b={envoye&&rep.envoi?rep.envoi:b} rep={rep}/>
+        </div>
+      ):(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(420px,1fr))",gap:12}}>
+        <div style={card}>
+          <Head t="📞 Appels" n={[b.appelsTotal,b.appelsCible]} auto/>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>{b.parJour.map(p=><div key={p.jour} style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:7,textAlign:"center"}}><div className="brand-font" style={{fontSize:17,fontWeight:800,color:p.n>=b.appelsParJour?"var(--green)":"var(--text)"}}>{p.n}<span style={{fontSize:11,color:"var(--text3)"}}>/{b.appelsParJour}</span></div><div style={{fontSize:10,color:"var(--text3)"}}>{repJourLabel(p.jour)}</div></div>)}</div>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",margin:"4px 0"}}>À appeler (Premier contact, les plus récents en haut) — {premiers.length}</div>
+          <div style={{maxHeight:260,overflowY:"auto"}}>{premiers.map(l=>(
+            <div key={l.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderTop:"1px solid var(--border)",fontSize:12}}>
+              <span style={{flex:1,cursor:"pointer"}} onClick={()=>onOpen(l)}><b>{l.name||<i style={{color:"var(--text3)"}}>Nom à demander</i>}</b> <span style={{color:"var(--text3)"}}>{l.phone}</span></span>
+              {COLS_APPEL.map(([c,lab])=><button key={c} className="btn btn-g btn-sm" style={{padding:"3px 7px",fontSize:10.5}} onClick={()=>onMove(l.id,c)}>→ {lab}</button>)}
+            </div>))}</div>
+          {b.appelsListe.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"var(--text2)",margin:"10px 0 4px"}}>Faits cette semaine — {b.appelsListe.length}</div>
+            {b.appelsListe.slice().reverse().slice(0,8).map((a,i)=><div key={i} style={{fontSize:11.5,padding:"3px 0",borderTop:"1px solid var(--border)"}}><b>{a.name}</b> <span style={{color:"var(--text2)"}}>{a.resume}</span></div>)}</>}
+        </div>
+
+        <div style={card}>
+          <Head t="🔁 Relances" n={[b.relancesFaites,b.relancesListe.length]} auto/>
+          <div style={{fontSize:10.5,color:"var(--text3)",marginBottom:6}}>Liste de la colonne Relance au début de la semaine</div>
+          <div style={{maxHeight:330,overflowY:"auto"}}>{b.relancesListe.map(r=>{ const l=relLeads.find(x=>x.id===r.id); return(
+            <div key={r.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderTop:"1px solid var(--border)",fontSize:12}}>
+              <span style={{flex:1}}><b style={{cursor:l?"pointer":"default"}} onClick={()=>l&&onOpen(l)}>{r.name}</b> <span style={{fontSize:10.5,color:r.fait?"var(--green)":"var(--text3)"}}>{r.statut}</span></span>
+              {l&&<><button className="btn btn-g btn-sm" style={{padding:"3px 7px",fontSize:10.5}} onClick={()=>onRelance(l)}>Pas de réponse</button>
+                <select className="fi" style={{width:118,padding:"3px 5px",fontSize:10.5}} value="" onChange={e=>e.target.value&&onMove(l.id,e.target.value)}><option value="">A répondu → …</option>{[["envoye","Envoyé"],["en_attente","En attente"],["en_recherche","En recherche"],["sans_suite","Sans suite"]].map(([c,lab])=><option key={c} value={c}>{lab}</option>)}</select></>}
+            </div>); })}</div>
+        </div>
+
+        {asArray(rep.suivis).map(s=>(
+          <div key={s.id} style={card}>
+            <Head t={"📁 "+(s.titre||"Dossier")}/>
+            <select className="fi" style={{marginBottom:6}} value={s.leadId||""} onChange={e=>{ const l=leads.find(x=>x.id===e.target.value); majSuivi(s,{leadId:e.target.value,leadName:l?l.name:""}); }}><option value="">— Choisir le client —</option>{leadOpt(leads.filter(l=>!l.archived))}</select>
+            <textarea className="fi" rows="3" placeholder="Où on en est ?" value={suiviTxt[s.id]!=null?suiviTxt[s.id]:(s.texte||"")} onChange={e=>setSuiviTxt(p=>({...p,[s.id]:e.target.value}))}/>
+            <div style={{display:"flex",gap:6,marginTop:6,alignItems:"center"}}>
+              {[["en_cours","En cours"],["finalise","Finalisé"],["bloque","Bloqué"]].map(([k,lab])=><button key={k} type="button" className="btn btn-sm" style={{padding:"4px 9px",background:s.statut===k?"var(--accent)":"var(--surface2)",color:s.statut===k?"#fff":"var(--text2)",border:"none"}} onClick={()=>majSuivi(s,{statut:k})}>{lab}</button>)}
+              <button className="btn btn-p btn-sm" style={{marginLeft:"auto"}} onClick={()=>{ const t=(suiviTxt[s.id]!=null?suiviTxt[s.id]:s.texte||"").trim(); if(!t) return; majSuivi(s,{texte:t},t); }}>Enregistrer le point</button>
+            </div>
+          </div>))}
+
+        <div style={card}>
+          <Head t="📄 Dossiers reçus" n={[b.dossiers.filter(d=>d.faisable).length,b.dossiersCible]}/>
+          {asArray(rep.dossiers).map((d,i)=><div key={i} style={{fontSize:11.5,padding:"4px 0",borderTop:"1px solid var(--border)"}}><b>{d.name}</b> · {d.faisable==="oui"?"✅ faisable":"❌ pas faisable"}<div style={{color:"var(--text2)"}}>Profil : {d.profil||"—"} · Revenus : {d.revenus||"—"} · Recherche : {d.recherche||"—"}{d.note?" · "+d.note:""}</div></div>)}
+          <select className="fi" style={{margin:"6px 0"}} value={dos.leadId} onChange={e=>setDos(p=>({...p,leadId:e.target.value}))}><option value="">— Choisir le client —</option>{leadOpt(ayaLeads)}</select>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            <input className="fi" placeholder="Profil (statut, situation…)" value={dos.profil} onChange={e=>setDos(p=>({...p,profil:e.target.value}))}/>
+            <input className="fi" placeholder="Revenus" value={dos.revenus} onChange={e=>setDos(p=>({...p,revenus:e.target.value}))}/>
+            <input className="fi" placeholder="Recherche (type, secteur, budget)" value={dos.recherche} onChange={e=>setDos(p=>({...p,recherche:e.target.value}))}/>
+            <select className="fi" value={dos.faisable} onChange={e=>setDos(p=>({...p,faisable:e.target.value}))}><option value="">Faisable ?</option><option value="oui">Oui, faisable</option><option value="non">Non, pas faisable</option></select>
+          </div>
+          <input className="fi" style={{marginTop:6}} placeholder="Commentaire (facultatif)" value={dos.note} onChange={e=>setDos(p=>({...p,note:e.target.value}))}/>
+          <div style={{textAlign:"right",marginTop:6}}><button className="btn btn-p btn-sm" onClick={ajouterDossier}>Enregistrer le dossier</button></div>
+        </div>
+
+        <div style={card}>
+          <Head t="🤝 Nouveaux contacts d'agence" n={[b.contacts.length,b.contactsCible]}/>
+          {asArray(rep.contacts).map((c,i)=><div key={i} style={{fontSize:11.5,padding:"3px 0",borderTop:"1px solid var(--border)"}}><b>{c.prenom} {c.nom}</b> · {c.agence} · {c.phone} · {c.email} <span style={{color:"var(--green)",fontWeight:700}}>→ Partenaires</span></div>)}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginTop:6}}>
+            <input className="fi" placeholder="Prénom" value={ct.prenom} onChange={e=>setCt(p=>({...p,prenom:e.target.value}))}/>
+            <input className="fi" placeholder="NOM" value={ct.nom} onChange={e=>setCt(p=>({...p,nom:e.target.value}))}/>
+            <input className="fi" placeholder="Agence" value={ct.agence} onChange={e=>setCt(p=>({...p,agence:e.target.value}))}/>
+            <input className="fi" placeholder="Portable (06 / 07)" value={ct.phone} onChange={e=>setCt(p=>({...p,phone:e.target.value}))}/>
+            <input className="fi" style={{gridColumn:"span 2"}} placeholder="Email direct (prenom.nom@agence.fr)" value={ct.email} onChange={e=>setCt(p=>({...p,email:e.target.value}))}/>
+          </div>
+          {ctErr&&<div style={{color:"var(--red)",fontSize:11,fontWeight:700,marginTop:5}}>✗ {ctErr}</div>}
+          <div style={{textAlign:"right",marginTop:6}}><button className="btn btn-p btn-sm" onClick={ajouterContact}>+ Ajouter le contact</button></div>
+        </div>
+
+        <div style={card}>
+          <Head t={"🏠 Visites — "+b.visites.length}/>
+          {asArray(rep.visites).map((v,i)=><div key={i} style={{fontSize:11.5,padding:"3px 0",borderTop:"1px solid var(--border)"}}><b>{fmtDate(v.date+"T12:00:00")} · {v.name}</b> <span style={{color:"var(--text2)"}}>{v.bien}{v.retour?" — "+v.retour:""}</span></div>)}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:6,marginTop:6}}>
+            <select className="fi" value={vis.leadId} onChange={e=>setVis(p=>({...p,leadId:e.target.value}))}><option value="">— Client —</option>{leadOpt(ayaLeads)}</select>
+            <input className="fi" type="date" value={vis.date} onChange={e=>setVis(p=>({...p,date:e.target.value}))}/>
+            <input className="fi" placeholder="Bien visité (adresse)" value={vis.bien} onChange={e=>setVis(p=>({...p,bien:e.target.value}))}/>
+            <input className="fi" placeholder="Retour" value={vis.retour} onChange={e=>setVis(p=>({...p,retour:e.target.value}))}/>
+          </div>
+          <div style={{textAlign:"right",marginTop:6}}><button className="btn btn-p btn-sm" onClick={ajouterVisite}>+ Ajouter la visite</button></div>
+        </div>
+
+        <div style={{...card,gridColumn:"1 / -1"}}>
+          <Head t="💬 Mes remarques, questions et demandes"/>
+          <textarea className="fi" rows="3" defaultValue={rep.remarques||""} placeholder="Ce qui a bien marché, ce qui bloque, tes questions, tes demandes…" onBlur={e=>{ if(e.target.value!==(rep.remarques||"")) save(rep,{remarques:e.target.value},"✓ Remarques enregistrées"); }}/>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:10}}>
+            <button className="btn btn-g" onClick={()=>setApercu(true)}>Aperçu</button>
+            <button className="btn btn-p" onClick={envoyer}>Générer et envoyer mon reporting à Charles →</button>
+          </div>
+        </div>
+      </div>)}
+    </div>
+  </>);
+}
+
+// Fenêtre obligatoire « Résumé de l'appel » (Aya, quand elle sort une carte de Premier contact ou de Relance)
+function ResumeAppelModal({req, onCancel, onOk}){
+  const [txt,setTxt]=useState("");
+  const lab=(PIPELINE_COLS.find(c=>c.id===req.to)||{}).label||req.to;
+  const ok=txt.trim().length>=5;
+  return(
+    <div className="overlay" style={{zIndex:300}} onClick={onCancel}>
+      <div className="modal" style={{width:460}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">📞 {req.lead.column==="relance"?"Résumé de la relance":"Résumé de l'appel"} — {req.lead.name||req.lead.phone}</div>
+        <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>{(PIPELINE_COLS.find(c=>c.id===req.lead.column)||{}).label} → <b style={{color:"var(--text)"}}>{lab}</b></div>
+        <label className="fl">Mini-résumé (obligatoire)</label>
+        <textarea className="fi" rows="4" autoFocus value={txt} onChange={e=>setTxt(e.target.value)} placeholder="Profil, situation, ce qu'il cherche, ce qui a été dit / décidé…"/>
+        <div style={{fontSize:11,color:"var(--text3)",marginTop:5}}>Enregistré dans l'historique de la fiche et dans ton reporting.</div>
+        <div className="modal-footer" style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
+          <button className="btn btn-g" onClick={onCancel}>Annuler</button>
+          <button className="btn btn-p" disabled={!ok} style={ok?{}:{opacity:.5,cursor:"not-allowed"}} onClick={()=>ok&&onOk(txt.trim())}>Valider le déplacement</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PilotagePage({user, leads}){
   const [selMonth,setSelMonth]=useState(todayKey().slice(0,7));
   const [funnelMode,setFunnelMode]=useState("total");
@@ -3598,6 +3960,7 @@ function NewsletterPage({user, rows, addToast}){
 // ─── MAIN APP ────────────────────────────────────────────────────────────
 function App(){
   const [user,setUser]=useState(undefined);
+  const [resumeReq,setResumeReq]=useState(null); // fenêtre « Résumé de l'appel » (reporting d'Aya)
   const [leads,setLeads]=useState([]);
   const [newsletter,setNewsletter]=useState([]);
   const [soumissions,setSoumissions]=useState([]);
@@ -3959,9 +4322,25 @@ function App(){
     return newsletter.find(n=>(np&&normPhone(n.phone)===np)||(ne&&normEmail(n.email)===ne))||null;
   };
 
+  // Aya : résumé obligatoire quand une carte sort de Premier contact (appel) ou de Relance (a répondu)
+  const withResume=(lead,to,cont)=>{
+    if(myRole!==REPORTING_ROLE || !lead || to===lead.column || !["premier_contact","relance"].includes(lead.column)) return cont(lead);
+    setResumeReq({lead,to,cont});
+  };
+  const validerResume=(txt)=>{
+    const {lead,to,cont}=resumeReq; setResumeReq(null);
+    const ev={...mkEvent("📞",(lead.column==="relance"?"Relance — a répondu : ":"Appel : ")+txt), by:myRole, kind:lead.column==="relance"?"relance_ok":"appel", from:lead.column, to, resume:txt};
+    const l2={...lead, history:[...asArray(lead.history), ev]};
+    fsUpdateDoc(fsDocRef(db,"leads",lead.id),{history:l2.history, lastActivity:nowISO()}).catch(()=>{});
+    cont(l2);
+  };
   const moveLead=(id,col)=>{
-    const lead=leads.find(l=>l.id===id);
-    if(!lead||lead.column===col) return;
+    const lead0=leads.find(l=>l.id===id);
+    if(!lead0||lead0.column===col) return;
+    withResume(lead0,col,(lead)=>moveLeadCore(lead,col));
+  };
+  const moveLeadCore=(lead,col)=>{
+    const id=lead.id;
     if(col==="envoye"&&!envoyeReady(lead)){
       addToast("Pour passer en Envoyé : statut, typologie, téléphone et email requis","error");
       setModal({type:"detail",lead});
@@ -3992,12 +4371,12 @@ function App(){
     if(newCount>=3){
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
         column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(), sansSuiteAt:nowISO(), columnAt:nowISO(),
-        history:[...(lead.history||[]),mkEvent("❌","3 relances sans réponse — passé en Sans suite")]
+        history:[...(lead.history||[]),{...mkEvent("❌","3 relances sans réponse — passé en Sans suite"),by:myRole,kind:"relance"}]
       }).then(()=>addToast(lead.name+" passé en Sans suite","error"));
     } else {
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
         relanceCount:newCount, lastActivity:nowISO(),
-        history:[...(lead.history||[]),mkEvent("📵",`Relance ${newCount}/3 — pas de réponse`)]
+        history:[...(lead.history||[]),{...mkEvent("📵",`Relance ${newCount}/3 — pas de réponse`),by:myRole,kind:"relance"}]
       }).then(()=>addToast("Relance "+newCount+"/3 — "+lead.name));
     }
   };
@@ -4017,7 +4396,8 @@ function App(){
     }).then(()=>addToast(paid?"✓ Marqué payé":"Paiement annulé"));
   };
 
-  const saveDetail=(lead,form,targetCol)=>{
+  const saveDetail=(lead0,form,targetCol)=>withResume(lead0,targetCol,(lead)=>saveDetailCore(lead,form,targetCol));
+  const saveDetailCore=(lead,form,targetCol)=>{
     // Barrière Envoyé : on sauve les éditions mais on ne déplace en Envoyé qu'à l'envoi du mail (via le popup).
     const gateEnvoi = targetCol==="envoye" && lead.column!=="envoye" && !lead.envoiEnvoye;
     const effTarget = gateEnvoi ? lead.column : targetCol;
@@ -4103,6 +4483,7 @@ function App(){
             <div className={"nav-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={16}/>Biens</div>
             <div className={"nav-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={16}/>Partenaires</div>
             <div className={"nav-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={16}/>Registre</div>
+            {(user.email===FINANCE_EMAIL||myRole===REPORTING_ROLE)&&<div className={"nav-item"+(tab==="reporting"?" active":"")} onClick={()=>setTab("reporting")}><Ic n="listCheck" s={16}/>Reporting</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={16}/>Pilotage</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="stats"?" active":"")} onClick={()=>setTab("stats")}><Ic n="chart" s={16}/>Statistiques</div>}
             {user.email===FINANCE_EMAIL&&<div className={"nav-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={16}/>Finance</div>}
@@ -4117,6 +4498,8 @@ function App(){
         <div className="content">
           {tab==="registre"
             ? <RegistrePage lettres={lettres} isAdmin={isAdmin} addToast={addToast}/>
+            : (tab==="reporting"&&(user.email===FINANCE_EMAIL||myRole===REPORTING_ROLE))
+            ? <ReportingPage user={user} leads={leads} addToast={addToast} onMove={moveLead} onRelance={relanceAction} onOpen={lead=>setModal({type:"detail",lead})}/>
             : (tab==="pilotage"&&user.email===FINANCE_EMAIL)
             ? <PilotagePage user={user} leads={leads}/>
             : (tab==="stats"&&user.email===FINANCE_EMAIL)
@@ -4165,6 +4548,7 @@ function App(){
           <button className={"bn-item"+(tab==="biens"?" active":"")} onClick={()=>setTab("biens")}><Ic n="home" s={21}/>Biens</button>
           <button className={"bn-item"+(tab==="partenaires"?" active":"")} onClick={()=>setTab("partenaires")}><Ic n="users" s={21}/>Agents</button>
           <button className={"bn-item"+(tab==="registre"?" active":"")} onClick={()=>setTab("registre")}><Ic n="fileText" s={21}/>Registre</button>
+          {(user.email===FINANCE_EMAIL||myRole===REPORTING_ROLE)&&<button className={"bn-item"+(tab==="reporting"?" active":"")} onClick={()=>setTab("reporting")}><Ic n="listCheck" s={21}/>Reporting</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="pilotage"?" active":"")} onClick={()=>setTab("pilotage")}><Ic n="trendUp" s={21}/>Pilotage</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="stats"?" active":"")} onClick={()=>setTab("stats")}><Ic n="chart" s={21}/>Stats</button>}
           {user.email===FINANCE_EMAIL&&<button className={"bn-item"+(tab==="finance"?" active":"")} onClick={()=>setTab("finance")}><Ic n="wallet" s={21}/>Finance</button>}
@@ -4172,6 +4556,7 @@ function App(){
         </nav>
       </div>
 
+      {resumeReq&&<ResumeAppelModal req={resumeReq} onCancel={()=>setResumeReq(null)} onOk={validerResume}/>}
       {modal?.type==="add"&&<AddLeadModal onSave={addLead} onClose={()=>setModal(null)}/>}
       {(modal?.type==="detail"||modal?.type==="gate")&&
         <LeadDetailModal lead={modal.lead} gateTarget={modal.type==="gate"} onClose={()=>setModal(null)} onSave={saveDetail} onDelete={deleteLead}
