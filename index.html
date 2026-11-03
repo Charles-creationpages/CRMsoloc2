@@ -2564,7 +2564,7 @@ const MAILS_GENERIQUES = /^(contact|accueil|agence|info|infos|information|bonjou
 const telPortable = (t) => { let d=String(t||"").replace(/\D/g,""); if(d.indexOf("33")===0&&d.length===11) d="0"+d.slice(2); return /^0[67]\d{8}$/.test(d) ? d.replace(/(\d{2})(?=\d)/g,"$1 ") : ""; };
 
 // Calcule tout le reporting (en direct, ou figé au moment de l'envoi)
-function bilanReporting(rep, leads){
+function bilanReporting(rep, leads, biens){
   const o=rep.objectifs||{}; const jours=asArray(o.jours);
   const debut=rep.lundi, fin=repAddDays(rep.lundi,6);
   const dansSemaine=(at)=>{ const k=repDayKey(at); return k>=debut && k<=fin; };
@@ -2585,9 +2585,18 @@ function bilanReporting(rep, leads){
     else if(l.column!=="relance"){ statut="Déplacé en "+((PIPELINE_COLS.find(c=>c.id===l.column)||{}).label||l.column); fait=true; }
     return {id:s.id,name:(l&&l.name)||s.name,statut,fait,resume:ok?ok.h.resume:""};
   });
+  // Propositions de biens des partenaires (priorité) : biens ajoutés et / ou envoyés par Aya cette semaine (onglet Biens)
+  const biensListe=asArray(biens).map(bn=>{
+    const ajoute=bn.createdBy===REPORTING_EMAIL && bn.createdAt && dansSemaine(bn.createdAt);
+    const envs=asArray(bn.envois).filter(e=>e&&e.by===REPORTING_EMAIL&&e.at&&dansSemaine(e.at));
+    if(!ajoute&&!envs.length) return null;
+    return {id:bn.id, titre:bienTitre(bn), rue:bienRue(bn), ajoute, ajouteLe:ajoute?bn.createdAt:null, envoyes:envs.reduce((n,e)=>n+asArray(e.envoyes).length,0)};
+  }).filter(Boolean);
   const suivis=asArray(rep.suivis), dossiers=asArray(rep.dossiers), contacts=asArray(rep.contacts), visites=asArray(rep.visites);
   const dossiersFaits=dossiers.filter(d=>d.faisable&&(d.profil||d.revenus||d.recherche));
   const atteint=[], nonAtteint=[];
+  if(biensListe.length) atteint.push("Propositions de biens traitées : "+biensListe.length+" bien(s), envoyés à "+biensListe.reduce((n,x)=>n+x.envoyes,0)+" client(s)");
+  biensListe.filter(x=>x.ajoute&&!x.envoyes).forEach(x=>nonAtteint.push("Bien ajouté mais pas envoyé : "+x.titre));
   parJour.forEach(p=>{ (p.n>=(o.appelsParJour||0)?atteint:nonAtteint).push("Appels "+repJourLabel(p.jour)+" : "+p.n+" / "+(o.appelsParJour||0)); });
   const relFaites=relancesListe.filter(r=>r.fait).length;
   if(snap.length) (relFaites>=snap.length?atteint:nonAtteint).push("Relances : "+relFaites+" / "+snap.length+(relFaites<snap.length?" — pas faites : "+relancesListe.filter(r=>!r.fait).map(r=>r.name).join(", "):""));
@@ -2595,7 +2604,7 @@ function bilanReporting(rep, leads){
   if(o.dossiersCible) (dossiersFaits.length>=o.dossiersCible?atteint:nonAtteint).push("Dossiers reçus analysés : "+dossiersFaits.length+" / "+o.dossiersCible);
   if(o.contactsCible) (contacts.length>=o.contactsCible?atteint:nonAtteint).push("Nouveaux contacts d'agence : "+contacts.length+" / "+o.contactsCible+(contacts.length<o.contactsCible?" (manque "+(o.contactsCible-contacts.length)+")":""));
   if(visites.length) atteint.push("Visites : "+visites.length);
-  return { lundi:rep.lundi, jours, appelsParJour:o.appelsParJour||0, parJour, appelsTotal:appelsListe.length, appelsCible:(o.appelsParJour||0)*jours.length, appelsListe,
+  return { lundi:rep.lundi, jours, biensListe, appelsParJour:o.appelsParJour||0, parJour, appelsTotal:appelsListe.length, appelsCible:(o.appelsParJour||0)*jours.length, appelsListe,
     relancesListe, relancesFaites:relFaites, suivis, dossiers, dossiersCible:o.dossiersCible||0, contacts, contactsCible:o.contactsCible||0, visites,
     remarques:rep.remarques||"", atteint, nonAtteint };
 }
@@ -2617,6 +2626,8 @@ function BilanView({b, rep}){
           {b.nonAtteint.length?b.nonAtteint.map((t,i)=><div key={i} style={{fontSize:12,padding:"2px 0"}}>• {t}</div>):<div style={{fontSize:12,color:"var(--text3)"}}>Tout est atteint 👏</div>}
         </div>
       </div>
+      <H>🏘 Propositions de biens des partenaires (priorité) — {asArray(b.biensListe).length}</H>
+      {asArray(b.biensListe).length?asArray(b.biensListe).map((x,i)=><R key={i} a={x.titre} b={(x.rue||"")+(x.ajoute?" · ajouté le "+fmtDate(x.ajouteLe):"")} c={x.envoyes?"envoyé à "+x.envoyes+" client(s)":"pas envoyé"}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucun bien ajouté ou envoyé cette semaine.</div>}
       <H>📞 Appels — {b.appelsTotal} / {b.appelsCible} ({b.parJour.map(p=>repJourLabel(p.jour)+" "+p.n).join(" · ")})</H>
       {b.appelsListe.length?b.appelsListe.map((a,i)=><R key={i} a={a.name} b={a.resume} c={repJourLabel(repDayKey(a.at))+" → "+((PIPELINE_COLS.find(c=>c.id===a.to)||{}).label||a.to)}/>):<div style={{fontSize:12,color:"var(--text3)"}}>Aucun appel enregistré.</div>}
       <H>🔁 Relances — {b.relancesFaites} / {b.relancesListe.length}</H>
@@ -2639,6 +2650,8 @@ function ReportingPage({user, leads, addToast, onMove, onRelance, onOpen}){
   const [reps,setReps]=useState([]);
   const [loaded,setLoaded]=useState(false);
   const [sel,setSel]=useState(null);
+  const [biens,setBiens]=useState([]);
+  useEffect(()=>fsOnSnapshot(fsCollection(db,"biens"),snap=>setBiens(snap.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),[]);
   useEffect(()=>{
     const unsub=fsOnSnapshot(fsCollection(db,"reporting"),snap=>{ setReps(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoaded(true); },()=>{ setLoaded(true); addToast("Reporting : accès refusé (règles Firebase à mettre à jour)","error"); });
     return unsub;
@@ -2684,7 +2697,7 @@ function ReportingPage({user, leads, addToast, onMove, onRelance, onOpen}){
               <div style={{fontWeight:800,fontSize:15}}>{r.status==="envoye"?"Reporting reçu":"Aperçu en direct (pas encore envoyé)"} — semaine du {fmtDate(r.lundi+"T12:00:00")}</div>
               {r.status==="envoye"&&<button className="btn btn-g btn-sm" onClick={()=>{ if(confirm("Rouvrir ce reporting pour qu'Aya puisse le modifier et le renvoyer ?")) save(r,{status:"brouillon",lu:false},"Reporting rouvert"); }}>Rouvrir</button>}
             </div>
-            <BilanView b={r.status==="envoye"&&r.envoi?r.envoi:bilanReporting(r,leads)} rep={r}/>
+            <BilanView b={r.status==="envoye"&&r.envoi?r.envoi:bilanReporting(r,leads,biens)} rep={r}/>
           </div>
         </div>:<div style={{color:"var(--text3)"}}>Aucun reporting pour l'instant.</div>}
       </div>
@@ -2693,7 +2706,7 @@ function ReportingPage({user, leads, addToast, onMove, onRelance, onOpen}){
 
   // ── Vue d'Aya ──
   if(!cur) return <div className="topbar"><div className="pt">Mon reporting</div><div className="ps">Préparation de la semaine…</div></div>;
-  return <ReportingAya rep={cur} leads={leads} ayaLeads={ayaLeads} save={save} addToast={addToast} user={user} onMove={onMove} onRelance={onRelance} onOpen={onOpen}/>;
+  return <ReportingAya rep={cur} leads={leads} biens={biens} ayaLeads={ayaLeads} save={save} addToast={addToast} user={user} onMove={onMove} onRelance={onRelance} onOpen={onOpen}/>;
 }
 
 function ObjectifsEditor({rep, save, ayaLeads, leads}){
@@ -2717,8 +2730,8 @@ function ObjectifsEditor({rep, save, ayaLeads, leads}){
   );
 }
 
-function ReportingAya({rep, leads, ayaLeads, save, addToast, user, onMove, onRelance, onOpen}){
-  const b=bilanReporting(rep,leads);
+function ReportingAya({rep, leads, biens, ayaLeads, save, addToast, user, onMove, onRelance, onOpen}){
+  const b=bilanReporting(rep,leads,biens);
   const envoye=rep.status==="envoye";
   const [apercu,setApercu]=useState(false);
   const [ct,setCt]=useState({prenom:"",nom:"",agence:"",phone:"",email:""});
@@ -2767,7 +2780,7 @@ function ReportingAya({rep, leads, ayaLeads, save, addToast, user, onMove, onRel
   };
   const envoyer=()=>{
     if(!confirm("Envoyer ton reporting à Charles ? Tu ne pourras plus le modifier ensuite.")) return;
-    save(rep,{status:"envoye",sentAt:nowISO(),lu:false,envoi:bilanReporting(rep,leads)},"✓ Reporting envoyé à Charles");
+    save(rep,{status:"envoye",sentAt:nowISO(),lu:false,envoi:bilanReporting(rep,leads,biens)},"✓ Reporting envoyé à Charles");
   };
 
   return(<>
@@ -2790,6 +2803,12 @@ function ReportingAya({rep, leads, ayaLeads, save, addToast, user, onMove, onRel
         </div>
       ):(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(420px,1fr))",gap:12}}>
+        <div style={{...card,gridColumn:"1 / -1",borderColor:"var(--accent)",borderWidth:2}}>
+          <Head t="🏘 PRIORITÉ — Propositions de biens de nos partenaires" auto/>
+          <div style={{fontSize:11.5,color:"var(--text2)",marginBottom:6}}>À traiter en premier : dès qu'un partenaire propose un bien, ajoute-le dans l'onglet <b>Biens</b> et envoie-le aux clients qui correspondent. Il apparaît ici automatiquement.</div>
+          {b.biensListe.length?b.biensListe.map(x=><div key={x.id} style={{display:"flex",gap:8,fontSize:12,padding:"4px 0",borderTop:"1px solid var(--border)"}}><b style={{flex:1}}>{x.titre}{x.rue?" · "+x.rue:""}</b><span style={{fontWeight:700,color:x.envoyes?"var(--green)":"var(--red)"}}>{x.envoyes?"envoyé à "+x.envoyes+" client(s)":"⚠ pas encore envoyé"}</span></div>)
+            :<div style={{fontSize:12,color:"var(--text3)"}}>Aucun bien ajouté ou envoyé cette semaine pour l'instant.</div>}
+        </div>
         <div style={card}>
           <Head t="📞 Appels" n={[b.appelsTotal,b.appelsCible]} auto/>
           <div style={{display:"flex",gap:8,marginBottom:8}}>{b.parJour.map(p=><div key={p.jour} style={{flex:1,background:"var(--surface2)",borderRadius:9,padding:7,textAlign:"center"}}><div className="brand-font" style={{fontSize:17,fontWeight:800,color:p.n>=b.appelsParJour?"var(--green)":"var(--text)"}}>{p.n}<span style={{fontSize:11,color:"var(--text3)"}}>/{b.appelsParJour}</span></div><div style={{fontSize:10,color:"var(--text3)"}}>{repJourLabel(p.jour)}</div></div>)}</div>
