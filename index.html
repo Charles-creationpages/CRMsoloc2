@@ -906,21 +906,25 @@ function TodayPanel({leads, role, filter, onOpen, onDone}){
   );
 }
 
+// Date d'arrivée d'un client dans sa colonne actuelle (columnAt, sinon dates connues / historique, sinon création)
+const MARQUEURS_COLONNE = { premier_contact:"Remis en Premier contact", relance:"Passé en Relance", envoye:"Dossier envoyé", en_attente:"Mis en attente",
+  en_recherche:"recherche démarrée", en_commission:"Passé en commission", valide:"Bail validé", sans_suite:"Passé en Sans suite" };
+const entreeColonne = (l) => {
+  if(l.columnAt) return l.columnAt;
+  const stamp = l.column==="valide" ? l.validatedAt : l.column==="envoye" ? (l.envoyeAt||l.envoiAt) : l.column==="sans_suite" ? l.sansSuiteAt : null;
+  if(stamp) return stamp;
+  const m = MARQUEURS_COLONNE[l.column];
+  const ev = m ? asArray(l.history).filter(h=>h && String(h.text||"").indexOf(m)!==-1 && h.at).pop() : null;
+  return (ev && ev.at) || l.createdAt || l.lastActivity;
+};
+
 function KanbanBoard({leads, onOpen, onMove, onRelanceAction, onTogglePaid, isMobile, dupeIds, isAdmin}){
   const [dragOver,setDragOver]=useState(null);
   const [selStage,setSelStage]=useState("premier_contact");
   const dragId=useRef(null);
 
-  const sortCol=(colLeads)=>{
-    return [...colLeads].sort((a,b)=>{
-      const sa = ACTIVE_ALERT_COLS.includes(a.column)&&daysSince(a.lastActivity)>=3;
-      const sb = ACTIVE_ALERT_COLS.includes(b.column)&&daysSince(b.lastActivity)>=3;
-      if(sa&&!sb) return -1;
-      if(sb&&!sa) return 1;
-      if(sa&&sb) return daysSince(b.lastActivity)-daysSince(a.lastActivity);
-      return new Date(b.lastActivity||0)-new Date(a.lastActivity||0);
-    });
-  };
+  // Ordre de chaque colonne : du plus récemment arrivé dans la colonne au plus ancien
+  const sortCol=(colLeads)=>[...colLeads].sort((a,b)=>new Date(entreeColonne(b)||0)-new Date(entreeColonne(a)||0));
 
   if(isMobile){
     const counts={};
@@ -2200,7 +2204,7 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, nbColoc:nbColoc};
     // Déplacement en Envoyé + MàJ fiche : seulement une fois le mail confirmé par le script
     const markSent=()=>{
-      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), lastActivity:nowISO(), email:cleanEmail, criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:cleanEmail,criteria:critMaj}); }).catch(()=>{});
+      fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), columnAt:nowISO(), lastActivity:nowISO(), email:cleanEmail, criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:cleanEmail,criteria:critMaj}); }).catch(()=>{});
       // Config de la lettre (montant fixé côté base = non modifiable par le client)
       fsSetDoc(fsDocRef(db,"lettres",lead.id),{ status:"a_signer", titre:titre, montant:montant, ...(montantProfil&&montant<montantProfil?{montantBase:montantProfil}:{}), profil:profil, nom:lead.name||"", email:cleanEmail, createdAt:nowISO() }).catch(()=>{});
     };
@@ -3973,7 +3977,7 @@ function App(){
     }
     const moveExtra = col==="valide" ? {validatedAt:nowISO()} : (col==="sans_suite" ? {sansSuiteAt:nowISO()} : (col==="envoye" ? {envoyeAt:nowISO()} : (col==="en_recherche" ? {partage:true} : {})));
     fsUpdateDoc(fsDocRef(db,"leads",id),{
-      column:col, lastActivity:nowISO(), ...moveExtra,
+      column:col, columnAt:nowISO(), lastActivity:nowISO(), ...moveExtra,
       history:[...(lead.history||[]),mkEvent("",eventLabel(col))]
     }).then(()=>{
       addToast(PIPELINE_COLS.find(c=>c.id===col)?.label+" — "+lead.name);
@@ -3987,7 +3991,7 @@ function App(){
     const newCount=(lead.relanceCount||0)+1;
     if(newCount>=3){
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{
-        column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(), sansSuiteAt:nowISO(),
+        column:"sans_suite", relanceCount:newCount, lastActivity:nowISO(), sansSuiteAt:nowISO(), columnAt:nowISO(),
         history:[...(lead.history||[]),mkEvent("❌","3 relances sans réponse — passé en Sans suite")]
       }).then(()=>addToast(lead.name+" passé en Sans suite","error"));
     } else {
@@ -4035,7 +4039,7 @@ function App(){
       name:newName, firstName:newFirst, lastName:newLast, phone:form.phone, email:form.email, notes:form.notes, adresseBien:(form.adresseBien||"").trim(),
       tarifExceptionnel:Number(form.tarifExceptionnel)>0?Number(form.tarifExceptionnel):null,
       personnes:cleanPeople(form.personnes), garants:cleanPeople(form.garants),
-      criteria:form.criteria, column:effTarget, assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
+      criteria:form.criteria, column:effTarget, ...(colChanged?{columnAt:nowISO()}:{}), assignedTo:asArray(form.assignedTo), assignTouched:true, ...valExtra, ...ssExtra, ...evExtra, ...partageExtra,
       lastActivity:nowISO(), history:hist
     }).then(()=>{
       addToast("✓ "+lead.name+" mis à jour");
