@@ -164,7 +164,7 @@ function honoForProfile(statut, o) {
   o = o || {};
   if (statut === "Étudiant") return 890;
   if (statut === "CDI") return o.periodeEssaiValidee === true ? 990 : 1090;
-  if (statut === "CDD") return 1090;
+  if (statut === "CDD") return o.cddGarant === true ? 1040 : 1090;
   if (statut === "Indépendant") return 1190;
   if (statut === "Colocation") return 590 * (parseInt(o.nbColoc, 10) || 2);
   return 890;
