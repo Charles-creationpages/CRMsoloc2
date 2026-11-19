@@ -114,8 +114,8 @@ const asArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 const normPhone = (p) => { if(!p) return ""; let s=String(p).replace(/[^0-9+]/g,""); if(s.indexOf("+33")===0) s="0"+s.slice(3); else if(s.indexOf("0033")===0) s="0"+s.slice(4); return s.replace(/\+/g,""); };
 const normEmail = (e) => e ? String(e).trim().toLowerCase() : "";
 const unionArr = (a,b) => Array.from(new Set([...asArray(a),...asArray(b)]));
-const mergeCriteria = (k,d) => { k=k||{}; d=d||{}; return { statutClient:k.statutClient||d.statutClient||"", periodeEssaiValidee:(k.periodeEssaiValidee!=null)?k.periodeEssaiValidee:((d.periodeEssaiValidee!=null)?d.periodeEssaiValidee:null), typologie:unionArr(k.typologie,d.typologie), surface:k.surface||d.surface||"", loyer:k.loyer||d.loyer||"", secteur:k.secteur||d.secteur||"", prestationsSupp:k.prestationsSupp||d.prestationsSupp||"", dateEntreeSouhaitee:k.dateEntreeSouhaitee||d.dateEntreeSouhaitee||"", dateAsap:k.dateAsap||d.dateAsap||false, etatLogement:unionArr(k.etatLogement,d.etatLogement), etatBien:unionArr(k.etatBien,d.etatBien) }; };
-const blankCriteria = { statutClient:"", periodeEssaiValidee:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[], etatBien:[] };
+const mergeCriteria = (k,d) => { k=k||{}; d=d||{}; return { statutClient:k.statutClient||d.statutClient||"", periodeEssaiValidee:(k.periodeEssaiValidee!=null)?k.periodeEssaiValidee:((d.periodeEssaiValidee!=null)?d.periodeEssaiValidee:null), cddGarant:(k.cddGarant!=null)?k.cddGarant:((d.cddGarant!=null)?d.cddGarant:null), typologie:unionArr(k.typologie,d.typologie), surface:k.surface||d.surface||"", loyer:k.loyer||d.loyer||"", secteur:k.secteur||d.secteur||"", prestationsSupp:k.prestationsSupp||d.prestationsSupp||"", dateEntreeSouhaitee:k.dateEntreeSouhaitee||d.dateEntreeSouhaitee||"", dateAsap:k.dateAsap||d.dateAsap||false, etatLogement:unionArr(k.etatLogement,d.etatLogement), etatBien:unionArr(k.etatBien,d.etatBien) }; };
+const blankCriteria = { statutClient:"", periodeEssaiValidee:null, cddGarant:null, typologie:[], surface:"", loyer:"", secteur:"", prestationsSupp:"", dateEntreeSouhaitee:"", dateAsap:false, etatLogement:[], etatBien:[] };
 const criteriaComplete = (c) => {
   if(!c) return false;
   const hasTypo = asArray(c.typologie).length > 0;
@@ -188,17 +188,17 @@ const honoForProfile = (statut, o) => {
   o=o||{};
   if(statut==="Étudiant") return 890;
   if(statut==="CDI") return o.periodeEssaiValidee===true ? 990 : 1090;
-  if(statut==="CDD") return 1090;
+  if(statut==="CDD") return o.cddGarant===true ? 1040 : 1090; // CDD avec garant(s) : 1040 € · sans garant : 1090 €
   if(statut==="Indépendant") return 1190;
   if(statut==="Colocation") return 590*(parseInt(o.nbColoc)||2);
   return 890;
 };
 // Titre de la lettre de mission selon le profil
-const letterTitre = (statut, periodeEssaiValidee) => {
+const letterTitre = (statut, periodeEssaiValidee, cddGarant) => {
   if(statut==="Étudiant") return "Étudiant avec garant(s) physique(s)";
   if(statut==="Indépendant") return "Indépendant(es)";
   if(statut==="Colocation") return "Colocation";
-  if(statut==="CDD") return "Salarié en CDD";
+  if(statut==="CDD") return cddGarant===true ? "Salarié en CDD avec garant(s) physique(s)" : "Salarié en CDD sans garant";
   if(statut==="CDI" && periodeEssaiValidee===false) return "Salarié en période d'essai";
   return "Salarié avec garant(s) physique(s)"; // CDI validé, défaut
 };
@@ -1221,6 +1221,15 @@ function LeadDetailModal({lead, gateTarget, onClose, onSave, onDelete, dupePartn
             </div>
           </div>
         )}
+        {form.criteria.statutClient==="CDD"&&(
+          <div className="fg">
+            <label className="fl">Garant(s) physique(s) ?</label>
+            <div className="seg">
+              <button type="button" className={"seg-btn"+(form.criteria.cddGarant===true?" active":"")} onClick={()=>setCrit("cddGarant",true)}>Avec garant (1040 €)</button>
+              <button type="button" className={"seg-btn"+(form.criteria.cddGarant===false?" active":"")} onClick={()=>setCrit("cddGarant",false)}>Sans garant (1090 €)</button>
+            </div>
+          </div>
+        )}
         {form.criteria.statutClient==="Colocation"&&(
           <div className="fg">
             <label className="fl">Nombre de colocataires</label>
@@ -1361,7 +1370,7 @@ function RechercheTable({leads,search}){
           <tr key={l.id}>
             <td className="td-name">{l.name}</td>
             <td>{asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).length?<span style={{display:"inline-flex",gap:3}}>{asArray(l.assignedTo).filter(a=>ASSIGNEES[a]).map(a=><span key={a} className="badge" style={{background:ASSIGNEES[a].color,color:"#fff"}}>{ASSIGNEES[a].label}</span>)}</span>:<span style={{color:"var(--text3)",fontSize:11}}>—</span>}</td>
-            <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}{l.criteria.statutClient==="Colocation"&&(" ("+(parseInt(l.criteria.nbColoc)||2)+" pers.)")}</td>
+            <td>{l.criteria.statutClient}{l.criteria.statutClient==="CDI"&&(l.criteria.periodeEssaiValidee?" (essai validé)":" (essai en cours)")}{l.criteria.statutClient==="CDD"&&l.criteria.cddGarant!=null&&(l.criteria.cddGarant?" (avec garant)":" (sans garant)")}{l.criteria.statutClient==="Colocation"&&(" ("+(parseInt(l.criteria.nbColoc)||2)+" pers.)")}</td>
             <td>{asArray(l.criteria.typologie).join(", ")||"—"}</td>
             <td>{l.criteria.surface} m²</td>
             <td>{l.criteria.loyer} €</td>
@@ -2164,14 +2173,15 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     {key:"etudiant", label:"Étudiant",    statut:"Étudiant",    essai:null},
     {key:"cdi",      label:"CDI",         statut:"CDI",         essai:true},
     {key:"cdi_essai",label:"CDI essai",   statut:"CDI",         essai:false},
-    {key:"cdd",      label:"CDD",         statut:"CDD",         essai:null},
+    {key:"cdd_garant",label:"CDD avec garant", statut:"CDD",    essai:null, garant:true},
+    {key:"cdd",      label:"CDD sans garant", statut:"CDD",     essai:null, garant:false},
     {key:"indep",    label:"Indépendant", statut:"Indépendant", essai:null},
     {key:"coloc",    label:"Colocation",  statut:"Colocation",  essai:null}
   ];
   const initKey=(function(){ var s=c0.statutClient, e=c0.periodeEssaiValidee;
     if(s==="Étudiant") return "etudiant";
     if(s==="CDI") return e===false ? "cdi_essai" : "cdi";
-    if(s==="CDD") return "cdd";
+    if(s==="CDD") return c0.cddGarant===true ? "cdd_garant" : c0.cddGarant===false ? "cdd" : "";
     if(s==="Indépendant") return "indep";
     if(s==="Colocation") return "coloc";
     return ""; })();
@@ -2184,9 +2194,10 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
   const cur = PROFILS.find(p=>p.key===profilKey);
   const statut = cur?cur.statut:"";
   const essai = cur?cur.essai:null;
-  const montantProfil = statut ? honoForProfile(statut,{periodeEssaiValidee:essai,nbColoc:nbColoc}) : null;
+  const garant = cur&&cur.garant!=null?cur.garant:null;
+  const montantProfil = statut ? honoForProfile(statut,{periodeEssaiValidee:essai,cddGarant:garant,nbColoc:nbColoc}) : null;
   const montant = Number(lead.tarifExceptionnel)>0 ? Number(lead.tarifExceptionnel) : montantProfil;
-  const titre = statut ? letterTitre(statut, essai) : "";
+  const titre = statut ? letterTitre(statut, essai, garant) : "";
   const profil = docProfil(statut);
   const B = CLIENT_BASE_URL;
   const linkForm = B+"formulaire.html?id="+lead.id+"&n="+encodeURIComponent(lead.name||"");
@@ -2201,7 +2212,7 @@ function EnvoiModal({lead, user, onClose, addToast, onSent}){
     if(!statut){ addToast("Choisis un statut (il fixe la lettre et le montant)","error"); return; }
     if(!ENVOI_WEBAPP_URL){ addToast("Envoi non configuré (URL manquante)","error"); return; }
     setSending(true);
-    const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, nbColoc:nbColoc};
+    const critMaj = {...c0, statutClient:statut, periodeEssaiValidee:essai, cddGarant:garant, nbColoc:nbColoc};
     // Déplacement en Envoyé + MàJ fiche : seulement une fois le mail confirmé par le script
     const markSent=()=>{
       fsUpdateDoc(fsDocRef(db,"leads",lead.id),{ column:"envoye", envoyeAt:nowISO(), columnAt:nowISO(), lastActivity:nowISO(), email:cleanEmail, criteria:critMaj, envoiEnvoye:true, envoiAt:nowISO(), history:[...(lead.history||[]),mkEvent("✉️","Dossier envoyé")] }).then(()=>{ if(onSent) onSent({...lead,email:cleanEmail,criteria:critMaj}); }).catch(()=>{});
@@ -3449,7 +3460,7 @@ function NewsletterModal({entry, onSave, onClose}){
     email:entry&&entry.email||"", phone:entry&&entry.phone||"",
     typologie:asArray(entry&&entry.typologie), budgetMax:entry&&entry.budgetMax||"",
     surfaceMin:entry&&entry.surfaceMin||"", secteur:entry&&entry.secteur||"",
-    statutClient:entry&&entry.statutClient||"", periodeEssaiValidee:entry&&entry.periodeEssaiValidee!==undefined?entry.periodeEssaiValidee:null, nbColoc:entry&&entry.nbColoc||2
+    statutClient:entry&&entry.statutClient||"", periodeEssaiValidee:entry&&entry.periodeEssaiValidee!==undefined?entry.periodeEssaiValidee:null, cddGarant:entry&&entry.cddGarant!==undefined?entry.cddGarant:null, nbColoc:entry&&entry.nbColoc||2
   }));
   const [err,setErr]=useState("");
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -3490,6 +3501,15 @@ function NewsletterModal({entry, onSave, onClose}){
             </div>
           </div>
         )}
+        {form.statutClient==="CDD"&&(
+          <div className="fg">
+            <label className="fl">Garant(s) physique(s) ?</label>
+            <div className="seg">
+              <button type="button" className={"seg-btn"+(form.cddGarant===true?" active":"")} onClick={()=>set("cddGarant",true)}>Avec garant (1040 €)</button>
+              <button type="button" className={"seg-btn"+(form.cddGarant===false?" active":"")} onClick={()=>set("cddGarant",false)}>Sans garant (1090 €)</button>
+            </div>
+          </div>
+        )}
         {form.statutClient==="Colocation"&&(
           <div className="fg"><label className="fl">Nombre de colocataires</label><input className="fi" type="number" min="2" value={form.nbColoc} onChange={e=>set("nbColoc",e.target.value)}/></div>
         )}
@@ -3527,7 +3547,7 @@ function NewsletterPage({user, rows, addToast}){
     const name=[form.firstName.trim(),form.lastName.trim()].filter(Boolean).join(" ");
     const data={ firstName:form.firstName, lastName:form.lastName, name, email:form.email, phone:form.phone,
       typologie:asArray(form.typologie), budgetMax:form.budgetMax, surfaceMin:form.surfaceMin, secteur:form.secteur,
-      statutClient:form.statutClient||"", periodeEssaiValidee:(form.periodeEssaiValidee!=null?form.periodeEssaiValidee:null), nbColoc:form.nbColoc||2 };
+      statutClient:form.statutClient||"", periodeEssaiValidee:(form.periodeEssaiValidee!=null?form.periodeEssaiValidee:null), cddGarant:(form.cddGarant!=null?form.cddGarant:null), nbColoc:form.nbColoc||2 };
     if(modal&&modal.type==="edit"){
       fsUpdateDoc(fsDocRef(db,"newsletter",modal.entry.id),data).then(()=>{addToast("✓ Contact mis à jour");setModal(null);}).catch(()=>addToast("Erreur","error"));
     } else {
@@ -3908,7 +3928,7 @@ function App(){
       firstName:lead.firstName||"", lastName:lead.lastName||"", name:lead.name,
       email:lead.email||"", phone:lead.phone||"",
       typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
-      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
+      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), cddGarant:(c.cddGarant!=null?c.cddGarant:null), nbColoc:c.nbColoc||2,
       createdAt:nowISO(), fromLead:true, fromEnvoye:true
     }).catch(()=>{});
   };
@@ -3921,7 +3941,7 @@ function App(){
       firstName:lead.firstName||"", lastName:lead.lastName||"", name:lead.name,
       email:lead.email||"", phone:lead.phone||"",
       typologie:asArray(c.typologie), budgetMax:c.loyer||"", surfaceMin:c.surface||"", secteur:c.secteur||"",
-      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), nbColoc:c.nbColoc||2,
+      statutClient:c.statutClient||"", periodeEssaiValidee:(c.periodeEssaiValidee!=null?c.periodeEssaiValidee:null), cddGarant:(c.cddGarant!=null?c.cddGarant:null), nbColoc:c.nbColoc||2,
       createdAt:nowISO(), fromLead:true
     }).then(()=>addToast("✓ Ajouté à la newsletter")).catch(()=>addToast("Erreur","error"));
   };
