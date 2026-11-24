@@ -88,8 +88,18 @@ function libellerCharles(apres) {
   return n;
 }
 
-// Email client (et emails des colocataires / garants) → ["emmy"], ["aya"] ou les deux
+// Email client (et emails des colocataires / garants) → ["emmy"], ["aya"] ou les deux.
+// Gardée 3 h en mémoire : relire tout le CRM toutes les 15 min épuisait le quota gratuit de Firebase
+// (50 000 lectures / jour) et faisait échouer les autres scripts (mailing du lundi : erreur 429).
 function carteClients() {
+  var cache = CacheService.getScriptCache();
+  var enCache = cache.get("carteClients");
+  if (enCache) { try { return JSON.parse(enCache); } catch (e) {} }
+  var map = lireCarteClients();
+  try { var j = JSON.stringify(map); if (j.length < 95000) cache.put("carteClients", j, 3 * 3600); } catch (e) {}
+  return map;
+}
+function lireCarteClients() {
   var token = getFirebaseToken();
   var map = {};
   var ajoute = function(email, roles) {
