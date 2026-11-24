@@ -72,8 +72,27 @@ function sendWeeklyMailing() {
     else alerte("✓ Mailing du lundi : " + ok.length + " envoyé(s), " + leads.length + " recherche(s)\n\n" + recap, true);
   } catch(e) {
     Logger.log("Erreur sendWeeklyMailing : " + e.message);
+    // Quota Firebase épuisé (429) avant que rien ne parte : nouvel essai automatique 1 h plus tard (4 fois max)
+    if (!ok.length && /429|RESOURCE_EXHAUSTED|Quota/i.test(e.message) && reessaiPlanifie()) return;
     alerte("Mailing du lundi NON envoyé — erreur : " + e.message + (ok.length ? "\n\nDéjà envoyés : " + ok.join(", ") : ""));
   }
+  PropertiesService.getScriptProperties().deleteProperty("essaisMailing");
+}
+
+// Nouvel essai du mailing dans 1 h (quota Firebase épuisé). Renvoie false après 4 essais.
+function reessaiPlanifie() {
+  var props = PropertiesService.getScriptProperties();
+  var n = parseInt(props.getProperty("essaisMailing") || "0", 10) + 1;
+  ScriptApp.getProjectTriggers().forEach(function(t) { if (t.getHandlerFunction() === "reessaiMailing") ScriptApp.deleteTrigger(t); });
+  if (n > 4) { props.deleteProperty("essaisMailing"); return false; }
+  props.setProperty("essaisMailing", String(n));
+  ScriptApp.newTrigger("reessaiMailing").timeBased().after(60 * 60 * 1000).create();
+  Logger.log("Quota Firebase épuisé — nouvel essai dans 1 h (essai " + n + "/4).");
+  return true;
+}
+function reessaiMailing() {
+  ScriptApp.getProjectTriggers().forEach(function(t) { if (t.getHandlerFunction() === "reessaiMailing") ScriptApp.deleteTrigger(t); });
+  sendWeeklyMailing();
 }
 
 // Récap / alerte envoyé à hello@ (un seul mail par lundi, plus de copie de chaque envoi)
