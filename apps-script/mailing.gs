@@ -113,6 +113,23 @@ function installerDeclencheurLundi() {
   Logger.log("OK : déclencheur installé — chaque lundi entre 8h et 9h (heure de Paris).");
 }
 
+// ── RENVOI À UN SEUL PARTENAIRE (ex. email corrigé après un échec) ──────────
+// 1) Écris l'email du partenaire entre les guillemets ci-dessous  2) Enregistrer  3) Exécuter « renvoyerA »
+const RENVOYER_A = "";
+function renvoyerA() {
+  var cible = String(RENVOYER_A || "").trim().toLowerCase();
+  if (!cible) { Logger.log("Écris d'abord l'email du partenaire dans RENVOYER_A (juste au-dessus), puis Enregistrer."); return; }
+  const token = getFirebaseToken();
+  const p = getPartners(token).filter(function(x) { return String(x.email).trim().toLowerCase() === cible; })[0];
+  if (!p) { Logger.log("Aucun partenaire avec l'email " + cible + " dans le CRM (vérifie l'onglet Partenaires)."); return; }
+  const leads = getLeadsEnRecherche(token);
+  if (!leads.length) { Logger.log("Aucune recherche en cours — rien envoyé."); return; }
+  const sign = signatairesDe(ownerDe(p));
+  GmailApp.sendEmail(p.email, (sign.length > 1 ? "Nos" : "Mes") + " recherches locatives du " + todayLabel(), "",
+    { htmlBody: buildEmailHtml(p.prenom || p.nom || "toi", leads, sign), name: nomExpediteur(sign) });
+  Logger.log("✓ Mail envoyé à " + p.email + " (" + leads.length + " recherches, signature " + nomExpediteur(sign) + ").");
+}
+
 // ── TEST : 3 mails (signature Aya, Emmy, puis Aya + Emmy pour les partenaires de Charles) ──
 function testMailing() {
   try {
