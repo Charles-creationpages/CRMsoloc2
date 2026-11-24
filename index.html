@@ -3091,6 +3091,17 @@ function FinancePage({user, leads, addToast, isMobile}){
     }))).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{seedCreation:true}))
       .catch(()=>{creationRef.current=false;});
   },[loading,params,financeRaw]);
+  // Ajout ponctuel (une seule fois) : commissions Papernest oubliées — 15 € HT en entrée, espace Purple / relevé
+  const papernest15Ref=useRef(false);
+  useEffect(()=>{
+    if(loading || !params || params.seedPapernest15 || papernest15Ref.current) return;
+    papernest15Ref.current=true;
+    fsSetDoc(fsDocRef(db,"finance","purple_papernest_15"),{
+      type:"in", label:"Commissions Papernest", amount:15, ttc:null, pending:false, source:"manuel", leadId:null,
+      entite:"purple", createdAt:"2026-11-24T12:00:00.000Z", monthKey:"2026-11"
+    }).then(()=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),{seedPapernest15:true}))
+      .catch(()=>{papernest15Ref.current=false;});
+  },[loading,params]);
   const P = params || {debutSoloc:"2026-10-06", creancePurple:{montant:10818.34,recu:false}, tva:{regime:"franchise"}, chargesFixes:[]};
   const saveParams=(upd)=>fsUpdateDoc(fsDocRef(db,"finance","_parametres"),upd).then(()=>addToast("✓ Enregistré")).catch(()=>addToast("Erreur","error"));
   const mouvements = financeRaw.filter(f=>f.type==="in"||f.type==="out");
